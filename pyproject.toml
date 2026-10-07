@@ -56,6 +56,11 @@ Issues = "https://github.com/SarahCurtit/songscribe/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/songscribe"]
 
+# Required for the git-pinned madmom in the `chords` extra; hatchling refuses
+# direct URL references otherwise. See MODELS.md for why the pin exists.
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
