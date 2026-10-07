@@ -66,9 +66,16 @@ plausible, wrong score. Use `--list-unpaired` to see every miss and fix your fil
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 
-Budget tens of minutes of CPU for a full corpus. `--cache` writes each estimate as a `.lab`,
-which makes the run resumable and makes re-scoring instant — useful, because the scoring
-rules get iterated on far more often than the model does.
+**Budget overnight for a full corpus.** Measured on one CPU, `madmom` runs at roughly
+**2× realtime**, so the ~180-track Beatles set (about 12 hours of audio) is **5–6 hours**;
+`--separate` adds demucs on top of that. The `template` baseline is ~180× realtime, so the
+same corpus takes about 4 minutes — which is why it's the right thing to shake the plumbing
+out with.
+
+`--cache` matters at that scale: it writes each estimate as a `.lab`, so an interrupted run
+resumes instead of restarting, and re-scoring under different vocabularies is instant. The
+scoring rules get iterated on far more often than the model does. Use `--limit 5` to confirm
+the manifest and paths are right *before* committing to the long run.
 
 ```bash
 # Re-score cached estimates under different vocabularies: no model, seconds.

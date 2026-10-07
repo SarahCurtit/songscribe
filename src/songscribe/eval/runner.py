@@ -1,11 +1,11 @@
 """Run a chord backend over a dataset and aggregate the scores.
 
-Estimates are cached as ``.lab`` files keyed by backend and track. Chord
-recognition on a 180-track corpus is tens of minutes of CPU; re-scoring the
-same estimates under a different vocabulary should be instant, and it is the
-scoring rules that get iterated on, not usually the model. The cache also
-makes a run resumable, which matters when the run is long enough to be
-interrupted.
+Estimates are cached as ``.lab`` files keyed by backend and track. ``madmom``
+runs at roughly 2x realtime on one CPU, so a 180-track corpus is 5-6 hours --
+long enough that a run will sometimes be interrupted, and far too long to
+repeat because a scoring rule changed. Re-scoring cached estimates under a
+different vocabulary is instant, and it is the scoring rules that get
+iterated on, not usually the model.
 
 Two corpus-level aggregates are reported, because they answer different
 questions and MIREX reports both:

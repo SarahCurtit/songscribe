@@ -108,8 +108,9 @@ songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-t
 ```
 
 `--cache` writes each estimate as a `.lab`, so re-scoring under a different vocabulary is
-instant and a long run is resumable. The scoring rules get iterated on far more often than
-the model does. See `EVALUATION.md`.
+instant and a long run is resumable — which matters because `madmom` runs at ~2x realtime,
+making a 180-track corpus 5-6 hours (`template` is ~180x, so ~4 minutes). Shake the paths
+out with `-c template --limit 5` before committing to the long run. See `EVALUATION.md`.
 
 `[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
 import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default
