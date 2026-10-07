@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "songscribe"
+version = "0.1.0"
+description = "Transcribe chords and lyrics from an audio file into a lead sheet."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Sarah Curtit" }]
+keywords = ["music", "chords", "lyrics", "transcription", "mir", "chordpro"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
+dependencies = [
+    "numpy>=1.24",
+    "librosa>=0.10",
+    "soundfile>=0.12",
+]
+
+[project.optional-dependencies]
+# Each extra pulls one pretrained open-source model. See MODELS.md.
+chords = ["madmom>=0.16"]
+lyrics = ["faster-whisper>=1.0"]
+separate = ["demucs>=4.0"]
+all = ["songscribe[chords,lyrics,separate]"]
+dev = [
+    "songscribe[chords,lyrics,separate]",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+songscribe = "songscribe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SarahCurtit/songscribe"
+Issues = "https://github.com/SarahCurtit/songscribe/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/songscribe"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.coverage.run]
+source = ["songscribe"]

@@ -1,0 +1,104 @@
+# songscribe — notes for Claude
+
+Transcribe chords and lyrics from an audio file into a lead sheet. Deep learning end to end,
+**open-source models only**, everything local.
+
+## Hard constraints
+
+These are the project's identity, not preferences. Don't trade them away for accuracy.
+
+1. **Open-source models with openly published weights only.** No hosted inference APIs, no
+   API keys, no gated or request-only checkpoints. Before adding any model, check it against
+   the bar in `MODELS.md` and add a row to the inventory table there in the same change.
+2. **Runs locally on CPU.** GPU may be an optimisation, never a requirement. If a change
+   makes CPU-only use impossible, it's the wrong change.
+3. **No audio, lyrics, or weights in the repo.** `.gitignore` blocks them; don't work around
+   it. Tests use synthetic data or hand-written event fixtures, never song files.
+4. **Never commit transcribed lyrics of real songs.** Lyrics are copyrighted. Examples in
+   docs and tests use invented placeholder words — keep it that way.
+
+## Layout
+
+```
+src/songscribe/
+  types.py      ChordEvent, Word, LyricLine, Placement, Section, Song — all frozen
+  audio.py      loading/resampling; caller asks for the rate its model wants
+  separate.py   demucs wrapper (subprocess), optional
+  chords.py     pluggable chord backends behind recognise()
+  lyrics.py     faster-whisper wrapper, word-level timestamps
+  align.py      chord timeline + word timeline -> printable sections   (pure Python)
+  render.py     Song -> text or ChordPro                               (pure Python)
+  pipeline.py   orchestration of the above
+  cli.py        argparse entry point
+tests/          unit tests for the pure-Python stages
+MODELS.md       model inventory, licences, and the bar for adding one
+```
+
+## Architecture rules
+
+- **Everything is a timeline in seconds from start.** Every stage consumes and produces
+  timed events on that one clock. This is what keeps models swappable — don't introduce
+  frame indices or sample offsets into cross-stage interfaces.
+- **The two branches stay independent.** Chord recognition and lyric transcription must not
+  know about each other; they meet only in `align.align()`. Resist "the chord model could
+  use the vocal onsets" shortcuts — they couple the branches and break testability.
+- **Models go behind a registry.** A chord backend is one function returning
+  `list[ChordEvent]`, registered in `chords.BACKENDS` with its sample rate in
+  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name.
+- **Keep `align.py` and `render.py` model-free and dependency-free.** They're the only stages
+  that can be tested exhaustively and fast; that's worth protecting.
+- **Heavy imports stay inside functions.** `librosa`, `torch`, `madmom` and whisper are all
+  slow to import — `songscribe --help` must stay instant. Don't move them to module scope.
+- **Unknown backend or format raises.** Never silently fall back to a worse model; a typo in
+  a config shouldn't quietly degrade output. The one sanctioned fallback is separation,
+  which warns and continues on the full mix.
+- The `template` chord backend is **not** deep learning. It exists as the baseline models
+  must beat and so CI can run with no weights on disk. Never make it the default.
+
+## Commands
+
+```bash
+pip install -e '.[dev]'    # all models + pytest + ruff
+pytest                     # fast, no weights, no audio
+pytest -k align            # one stage
+ruff check . && ruff format --check .
+songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
+```
+
+CI runs `ruff check`, `ruff format --check`, and `pytest` on 3.10–3.12, installing only the
+core deps — so **tests must not require model weights or network access**.
+
+## Conventions
+
+- Python ≥3.10, `from __future__ import annotations`, `X | None` not `Optional[X]`.
+- Frozen slotted dataclasses for event types; they're passed around a lot and must not be
+  mutated mid-pipeline.
+- Line length 100. Ruff with `E,F,I,UP,B,SIM,RUF`.
+- Comments explain *why* a threshold or choice exists (`MIN_CHORD_DURATION` is about model
+  flicker, not about taste). Don't narrate what the code already says.
+- Tuned constants are module-level and named, never inline magic numbers.
+
+## Where accuracy is actually lost
+
+Useful priors when debugging bad output, roughly in order of impact:
+
+1. **Separation skipped** — both models on the full mix is the biggest single quality drop.
+2. **Chord vocabulary** — the default backend only knows major/minor triads, so sevenths get
+   flattened to their nearest triad. This looks like a model error but isn't.
+3. **Whisper timestamp drift on held notes** — pushes chord labels a word too far right.
+   Forced alignment is the planned fix, not more smoothing in `align.py`.
+4. **Line grouping** — `group_words` splits on pauses, which mis-segments very legato or
+   very staccato singing. Tune `max_gap`/`max_words` before suspecting the ASR.
+
+## Sub-agents
+
+Specialised agent definitions live in `.claude/agents/`. Use them for work that falls
+squarely in one stage — they carry that stage's context so you don't have to rebuild it:
+
+| Agent | Use for |
+|---|---|
+| `chord-model` | chord backends, DSP features, vocabularies, decoding |
+| `lyrics-asr` | Whisper, timestamps, forced alignment, languages |
+| `align-render` | line grouping, chord placement, output formats |
+| `eval-harness` | metrics, reference datasets, benchmarking backends |
+| `model-scout` | finding and licence-vetting candidate open-source models |
