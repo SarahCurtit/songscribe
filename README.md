@@ -62,6 +62,7 @@ your PATH for anything other than WAV input.
 songscribe song.mp3                        # text lead sheet to stdout
 songscribe song.mp3 -f chordpro -o out.cho # ChordPro to a file
 songscribe song.mp3 --no-separate          # skip demucs: much faster, less accurate
+songscribe song.mp3 --no-lyrics            # chords only, loads no ASR model
 songscribe song.mp3 -c template            # non-DL baseline, no weights needed
 songscribe song.mp3 -m medium -l en        # bigger ASR model, force language
 songscribe --help
@@ -84,9 +85,22 @@ No recordings ship with songscribe — they're copyrighted and would bloat the r
 one instead:
 
 ```bash
-songscribe-demo --output demo.wav     # 20s of I-V-vi-IV, plus demo.lab ground truth
-songscribe demo.wav -c madmom --no-separate
+pip install -e '.[chords]'                      # chord model; no ASR needed
+songscribe-demo --output demo.wav               # 20s of I-V-vi-IV, plus demo.lab truth
+songscribe demo.wav --no-lyrics --no-separate   # chords-only chart
 ```
+
+```
+demo
+====
+key: C
+
+C G Am F C G Am F
+```
+
+`--no-lyrics` matters here: the demo is instrumental, and without it songscribe would load
+an ASR model to find words that aren't there — and fail if the `[lyrics]` extra isn't
+installed.
 
 `songscribe-demo` writes a synthetic track by additive synthesis, alongside a `.lab`
 annotation in the Isophonics/MIREX format `mir_eval` reads — so it's an evaluation target,

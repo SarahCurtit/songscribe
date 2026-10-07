@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip stem separation and work on the full mix (much faster, less accurate)",
     )
+    parser.add_argument(
+        "--no-lyrics",
+        action="store_true",
+        help="chords only; loads no ASR model, the right mode for instrumentals",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress logging")
     parser.add_argument("--version", action="version", version=f"songscribe {__version__}")
     return parser
@@ -78,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             model_size=args.model,
             language=args.language,
             use_separation=not args.no_separate,
+            use_lyrics=not args.no_lyrics,
             title=args.title,
         )
     except NotImplementedError as error:
