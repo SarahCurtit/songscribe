@@ -49,8 +49,7 @@ def transcribe(
 
     try:
         log.info("recognising chords (backend=%s)", chord_backend)
-        sample_rate = chords.BACKEND_SAMPLE_RATES[chord_backend]
-        samples, sample_rate = audio.load(chord_source, sample_rate)
+        samples, sample_rate = audio.load(chord_source, chords.sample_rate_for(chord_backend))
         chord_events = chords.strip_no_chord(
             chords.recognise(samples, sample_rate, backend=chord_backend)
         )

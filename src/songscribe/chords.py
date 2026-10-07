@@ -1,27 +1,10 @@
 """Chord recognition from audio, via pluggable deep-learning backends.
 
-Every production backend here is a pretrained **open-source** model with openly
-published weights -- no hosted APIs, no proprietary checkpoints. See
-``MODELS.md`` for the model/licence inventory.
-
-Backends
---------
-``madmom`` (default)
-    CNN chord features + CRF decoding (Korzeniowski & Widmer). Pip-installable
-    with bundled weights, so it works out of the box. Major/minor vocabulary.
-
-``btc``
-    Bi-directional Transformer for Chord recognition (Park et al., ISMIR'19).
-    Large vocabulary including sevenths and inversions, and the best quality of
-    the three -- but needs a checkpoint fetched separately.
-
-``template``
-    Chroma/CQT matched against triad templates. **Not** deep learning: it is
-    the baseline the models have to beat, and the only backend that runs in CI
-    without downloading weights. Never the default.
-
-Adding a backend means writing one function that returns a list of
-:class:`~songscribe.types.ChordEvent` and registering it in :data:`BACKENDS`.
+Every production backend is a pretrained open-source model with openly
+published weights -- see ``MODELS.md`` for the inventory and the bar a new one
+has to clear. A backend is one function returning
+:class:`~songscribe.types.ChordEvent` list, registered in :data:`BACKENDS`
+with its required sample rate in :data:`BACKEND_SAMPLE_RATES`.
 """
 
 from __future__ import annotations
@@ -56,12 +39,17 @@ MODEL_SAMPLE_RATE = 44_100
 
 def _recognise_madmom(audio: np.ndarray, sample_rate: int, **kwargs) -> list[ChordEvent]:
     """CNN chord features + CRF decoding, via madmom's pretrained weights."""
+    from madmom.audio.signal import Signal
     from madmom.features.chords import CNNChordFeatureProcessor, CRFChordRecognitionProcessor
 
     if sample_rate != MODEL_SAMPLE_RATE:
         raise ValueError(f"madmom backend expects {MODEL_SAMPLE_RATE} Hz, got {sample_rate}")
 
-    features = CNNChordFeatureProcessor()(audio)
+    # Wrap in a madmom Signal rather than handing over a bare array: the
+    # processor chain reads the rate off the signal, and a plain ndarray would
+    # silently inherit whatever default it was configured with.
+    signal = Signal(audio, sample_rate=sample_rate, num_channels=1)
+    features = CNNChordFeatureProcessor()(signal)
     segments = CRFChordRecognitionProcessor()(features)
     return [
         ChordEvent(start=float(start), end=float(end), label=str(label))
@@ -108,7 +96,7 @@ def _recognise_template(
     chroma = chroma / np.maximum(norms, 1e-9)
 
     templates, labels = chord_templates()
-    best = _median_smooth(np.argmax(templates @ chroma, axis=0), smoothing)
+    best = _smooth_labels(np.argmax(templates @ chroma, axis=0), smoothing)
     times = librosa.frames_to_time(np.arange(len(best) + 1), sr=sample_rate, hop_length=hop_length)
     return _runs_to_events(best, times, labels)
 
@@ -127,19 +115,30 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
+def _check_backend(backend: str) -> None:
+    """Reject an unknown backend by name.
+
+    Never falls back to another model: a typo in a config should fail loudly,
+    not quietly downgrade the output to something worse.
+    """
+    if backend not in BACKENDS:
+        raise ValueError(f"unknown chord backend {backend!r}, expected one of {sorted(BACKENDS)}")
+
+
+def sample_rate_for(backend: str) -> int:
+    """The sample rate ``backend`` needs its audio loaded at."""
+    _check_backend(backend)
+    return BACKEND_SAMPLE_RATES[backend]
+
+
 def recognise(
     audio: np.ndarray,
     sample_rate: int,
     backend: str = DEFAULT_BACKEND,
     **kwargs,
 ) -> list[ChordEvent]:
-    """Estimate a chord timeline for ``audio`` (mono float32).
-
-    Raises :class:`ValueError` for an unknown backend rather than silently
-    falling back, so a typo in a config never quietly downgrades quality.
-    """
-    if backend not in BACKENDS:
-        raise ValueError(f"unknown chord backend {backend!r}, expected one of {sorted(BACKENDS)}")
+    """Estimate a chord timeline for ``audio`` (mono float32)."""
+    _check_backend(backend)
     log.debug("chord backend=%s sample_rate=%d", backend, sample_rate)
     return BACKENDS[backend](audio, sample_rate, **kwargs)
 
@@ -166,13 +165,21 @@ def chord_templates() -> tuple[np.ndarray, list[str]]:
     return np.vstack(templates), labels
 
 
-def _median_smooth(indices: np.ndarray, width: int) -> np.ndarray:
-    """Suppress single-frame flickers without blurring real changes."""
-    if width <= 1:
+def _smooth_labels(indices: np.ndarray, width: int) -> np.ndarray:
+    """Majority-vote each frame against its neighbours to suppress flicker.
+
+    Deliberately not a median filter: these are *nominal* label indices, so the
+    median of a window can name a chord that never occurred in it (the median
+    of C and B is somewhere around F#). Mode is the only meaningful order
+    statistic on unordered categories.
+    """
+    if width <= 1 or len(indices) == 0:
         return indices
+    width |= 1  # even widths would leave sliding_window_view one frame short
     padded = np.pad(indices, width // 2, mode="edge")
     windows = np.lib.stride_tricks.sliding_window_view(padded, width)
-    return np.median(windows, axis=1).astype(int)
+    n_labels = int(indices.max()) + 1
+    return np.array([np.bincount(window, minlength=n_labels).argmax() for window in windows])
 
 
 def _runs_to_events(indices: np.ndarray, times: np.ndarray, labels: list[str]) -> list[ChordEvent]:

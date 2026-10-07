@@ -56,8 +56,8 @@ class TestText:
         lyric = line("ab cd")
         section = Section(chords=(Placement(0, "Cmaj7"), Placement(3, "G7sus4")), line=lyric)
         chord_row = render(song_with(section), "text").splitlines()[0]
+        # Pushed right to column 6 rather than clobbering the tail of Cmaj7.
         assert chord_row == "Cmaj7 G7sus4"
-        assert "Cmaj7" in chord_row and "G7sus4" in chord_row
 
     def test_lyric_line_without_chords_renders_alone(self):
         out = render(song_with(Section(chords=(), line=line("just words"))), "text")

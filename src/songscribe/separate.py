@@ -48,8 +48,12 @@ def separate(path: str | Path, out_dir: str | Path, model: str = DEMUCS_MODEL) -
 
     stem_dir = out_dir / model / path.stem
     stems = {wav.stem: wav for wav in stem_dir.glob("*.wav")}
-    if "vocals" not in stems:
-        raise RuntimeError(f"demucs produced no vocals stem in {stem_dir}")
+    missing = {"vocals", "no_vocals"} - stems.keys()
+    if missing:
+        raise RuntimeError(
+            f"demucs produced no {', '.join(sorted(missing))} stem in {stem_dir}; "
+            f"found {sorted(stems) or 'nothing'}"
+        )
     return stems
 
 

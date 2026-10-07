@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from songscribe.chords import PITCH_CLASSES, chord_templates, estimate_key
+from songscribe.chords import (
+    PITCH_CLASSES,
+    _smooth_labels,
+    chord_templates,
+    estimate_key,
+    sample_rate_for,
+)
 from songscribe.types import ChordEvent
 
 
@@ -32,6 +39,47 @@ class TestChordTemplates:
             frame[PITCH_CLASSES.index(pitch_class)] = 1.0
         frame /= np.linalg.norm(frame)
         assert labels[int(np.argmax(templates @ frame))] == "Am"
+
+
+class TestSmoothLabels:
+    def test_removes_a_single_frame_flicker(self):
+        indices = np.array([3, 3, 3, 17, 3, 3, 3])
+        assert list(_smooth_labels(indices, 3)) == [3, 3, 3, 3, 3, 3, 3]
+
+    def test_never_invents_a_label_absent_from_the_window(self):
+        # A median filter would answer 10 here -- a chord neither neighbour
+        # played. Mode can only ever return a label that actually occurred.
+        indices = np.array([0, 0, 0, 20, 20, 20])
+        smoothed = _smooth_labels(indices, 3)
+        assert set(smoothed) <= {0, 20}
+
+    def test_preserves_a_genuine_change(self):
+        indices = np.array([5] * 6 + [9] * 6)
+        smoothed = _smooth_labels(indices, 3)
+        assert smoothed[0] == 5
+        assert smoothed[-1] == 9
+
+    def test_length_is_unchanged(self):
+        indices = np.array([1, 2, 1, 2, 1, 2, 1])
+        for width in (1, 3, 4, 5, 9):
+            assert len(_smooth_labels(indices, width)) == len(indices)
+
+    def test_width_one_is_a_no_op(self):
+        indices = np.array([4, 11, 4])
+        assert list(_smooth_labels(indices, 1)) == [4, 11, 4]
+
+    def test_empty_input(self):
+        assert len(_smooth_labels(np.array([], dtype=int), 9)) == 0
+
+
+class TestSampleRateFor:
+    def test_returns_the_rate_each_backend_wants(self):
+        assert sample_rate_for("madmom") == 44_100
+        assert sample_rate_for("template") == 22_050
+
+    def test_rejects_an_unknown_backend(self):
+        with pytest.raises(ValueError, match="unknown chord backend"):
+            sample_rate_for("definitely-not-a-model")
 
 
 class TestEstimateKey:
