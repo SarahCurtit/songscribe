@@ -120,6 +120,33 @@ chord branch only — Whisper will correctly find no words in it. For the lyric 
 real singing: your own recording is ideal, since you know both the chords you played and the
 words you sang. Otherwise use CC0 audio, and keep it in the gitignored `audio/` directory.
 
+## Measuring it
+
+`songscribe-eval` scores a chord backend against reference annotations, using the MIREX
+measure — Weighted Chord Symbol Recall, the fraction of annotated *time* labelled correctly.
+
+```bash
+songscribe-eval manifest ~/corpora/isophonics --audio ~/music -o eval/isophonics.json
+songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
+```
+
+```
+vocabulary        mean  weighted   definition
+root             92.3%     92.3%   root only; ignores quality entirely
+majmin           92.3%     92.3%   major and minor triads; sevenths reduce to their triad
+sevenths          0.0%      0.0%   maj, min, 7, maj7, min7
+mirex            99.7%     99.7%   at least 3 pitch classes in common
+```
+
+Several vocabularies, because the gap between them is the diagnostic. A high `majmin` beside
+a near-zero `sevenths` is the vocabulary ceiling, not a broken model — the backend cannot
+emit a seventh at all, so it guesses the triad every time, and `mirex` stays high because a
+triad shares three pitch classes with its parent seventh.
+
+Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
+the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
+setup, how the metrics work, and which corpora can and cannot legitimately be used.
+
 ## How it works
 
 ```
@@ -163,7 +190,7 @@ Treat the output as a first draft to correct, not a finished chart.
 - [ ] Wire up the BTC backend (sevenths, inversions, no-chord)
 - [ ] Beat and downbeat tracking, so chords snap to bars instead of raw frames
 - [ ] Phoneme-level forced alignment to fix held-note drift
-- [ ] Evaluation harness against reference annotations (McGill Billboard, Isophonics)
+- [x] Evaluation harness against reference annotations (Isophonics; McGill Billboard next)
 - [ ] Section detection (verse/chorus) from repetition structure
 - [ ] Forced alignment of known lyrics, for when you have the words but not the timings
 - [ ] Capo and transposition options
@@ -194,6 +221,11 @@ songscribe analyses audio you already have and produces your own transcription o
 progressions aren't copyrightable, but **lyrics are** — so transcripts of commercial songs
 are for your personal use. Don't commit song audio or generated lyric transcripts to this
 repo; `.gitignore` is set up to help you not do that by accident.
+
+The same applies to evaluation corpora, where the constraint is lawful access to the copy
+you analyse — your own rips, or a corpus licensed to you. `EVALUATION.md` has the detail,
+including why tabs scraped from tab sites and audio ripped from streaming services are not
+usable here.
 
 ## License
 

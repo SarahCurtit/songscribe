@@ -36,8 +36,17 @@ src/songscribe/
   pipeline.py   orchestration of the above
   cli.py        argparse entry point
   demo.py       synthesises a demo track + .lab ground truth  (pure Python)
+  lab.py        .lab chord annotation read/write               (pure Python)
+  eval/         chord accuracy measurement
+    harte.py      chord labels -> pitch content                (pure Python)
+    metrics.py    WCSR, vocabularies, segmentation             (pure Python)
+    dataset.py    manifests and path resolution                (pure Python)
+    isophonics.py manifest builder for an Isophonics tree
+    runner.py     runs a backend, caches estimates, aggregates
+    cli.py        songscribe-eval entry point
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
+EVALUATION.md   how to measure a backend, and which corpora are usable
 ```
 
 ## Test material
@@ -46,6 +55,13 @@ There is no audio in this repo and there must never be. `songscribe-demo` (`demo
 generates a synthetic track with known chords plus a `.lab` annotation, which is how the
 chord branch gets measured without shipping a recording. It is **instrumental on purpose** —
 don't try to make it sing; that is what a real recording is for.
+
+For a real accuracy number, `songscribe-eval` scores a backend against reference
+annotations. **`EVALUATION.md` records which corpora are usable and which are not, and
+why** — Ultimate Guitar and ripped streaming audio are both settled no, so don't re-open
+them. The rule the harness is built around: manifests hold track ids and relative paths
+only, so the evaluation code is publishable while the corpus stays local. Never commit
+annotations, estimates, or a manifest with absolute paths in it.
 
 Real audio goes in the gitignored `audio/` directory and is never committed, whatever its
 licence. For anything claiming an accuracy number, prefer a recording where the chords and
@@ -86,7 +102,15 @@ pytest                     # fast, no weights, no audio
 pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
+
+songscribe-eval manifest ~/corpora/isophonics -a ~/music -o eval/isophonics.json
+songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
+
+`--cache` writes each estimate as a `.lab`, so re-scoring under a different vocabulary is
+instant and a long run is resumable — which matters because `madmom` runs at ~2x realtime,
+making a 180-track corpus 5-6 hours (`template` is ~180x, so ~4 minutes). Shake the paths
+out with `-c template --limit 5` before committing to the long run. See `EVALUATION.md`.
 
 `[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
 import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default
@@ -111,7 +135,10 @@ Useful priors when debugging bad output, roughly in order of impact:
 
 1. **Separation skipped** — both models on the full mix is the biggest single quality drop.
 2. **Chord vocabulary** — the default backend only knows major/minor triads, so sevenths get
-   flattened to their nearest triad. This looks like a model error but isn't.
+   flattened to their nearest triad. This looks like a model error but isn't. The gap
+   between `songscribe-eval`'s `majmin` and `sevenths` scores is exactly this effect, which
+   is why both are reported: a high `majmin` next to a near-zero `sevenths` means the
+   vocabulary, not the model.
 3. **Whisper timestamp drift on held notes** — pushes chord labels a word too far right.
    Forced alignment is the planned fix, not more smoothing in `align.py`.
 4. **Line grouping** — `group_words` splits on pauses, which mis-segments very legato or

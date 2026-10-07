@@ -49,6 +49,7 @@ dev = [
 [project.scripts]
 songscribe = "songscribe.cli:main"
 songscribe-demo = "songscribe.demo:main"
+songscribe-eval = "songscribe.eval.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SarahCurtit/songscribe"

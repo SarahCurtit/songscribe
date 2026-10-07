@@ -39,6 +39,15 @@ out/
 *.cho
 *.chopro
 
+# Evaluation: reference annotations and model estimates. The annotations are
+# other people's work under their own licences, and the estimates are derived
+# from audio -- neither belongs in the repo. Manifests (relative paths only,
+# no content) are safe to commit, so eval/*.json is deliberately not ignored.
+*.lab
+annotations/
+estimates/
+.eval-cache/
+
 .DS_Store
 .idea/
 .vscode/
