@@ -73,7 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory holding your recordings; omit for a references-only manifest",
     )
     manifest.add_argument(
-        "-n", "--name", default="isophonics", help="dataset name (default: %(default)s)"
+        "-n",
+        "--name",
+        help="dataset name for report headers (default: the annotation directory's name)",
     )
     manifest.add_argument(
         "--list-unpaired",
@@ -155,8 +157,14 @@ def main(argv: list[str] | None = None) -> int:
 def _manifest(args: argparse.Namespace) -> int:
     from .isophonics import build_manifest
 
+    # Naming the corpus after the directory it came from, rather than
+    # defaulting to "isophonics": this builder reads any Isophonics-shaped
+    # tree, and a report headed "isophonics" for something else is a lie that
+    # ends up pasted into a comparison table.
+    name = args.name or args.annotations.expanduser().resolve().name or "corpus"
+
     try:
-        report = build_manifest(args.annotations, args.audio, name=args.name)
+        report = build_manifest(args.annotations, args.audio, name=name)
     except (OSError, ValueError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1
@@ -352,7 +360,14 @@ def _jsonable(value: float) -> float | None:
 
 
 def _percent(value: float) -> str:
-    return "--" if isnan(value) else f"{100 * value:.1f}%"
+    """Render a score as a percentage, or ``--`` if it could not be computed.
+
+    Two decimals, which is what MIREX tables carry -- and enough that float
+    summation noise (~1e-15, from an estimate read back off disk at 6dp
+    instead of held in memory) cannot flip a rendered digit and make two
+    identical runs look like they disagree.
+    """
+    return "--" if isnan(value) else f"{100 * value:.2f}%"
 
 
 def _truncate(text: str) -> str:

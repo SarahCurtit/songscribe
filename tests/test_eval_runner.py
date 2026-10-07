@@ -181,7 +181,24 @@ class TestReportFormatting:
     def test_percentages_are_rendered(self, corpus):
         data, estimates = corpus
         report = runner.evaluate(data, estimates_dir=estimates)
-        assert "50.0%" in format_report(report)
+        assert "50.00%" in format_report(report)
+
+    def test_scores_render_to_two_decimals(self):
+        # One decimal put the rendering right on a rounding boundary for
+        # round-numbered corpora: a 1e-15 summation difference between a fresh
+        # run and the same estimates read back from cache flipped the printed
+        # digit, making two identical runs look like they disagreed.
+        from songscribe.eval.cli import _percent
+
+        assert _percent(0.9325000000000001) == _percent(0.9324999999999999)
+        assert _percent(0.9325) == "93.25%"
+
+    def test_an_uncomputable_score_renders_as_a_dash(self):
+        from math import nan
+
+        from songscribe.eval.cli import _percent
+
+        assert _percent(nan) == "--"
 
     def test_json_output_is_serialisable_and_nan_free(self, corpus):
         import json
