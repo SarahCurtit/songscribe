@@ -32,7 +32,13 @@ def transcribe(
     ``audio`` may be a mono float32 array (then ``sample_rate`` is required,
     and must be 16 kHz) or a path, which faster-whisper decodes itself.
     """
-    from faster_whisper import WhisperModel
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError as error:
+        raise RuntimeError(
+            "faster-whisper not found. Install the extra: pip install 'songscribe[lyrics]' "
+            "-- or pass --no-lyrics for a chords-only chart."
+        ) from error
 
     if isinstance(audio, np.ndarray):
         if sample_rate is None:

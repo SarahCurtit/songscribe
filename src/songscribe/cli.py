@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip stem separation and work on the full mix (much faster, less accurate)",
     )
+    parser.add_argument(
+        "--no-lyrics",
+        action="store_true",
+        help="chords only; loads no ASR model, the right mode for instrumentals",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress progress logging")
     parser.add_argument("--version", action="version", version=f"songscribe {__version__}")
     return parser
@@ -57,11 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.WARNING if args.quiet else logging.INFO,
-        format="%(message)s",
-        stream=sys.stderr,
-    )
+    # Configure only our own logger, not the root one. basicConfig() would put
+    # every third-party library at INFO too, and huggingface_hub then buries
+    # the chart under a screenful of HTTP request lines.
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    package_log = logging.getLogger("songscribe")
+    package_log.setLevel(logging.WARNING if args.quiet else logging.INFO)
+    package_log.handlers.clear()
+    package_log.addHandler(handler)
+    package_log.propagate = False
 
     if not args.audio.exists():
         print(f"songscribe: no such file: {args.audio}", file=sys.stderr)
@@ -78,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             model_size=args.model,
             language=args.language,
             use_separation=not args.no_separate,
+            use_lyrics=not args.no_lyrics,
             title=args.title,
         )
     except NotImplementedError as error:

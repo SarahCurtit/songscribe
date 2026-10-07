@@ -9,16 +9,24 @@ the full mix -- faster, and good enough for a sparse acoustic recording.
 
 from __future__ import annotations
 
-import shutil
+import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 DEMUCS_MODEL = "htdemucs"
 
 
 def available() -> bool:
-    """Whether the demucs CLI is on PATH."""
-    return shutil.which("demucs") is not None
+    """Whether demucs can be run from this interpreter.
+
+    Deliberately an import check rather than ``shutil.which("demucs")``: the
+    console script only lands on PATH when the virtualenv is *activated*, so a
+    PATH probe reports "not installed" for anyone invoking songscribe by its
+    absolute path -- and separation would then be skipped silently, which is
+    the single biggest accuracy loss in the pipeline.
+    """
+    return importlib.util.find_spec("demucs") is not None
 
 
 def separate(path: str | Path, out_dir: str | Path, model: str = DEMUCS_MODEL) -> dict[str, Path]:
@@ -29,12 +37,17 @@ def separate(path: str | Path, out_dir: str | Path, model: str = DEMUCS_MODEL) -
     """
     if not available():
         raise RuntimeError(
-            "demucs not found on PATH. Install the extra: pip install 'songscribe[separate]'"
+            "demucs not found. Install the extra: pip install 'songscribe[separate]' "
+            "-- or pass --no-separate to work on the full mix."
         )
 
     path, out_dir = Path(path), Path(out_dir)
+    # Invoked as a module under the *current* interpreter, so it resolves
+    # without depending on PATH or on the venv being activated.
     subprocess.run(
         [
+            sys.executable,
+            "-m",
             "demucs",
             "--two-stems=vocals",
             "-n",
