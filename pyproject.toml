@@ -26,7 +26,16 @@ dependencies = [
 
 [project.optional-dependencies]
 # Each extra pulls one pretrained open-source model. See MODELS.md.
-chords = ["madmom>=0.16"]
+#
+# madmom comes from git, not PyPI: the last release (0.16.1, 2018) does
+# `from collections import MutableSequence`, which Python 3.10 removed, so it
+# cannot import on any version this project supports. Upstream main fixed that
+# and builds cleanly against numpy 2.x. Pinned to a commit, since there is no
+# tagged release carrying the fix.
+#
+# Note: a direct URL dependency makes this extra ineligible for PyPI upload.
+# Until madmom cuts a release, `[chords]` installs from a source checkout only.
+chords = ["madmom @ git+https://github.com/CPJKU/madmom@27f032e8947204902c675e5e341a3faf5dc86dae"]
 lyrics = ["faster-whisper>=1.0"]
 separate = ["demucs>=4.0"]
 all = ["songscribe[chords,lyrics,separate]"]

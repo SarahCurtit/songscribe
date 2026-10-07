@@ -45,6 +45,10 @@ MODELS.md       model inventory, licences, and the bar for adding one
 - **Models go behind a registry.** A chord backend is one function returning
   `list[ChordEvent]`, registered in `chords.BACKENDS` with its sample rate in
   `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name.
+- **One chord vocabulary downstream.** Models emit Harte notation (`C:maj`, `A:min`);
+  everything after the backend expects compact shorthand (`C`, `Am`). Backends call
+  `chords.normalise_label()` on the way out. An unrecognised quality passes through
+  untouched — never guess at it, or a wider vocabulary gets silently mislabelled.
 - **Keep `align.py` and `render.py` model-free and dependency-free.** They're the only stages
   that can be tested exhaustively and fast; that's worth protecting.
 - **Heavy imports stay inside functions.** `librosa`, `torch`, `madmom` and whisper are all
@@ -58,12 +62,16 @@ MODELS.md       model inventory, licences, and the bar for adding one
 ## Commands
 
 ```bash
-pip install -e '.[dev]'    # all models + pytest + ruff
+pip install -e '.[dev]'    # all models + pytest + ruff; compiles madmom, ~30s
 pytest                     # fast, no weights, no audio
 pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 ```
+
+`[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
+import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default
+backend. `MODELS.md` records why, and the dead ends, so they don't get retried.
 
 CI runs `ruff check`, `ruff format --check`, and `pytest` on 3.10–3.12, installing only the
 core deps — so **tests must not require model weights or network access**.

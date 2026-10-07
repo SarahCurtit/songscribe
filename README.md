@@ -49,6 +49,11 @@ Each extra pulls one pretrained open-source model — see [MODELS.md](MODELS.md)
 inventory and licences. Weights download themselves on first run. `ffmpeg` needs to be on
 your PATH for anything other than WAV input.
 
+> **Note:** `[chords]` installs madmom from a pinned git commit, because its last PyPI
+> release (2018) can't import on Python 3.10+. That makes the extra ineligible for PyPI
+> upload, so for now install songscribe from a source checkout. It compiles Cython on
+> install — budget ~30s. Details and the dead ends are in [MODELS.md](MODELS.md).
+
 ## Usage
 
 ```bash

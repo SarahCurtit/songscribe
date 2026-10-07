@@ -4,10 +4,12 @@ import numpy as np
 import pytest
 
 from songscribe.chords import (
+    NO_CHORD,
     PITCH_CLASSES,
     _smooth_labels,
     chord_templates,
     estimate_key,
+    normalise_label,
     sample_rate_for,
 )
 from songscribe.types import ChordEvent
@@ -70,6 +72,47 @@ class TestSmoothLabels:
 
     def test_empty_input(self):
         assert len(_smooth_labels(np.array([], dtype=int), 9)) == 0
+
+
+class TestNormaliseLabel:
+    @pytest.mark.parametrize(
+        ("harte", "compact"),
+        [
+            ("C:maj", "C"),
+            ("A:min", "Am"),
+            ("F#:min", "F#m"),
+            ("Bb:maj", "Bb"),
+            ("G:7", "G7"),
+            ("C:maj7", "Cmaj7"),
+            ("D:min7", "Dm7"),
+            ("B:hdim7", "Bm7b5"),
+            ("E:sus4", "Esus4"),
+        ],
+    )
+    def test_converts_harte_to_chart_shorthand(self, harte, compact):
+        assert normalise_label(harte) == compact
+
+    def test_drops_the_inversion(self):
+        assert normalise_label("C:maj/3") == "C"
+        assert normalise_label("A:min/5") == "Am"
+
+    def test_no_chord_and_unknown_collapse_to_n(self):
+        assert normalise_label("N") == NO_CHORD
+        assert normalise_label("X") == NO_CHORD
+        assert normalise_label("  ") == NO_CHORD
+
+    def test_already_compact_labels_pass_through(self):
+        # The template backend emits these directly; normalising twice is safe.
+        for label in ("C", "Am", "F#m", "Bb"):
+            assert normalise_label(label) == label
+
+    def test_unrecognised_quality_is_not_guessed_at(self):
+        assert normalise_label("C:min11") == "C:min11"
+
+    def test_output_is_idempotent(self):
+        for harte in ("C:maj", "A:min", "G:7", "C:maj/3", "X"):
+            once = normalise_label(harte)
+            assert normalise_label(once) == once
 
 
 class TestSampleRateFor:

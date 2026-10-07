@@ -26,6 +26,29 @@ QUALITIES = {"": (0, 4, 7), "m": (0, 3, 7)}
 # Label the models emit for "no chord sounding" -- silence, drums, spoken word.
 NO_CHORD = "N"
 
+# Models label chords in Harte notation ("C:maj", "A:min"); charts want compact
+# guitarist shorthand ("C", "Am"). Backends normalise on the way out so the rest
+# of the pipeline only ever sees one vocabulary.
+HARTE_QUALITIES = {
+    "maj": "",
+    "min": "m",
+    "dim": "dim",
+    "aug": "aug",
+    "maj7": "maj7",
+    "min7": "m7",
+    "7": "7",
+    "dim7": "dim7",
+    "hdim7": "m7b5",
+    "minmaj7": "mmaj7",
+    "maj6": "6",
+    "min6": "m6",
+    "9": "9",
+    "maj9": "maj9",
+    "min9": "m9",
+    "sus2": "sus2",
+    "sus4": "sus4",
+}
+
 DEFAULT_BACKEND = "madmom"
 
 # Both DL backends expect 44.1 kHz; they were trained on it.
@@ -50,9 +73,11 @@ def _recognise_madmom(audio: np.ndarray, sample_rate: int, **kwargs) -> list[Cho
     # silently inherit whatever default it was configured with.
     signal = Signal(audio, sample_rate=sample_rate, num_channels=1)
     features = CNNChordFeatureProcessor()(signal)
+    # A structured array with ('start', 'end', 'label') fields, labels in Harte
+    # notation -- verified against madmom 0.17.dev0.
     segments = CRFChordRecognitionProcessor()(features)
     return [
-        ChordEvent(start=float(start), end=float(end), label=str(label))
+        ChordEvent(start=float(start), end=float(end), label=normalise_label(str(label)))
         for start, end, label in segments
     ]
 
@@ -113,6 +138,27 @@ BACKEND_SAMPLE_RATES = {
     "btc": MODEL_SAMPLE_RATE,
     "template": 22_050,
 }
+
+
+def normalise_label(label: str) -> str:
+    """Convert a Harte-notation chord label to compact chart shorthand.
+
+    ``C:maj`` -> ``C``, ``A:min`` -> ``Am``, ``X`` (unknown) -> ``N``.
+    An unrecognised quality is passed through untouched rather than guessed
+    at, so a model with a wider vocabulary than :data:`HARTE_QUALITIES` shows
+    up as odd output instead of being silently mislabelled.
+    """
+    label = label.strip()
+    if not label or label == "X":
+        return NO_CHORD
+    if ":" not in label:
+        return label
+    root, _, quality = label.partition(":")
+    # Drop the inversion: "C:maj/3" names a bass note a chord chart won't print.
+    quality = quality.partition("/")[0]
+    if quality in HARTE_QUALITIES:
+        return f"{root}{HARTE_QUALITIES[quality]}"
+    return label
 
 
 def _check_backend(backend: str) -> None:
