@@ -62,11 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.WARNING if args.quiet else logging.INFO,
-        format="%(message)s",
-        stream=sys.stderr,
-    )
+    # Configure only our own logger, not the root one. basicConfig() would put
+    # every third-party library at INFO too, and huggingface_hub then buries
+    # the chart under a screenful of HTTP request lines.
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    package_log = logging.getLogger("songscribe")
+    package_log.setLevel(logging.WARNING if args.quiet else logging.INFO)
+    package_log.handlers.clear()
+    package_log.addHandler(handler)
+    package_log.propagate = False
 
     if not args.audio.exists():
         print(f"songscribe: no such file: {args.audio}", file=sys.stderr)
