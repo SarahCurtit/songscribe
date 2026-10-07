@@ -119,8 +119,14 @@ def synthesise(
         raise ValueError("progression is empty")
     if bpm <= 0:
         raise ValueError(f"bpm must be positive, got {bpm}")
+    if beats_per_bar < 1:
+        raise ValueError(f"beats_per_bar must be at least 1, got {beats_per_bar}")
     if repeats < 1:
         raise ValueError(f"repeats must be at least 1, got {repeats}")
+    if sample_rate < 1:
+        raise ValueError(f"sample_rate must be positive, got {sample_rate}")
+    if noise < 0:
+        raise ValueError(f"noise must not be negative, got {noise}")
 
     bar_seconds = beats_per_bar * 60.0 / bpm
     samples_per_bar = round(bar_seconds * sample_rate)

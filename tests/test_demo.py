@@ -110,9 +110,19 @@ class TestSynthesise:
 
     @pytest.mark.parametrize(
         "kwargs",
-        [{"progression": ()}, {"bpm": 0}, {"bpm": -5}, {"repeats": 0}],
+        [
+            {"progression": ()},
+            {"bpm": 0},
+            {"bpm": -5},
+            {"repeats": 0},
+            {"beats_per_bar": 0},
+            {"sample_rate": 0},
+            {"noise": -1.0},
+        ],
     )
     def test_rejects_degenerate_arguments(self, kwargs):
+        # Every one of these otherwise reaches numpy and surfaces as an opaque
+        # "zero-size array to reduction operation" instead of naming the arg.
         with pytest.raises(ValueError):
             synthesise(**kwargs)
 
