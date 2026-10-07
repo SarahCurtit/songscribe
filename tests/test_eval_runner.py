@@ -52,6 +52,20 @@ class TestCachePath:
         assert path.parent == tmp_path / "madmom"
         assert "/" not in path.name
 
+    @pytest.mark.parametrize(
+        "track_id", ["song", "Artist/Album/Track", "Artist\\Album\\Track", "a/b\\c"]
+    )
+    def test_what_the_cache_writes_is_what_the_reader_looks_for(self, tmp_path, track_id):
+        # If the two flattened differently every lookup would miss and the
+        # cache would silently re-run the model on every track.
+        written = runner.cache_path(tmp_path, "madmom", track_id)
+        written.parent.mkdir(parents=True, exist_ok=True)
+        written.write_text("0.0 1.0 C\n", encoding="utf-8")
+
+        events = runner.read_estimate(tmp_path / "madmom", track_id)
+        assert events is not None, f"cache miss for {track_id!r}"
+        assert [e.label for e in events] == ["C"]
+
 
 class TestReadEstimate:
     def test_it_reads_a_flattened_filename(self, tmp_path):

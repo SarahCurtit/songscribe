@@ -209,15 +209,20 @@ def fill_gaps(
 ) -> list[ChordEvent]:
     """Clip ``events`` to ``[start, end]`` and fill any uncovered time.
 
-    The fill label is ``N``, which is what a gap actually asserts: the
-    pipeline calls ``chords.strip_no_chord`` before rendering, so a chart's
-    intro and outro arrive here as missing time, not as silence it failed to
-    label. Scoring them as ``N`` is what makes an estimate comparable to a
-    gapless reference.
+    The fill label is ``N``, which is what a gap actually asserts, and what
+    makes a holey estimate comparable to a gapless reference.
     """
+    # The pipeline calls chords.strip_no_chord before rendering, so a chart's
+    # intro and outro arrive here as missing time rather than as silence the
+    # model failed to label.
     filled: list[ChordEvent] = []
     cursor = start
 
+    # `cursor` never moves backwards, so overlapping input resolves as
+    # earliest-wins: the later chord keeps only the time the earlier one did
+    # not claim. Published annotations are gapless and non-overlapping, so
+    # this only arises on a malformed file, where a deterministic reading
+    # beats either guessing or refusing to score the track.
     for event in sorted(events, key=lambda e: (e.start, e.end)):
         clipped_start = max(event.start, cursor)
         clipped_end = min(event.end, end)
@@ -273,11 +278,10 @@ def directional_hamming_distance(
 ) -> float:
     """How much of ``reference`` is not covered by its best-matching estimate.
 
-    For each reference segment, the single longest-overlapping estimate
-    segment is kept and the rest of the segment counted as error, normalised
-    by reference duration. Labels are ignored -- this measures boundaries
-    only, which is why it catches a model that is harmonically right but
-    smears every change across a bar.
+    For each reference segment the single longest-overlapping estimate segment
+    is kept and the remainder counted as error, normalised by reference
+    duration. Labels are ignored: this measures boundaries only, so it catches
+    a model that is harmonically right but smears every change across a bar.
     """
     total = sum(e.duration for e in reference)
     if total <= MIN_SEGMENT:

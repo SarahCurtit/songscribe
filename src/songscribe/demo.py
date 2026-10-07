@@ -162,11 +162,10 @@ def write_annotation(path: Path, events: list[ChordEvent]) -> None:
     Tab-separated ``start end label``, the Isophonics/MIREX convention -- so
     the demo doubles as a one-track evaluation target, not just a smoke test:
     ``songscribe.eval`` reads this file with no special casing.
-
-    The format itself lives in :mod:`songscribe.lab`, which is also what the
-    evaluation reads reference annotations with. One implementation, so the
-    writer and the reader cannot drift apart.
     """
+    # The format itself lives in songscribe.lab, which is also what the
+    # evaluation reads reference annotations with: one implementation, so the
+    # writer and the reader cannot drift apart.
     lab.write(path, events)
 
 

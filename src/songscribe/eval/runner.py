@@ -91,10 +91,19 @@ class Report:
 # --------------------------------------------------------------------------- #
 
 
+def flatten_track_id(track_id: str) -> str:
+    """Collapse a track id's directory separators into one filename.
+
+    Shared by the writer and the reader on purpose: if they flattened
+    differently, every lookup would miss and the cache would silently re-run
+    the model on every track.
+    """
+    return track_id.replace("/", _CACHE_SEPARATOR).replace("\\", _CACHE_SEPARATOR)
+
+
 def cache_path(cache_dir: Path, backend: str, track_id: str) -> Path:
     """Where a cached estimate for one track and backend lives."""
-    flattened = track_id.replace("/", _CACHE_SEPARATOR).replace("\\", _CACHE_SEPARATOR)
-    return cache_dir / backend / f"{flattened}.lab"
+    return cache_dir / backend / f"{flatten_track_id(track_id)}.lab"
 
 
 def estimate(
@@ -163,7 +172,7 @@ def read_estimate(estimates_dir: Path, track_id: str) -> list[ChordEvent] | None
     """
     from .. import lab
 
-    flattened = track_id.replace("/", _CACHE_SEPARATOR)
+    flattened = flatten_track_id(track_id)
     for candidate in (estimates_dir / f"{flattened}.lab", estimates_dir / f"{track_id}.lab"):
         if candidate.exists():
             return lab.read(candidate)
@@ -211,8 +220,7 @@ def evaluate(
     Exactly one source of estimates is required: ``backend`` runs a model,
     ``estimates_dir`` reads ``.lab`` files somebody else produced. A track
     whose reference or estimate is missing is skipped and named in the report
-    rather than scored as zero -- a missing file is an absent measurement, not
-    a wrong one, and averaging it in as zero would understate the model.
+    rather than scored as zero -- an absent measurement is not a wrong one.
     """
     if (backend is None) == (estimates_dir is None):
         raise ValueError("pass exactly one of backend= or estimates_dir=")

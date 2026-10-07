@@ -68,9 +68,8 @@ def fold_title(name: str) -> str:
 
     ``"01_-_I_Saw_Her_Standing_There.lab"`` and
     ``"01 I Saw Her Standing There.flac"`` both fold to
-    ``"isawherstandingthere"``. Leading track numbers go, as do case,
-    punctuation and spacing -- the three things that differ between a
-    hand-made annotation tree and a ripped library.
+    ``"isawherstandingthere"``: leading track numbers, case, punctuation and
+    spacing all go, being what differs between an annotation tree and a rip.
     """
     stem = Path(name).stem.lower()
     folded = _NOT_ALNUM.sub("", stem)

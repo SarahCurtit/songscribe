@@ -194,6 +194,24 @@ def _score(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1
 
+    # These three only steer a model run. Silently ignoring them would leave
+    # someone believing they had just scored a separated-stem run.
+    if args.estimates is not None:
+        ignored = [
+            flag
+            for flag, given in (
+                ("--cache", args.cache),
+                ("--separate", args.separate),
+                ("--refresh", args.refresh),
+            )
+            if given
+        ]
+        if ignored:
+            print(
+                f"songscribe-eval: {', '.join(ignored)} ignored when scoring --estimates",
+                file=sys.stderr,
+            )
+
     missing_audio = dataset.missing_audio()
     if args.estimates is None and missing_audio:
         print(

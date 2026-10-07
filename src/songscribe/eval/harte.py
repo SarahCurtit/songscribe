@@ -91,13 +91,14 @@ class Chord:
 
     ``root`` is a pitch class 0-11, or ``None`` for ``N`` and ``X``.
     ``intervals`` are semitones above the root, modulo the octave, and always
-    contain 0. ``bass`` is the semitone of the bass note above the root, which
-    every vocabulary here ignores -- it is kept so an inversion-sensitive
-    comparison can be added without reparsing.
+    contain 0.
     """
 
     root: int | None
     intervals: frozenset[int] = field(default_factory=frozenset)
+    # Every vocabulary here ignores the bass note, since no backend emits one
+    # (normalise_label drops it). Parsed and kept anyway, so an
+    # inversion-sensitive comparison can be added without reparsing.
     bass: int = 0
     unknown: bool = False
 
@@ -155,9 +156,8 @@ def parse(label: str) -> Chord | None:
 
     Accepts Harte notation and this project's compact shorthand. Returns
     ``None`` for a label that cannot be parsed, rather than guessing at it --
-    the same rule ``chords.normalise_label`` follows. The caller decides what
-    an unparseable label means, which differs by side: an unparseable
-    reference is excluded from scoring, an unparseable estimate is wrong.
+    the same rule ``chords.normalise_label`` follows. What that means is the
+    caller's call, and differs by side: see :func:`metrics.compare`.
     """
     label = label.strip()
     if not label:
