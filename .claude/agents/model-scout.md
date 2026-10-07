@@ -14,16 +14,26 @@ candidate to `chord-model` or `lyrics-asr` with the facts they need.
 2. **Openly downloadable weights** — public URL, HuggingFace Hub, or bundled. Gated,
    request-only, or "email the authors" checkpoints are disqualifying, not an inconvenience.
 3. **Licence permits our use** in an MIT project, and is recorded accurately.
-4. **Runs locally on CPU**, even if slowly. GPU-only is disqualifying.
-5. **Pinnable** — a release version or a commit SHA, not "main".
+4. **PyTorch, or no framework at all.** TensorFlow and Keras are disqualifying, full stop —
+   this kills otherwise strong candidates, so **check the framework first**, before you
+   spend any effort on benchmarks or licences. Framework-free numpy inference is welcome;
+   ONNX Runtime is fine for `.onnx` weights.
+5. **Runs locally on CPU**, even if slowly. GPU-only is disqualifying.
+6. **Pinnable** — a release version or a commit SHA, not "main".
 
 A candidate failing any of these does not go in, however good the benchmarks are. Say so
 plainly and move on; don't look for a workaround that smuggles it past the bar.
+
+The **Rejected** table in `MODELS.md` lists what has already been turned down and why. Read
+it before scouting, and add to it when you reject something — a candidate re-proposed and
+re-rejected twice is wasted effort on both sides.
 
 ## How to report a candidate
 
 Give a short, checkable brief:
 
+- **Framework** — PyTorch, TensorFlow, ONNX, or none. State it **first**; if it's
+  TensorFlow or Keras the answer is already no, and the rest of the brief is wasted work.
 - **What it is** — architecture, task, paper or repo, year.
 - **Licence** of code *and* weights, separately. They differ more often than people expect,
   and the weights' licence is the one that usually bites.

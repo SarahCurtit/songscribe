@@ -10,11 +10,16 @@ These are the project's identity, not preferences. Don't trade them away for acc
 1. **Open-source models with openly published weights only.** No hosted inference APIs, no
    API keys, no gated or request-only checkpoints. Before adding any model, check it against
    the bar in `MODELS.md` and add a row to the inventory table there in the same change.
-2. **Runs locally on CPU.** GPU may be an optimisation, never a requirement. If a change
+2. **PyTorch, or no framework at all. Never TensorFlow or Keras.** Reject a TF model however
+   good its numbers are — one DL runtime is enough for a project this size. Framework-free
+   numpy inference is welcome (the default chord backend is exactly that), and ONNX Runtime
+   is fine for `.onnx` weights. `MODELS.md` has the reasoning and a list of candidates
+   already rejected on this basis, so they don't get re-litigated.
+3. **Runs locally on CPU.** GPU may be an optimisation, never a requirement. If a change
    makes CPU-only use impossible, it's the wrong change.
-3. **No audio, lyrics, or weights in the repo.** `.gitignore` blocks them; don't work around
+4. **No audio, lyrics, or weights in the repo.** `.gitignore` blocks them; don't work around
    it. Tests use synthetic data or hand-written event fixtures, never song files.
-4. **Never commit transcribed lyrics of real songs.** Lyrics are copyrighted. Examples in
+5. **Never commit transcribed lyrics of real songs.** Lyrics are copyrighted. Examples in
    docs and tests use invented placeholder words — keep it that way.
 
 ## Layout
