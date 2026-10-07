@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import lab
 from .chords import PITCH_CLASSES
 from .types import ChordEvent
 
@@ -158,12 +159,15 @@ def synthesise(
 def write_annotation(path: Path, events: list[ChordEvent]) -> None:
     """Write chord ground truth as a ``.lab`` file.
 
-    Tab-separated ``start end label``, the Isophonics/MIREX convention, which
-    is what ``mir_eval`` expects -- so the demo doubles as a one-track
-    evaluation target, not just a smoke test.
+    Tab-separated ``start end label``, the Isophonics/MIREX convention -- so
+    the demo doubles as a one-track evaluation target, not just a smoke test:
+    ``songscribe.eval`` reads this file with no special casing.
+
+    The format itself lives in :mod:`songscribe.lab`, which is also what the
+    evaluation reads reference annotations with. One implementation, so the
+    writer and the reader cannot drift apart.
     """
-    lines = [f"{e.start:.6f}\t{e.end:.6f}\t{e.label}" for e in events]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lab.write(path, events)
 
 
 def build_parser() -> argparse.ArgumentParser:
