@@ -56,10 +56,15 @@ class TestLyricsToggle:
         assert stub_models["chords"] == ["madmom"]
         assert all(s.is_instrumental for s in song.sections)
 
-    def test_no_lyrics_also_skips_separation(self, stub_models, audio_file):
-        # Nothing downstream wants the vocal stem, so paying for demucs would
-        # be pure waste even though it is installed.
+    def test_no_lyrics_still_separates(self, stub_models, audio_file):
+        # The accompaniment stem is the mix minus vocals, which is cleaner for
+        # the chord model -- so chords-only runs still want separation. Only
+        # --no-separate turns it off.
         pipeline.transcribe(audio_file, use_lyrics=False, use_separation=True)
+        assert len(stub_models["separate"]) == 1
+
+    def test_no_separate_is_the_only_thing_that_skips_demucs(self, stub_models, audio_file):
+        pipeline.transcribe(audio_file, use_lyrics=False, use_separation=False)
         assert stub_models["separate"] == []
 
     def test_lyrics_on_by_default(self, stub_models, audio_file):

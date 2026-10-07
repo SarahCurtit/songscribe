@@ -44,9 +44,11 @@ def transcribe(
     chord_source: str | Path = path
     tmp: tempfile.TemporaryDirectory | None = None
 
-    # Separation only earns its cost if something downstream needs the vocal
-    # stem; for a chords-only run the accompaniment is the whole mix anyway.
-    if use_separation and use_lyrics:
+    # Separation runs even for a chords-only chart: the accompaniment stem is
+    # the mix minus vocals, and singing smears the chroma the chord model
+    # reads. Use --no-separate to trade that accuracy for speed -- that choice
+    # stays the caller's, rather than being implied by --no-lyrics.
+    if use_separation:
         if separate.available():
             log.info("separating stems with demucs (this is the slow part)")
             tmp = tempfile.TemporaryDirectory(prefix="songscribe-")
