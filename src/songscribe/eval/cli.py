@@ -157,13 +157,13 @@ def main(argv: list[str] | None = None) -> int:
 def _manifest(args: argparse.Namespace) -> int:
     from .isophonics import build_manifest
 
-    # Naming the corpus after the directory it came from, rather than
-    # defaulting to "isophonics": this builder reads any Isophonics-shaped
-    # tree, and a report headed "isophonics" for something else is a lie that
-    # ends up pasted into a comparison table.
-    name = args.name or args.annotations.expanduser().resolve().name or "corpus"
-
     try:
+        # Naming the corpus after the directory it came from, rather than
+        # defaulting to "isophonics": this builder reads any Isophonics-shaped
+        # tree, and a report headed "isophonics" for something else is a lie
+        # that ends up pasted into a comparison table. Inside the try because
+        # resolve() can raise on a symlink loop.
+        name = args.name or args.annotations.expanduser().resolve().name or "corpus"
         report = build_manifest(args.annotations, args.audio, name=name)
     except (OSError, ValueError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
