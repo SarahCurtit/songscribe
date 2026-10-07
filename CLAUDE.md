@@ -35,9 +35,23 @@ src/songscribe/
   render.py     Song -> text or ChordPro                               (pure Python)
   pipeline.py   orchestration of the above
   cli.py        argparse entry point
+  demo.py       synthesises a demo track + .lab ground truth  (pure Python)
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
 ```
+
+## Test material
+
+There is no audio in this repo and there must never be. `songscribe-demo` (`demo.py`)
+generates a synthetic track with known chords plus a `.lab` annotation, which is how the
+chord branch gets measured without shipping a recording. It is **instrumental on purpose** —
+don't try to make it sing; that is what a real recording is for.
+
+Real audio goes in the gitignored `audio/` directory and is never committed, whatever its
+licence. For anything claiming an accuracy number, prefer a recording where the chords and
+words are known in advance; CC0 sources are fine for sanity checks but come with no ground
+truth. "Royalty-free" stock libraries are **not** usable here — they're licensed, not free,
+and their terms forbid redistributing the audio.
 
 ## Architecture rules
 

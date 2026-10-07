@@ -7,12 +7,12 @@ no API keys, no hosted inference.
 Point it at a song, get back chord labels sitting above the words where the changes happen:
 
 ```
-$ songscribe demo.mp3
+$ songscribe your-song.mp3
 ```
 
 ```
-Demo
-====
+Your Song
+=========
 key: G
 
 G                 D
@@ -24,18 +24,20 @@ every window lit tonight
 Or as [ChordPro](https://www.chordpro.org/), which opens in most setlist and songbook apps:
 
 ```
-$ songscribe demo.mp3 --format chordpro --output demo.cho
+$ songscribe your-song.mp3 --format chordpro --output song.cho
 ```
 
 ```
-{title: Demo}
+{title: Your Song}
 {key: G}
 
 [G]lantern over [D]water, counting
 [Em]every window [C]lit tonight
 ```
 
-*(Placeholder words, not a real song.)*
+*Illustrative output shape — the words are invented placeholders, and you supply the audio.
+No recordings ship with songscribe. For something runnable right now, see
+[Try it with no audio](#try-it-with-no-audio).*
 
 ## Install
 
@@ -75,6 +77,34 @@ chord_events = chords.recognise(samples, sr, backend="madmom")
 words = lyrics.transcribe("song.mp3")
 print(render.render(align.align(chord_events, words), "chordpro"))
 ```
+
+## Try it with no audio
+
+No recordings ship with songscribe — they're copyrighted and would bloat the repo. Generate
+one instead:
+
+```bash
+songscribe-demo --output demo.wav     # 20s of I-V-vi-IV, plus demo.lab ground truth
+songscribe demo.wav -c madmom --no-separate
+```
+
+`songscribe-demo` writes a synthetic track by additive synthesis, alongside a `.lab`
+annotation in the Isophonics/MIREX format `mir_eval` reads — so it's an evaluation target,
+not just a smoke test. You know the right answer, which is the whole point.
+
+```bash
+songscribe-demo -p C Am F G --bpm 120 -r 4   # your own progression
+songscribe-demo --noise 0.01                 # less pristine, harder to track
+songscribe-demo --help
+```
+
+On the default track the madmom backend scores **8/8 chords, 98% frame accuracy** (the 2% is
+the final bar fading under its envelope, correctly read as no-chord).
+
+**It's instrumental by design.** Synthesising singing is out of scope, so this exercises the
+chord branch only — Whisper will correctly find no words in it. For the lyric branch you need
+real singing: your own recording is ideal, since you know both the chords you played and the
+words you sang. Otherwise use CC0 audio, and keep it in the gitignored `audio/` directory.
 
 ## How it works
 
