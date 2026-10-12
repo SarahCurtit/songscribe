@@ -47,6 +47,10 @@ out/
 annotations/
 estimates/
 .eval-cache/
+# Word timelines for placement scoring hold lyric text, which hard constraint 5
+# keeps out of the repo. songscribe.eval.reference refuses to write any other
+# suffix, so this one rule covers them all.
+*.words.json
 # Corpora land here: downloaded annotation archives and their extracted trees.
 # Ignored wholesale rather than by extension, because Isophonics also ships
 # .ttl, .svl and .txt alongside the .lab files.

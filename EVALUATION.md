@@ -364,9 +364,51 @@ its own ASR output would confound two independent failures; the branches are kep
 independent everywhere else for that reason, and `placement_score` takes a single `words`
 argument so the confusion is not expressible.
 
-It is **not wired into `songscribe-eval`**, because no corpus here carries lyrics: Isophonics
-is chords only. It needs a reference with time-aligned words *and* chords for the same
-recording. Options, best first:
+#### The word timeline does not have to be a gold transcript
+
+`placement_score` holds **one** word timeline fixed across both sides, so word errors apply
+equally to reference and estimate and cancel out. The timeline has to be *consistent*, not
+*correct*. That is what makes this measurable with no external data at all: run your own ASR
+on your own recording, and the comparison still isolates chord placement.
+
+`songscribe.eval.reference` stores such a timeline as JSON. It refuses any filename not
+ending in `.words.json`, because that suffix is what `.gitignore` matches — these files hold
+lyric text and must stay local.
+
+```python
+from songscribe import lyrics
+from songscribe.eval import reference, metrics
+
+words = lyrics.transcribe("data/audio-aligned/my_track.wav", model_size="base", language="en")
+reference.write_words("data/placement/my_track.words.json", words, source="whisper-base")
+
+metrics.placement_score(reference_chords, estimate_chords, words)
+```
+
+Measured that way on Eleanor Rigby — Isophonics chords as reference, madmom as estimate,
+195 Whisper words over 23 lines:
+
+| Metric | Score |
+|---|---|
+| `majmin` WCSR | 79.51% |
+| `chart` | 67.44% |
+| `placement`, right syllable at all | 73.21% |
+| `placement`, right chord **and** right syllable | **57.14%** |
+
+The last row is the lead-sheet number: 57% of chords are the right chord over the right
+syllable, **22 points below the WCSR headline**. The 73% → 57% gap is chords landing in the
+right place but misnamed; `placement` below `chart` means some correctly-ordered chords land
+on the wrong word. The reference places 45 chords where the estimate places 56 — the
+over-segmentation again.
+
+Caveat worth keeping attached to that number: those words are uncorrected Whisper output on
+an unseparated mix, so "syllable" means "Whisper's idea of a word boundary". The *comparison*
+is sound, since both sides share it, but hand-correcting the timeline is what would make the
+absolute figure trustworthy.
+
+It is **not wired into `songscribe-eval`**, because no *corpus* here carries lyrics:
+Isophonics is chords only, and a manifest path would have nothing to read. For a shareable
+reference rather than a local one, the options are, best first:
 
 - **A self-recorded track.** The chords played and the words sung are both known, so the
   reference is exact and free of licensing questions entirely.
