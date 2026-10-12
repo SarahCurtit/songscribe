@@ -37,7 +37,7 @@ from itertools import pairwise
 from math import isnan, nan
 from statistics import median
 
-from ..types import ChordEvent
+from ..types import ChordEvent, Word
 from .harte import NO_CHORD_LABEL, Chord, parse
 
 #: Durations below this are treated as zero when merging timelines: boundaries
@@ -638,6 +638,64 @@ def grid_score(
     return sequence_similarity(
         grid_sequence(reference, vocabulary, unit=rhythm.unit),
         grid_sequence(estimate, vocabulary, unit=rhythm.unit),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Lyric-chord placement
+# --------------------------------------------------------------------------- #
+
+
+def placement_sequence(
+    chords: list[ChordEvent],
+    words: list[Word],
+    vocabulary: str = "majmin",
+    compare_labels: bool = True,
+    **group_kwargs: object,
+) -> tuple[tuple, ...]:
+    """Where each chord change lands, as ``(line, word index[, label])``.
+
+    This is the lead sheet's real question -- is the chord over the right
+    syllable -- and it is answered in word indices, not seconds, so it needs no
+    lyric text and is immune to offset and tempo alike.
+    """
+    from ..align import group_words, place_in_line
+
+    spans = dedupe_chart(chords, vocabulary)
+    placed: list[tuple] = []
+    for line_index, line in enumerate(group_words(words, **group_kwargs)):  # type: ignore[arg-type]
+        offsets = line.word_offsets()
+        for placement in place_in_line(line, spans):
+            word_index = offsets.index(placement.offset)
+            # Dropping the label asks the weaker question -- is the *change*
+            # in the right place -- which separates a mistimed chord from a
+            # misnamed one.
+            placed.append(
+                (line_index, word_index, placement.label)
+                if compare_labels
+                else (line_index, word_index)
+            )
+    return tuple(placed)
+
+
+def placement_score(
+    reference_chords: list[ChordEvent],
+    estimate_chords: list[ChordEvent],
+    words: list[Word],
+    vocabulary: str = "majmin",
+    compare_labels: bool = True,
+    **group_kwargs: object,
+) -> float:
+    """How well an estimate's chords land on the same syllables as the reference's.
+
+    Both sides are placed against **one** word timeline, the reference's, so
+    this measures the chord branch alone. Scoring each against its own ASR
+    output would confound two independent failures, and the branches are kept
+    independent everywhere else for exactly that reason.
+    """
+    return sequence_similarity(
+        placement_sequence(reference_chords, words, vocabulary, compare_labels, **group_kwargs),
+        placement_sequence(estimate_chords, words, vocabulary, compare_labels, **group_kwargs),
     )
 
 

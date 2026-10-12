@@ -183,9 +183,22 @@ reliability gate is calibrated on one track — treat it as indicative. `grid_se
 a known `unit=`, which is exact; supplying real downbeats (roadmap) is what would make it a
 measurement rather than a heuristic.
 
-Lyric-chord synchronisation — whether each chord sits over the right syllable, which
-`align.py` already produces as `Placement` offsets — is **not** measured, for want of a
-reference with time-aligned lyrics and chords. Isophonics is chords only.
+For songs, `metrics.placement_score` measures lyric-chord synchronisation — whether each
+chord sits over the right syllable. It compares `(line, word index, label)` sequences via
+`align.py`'s own placement logic, so it works in **word indices, never seconds**: immune to
+offset and tempo, and testable with invented placeholder words, which is how copyrighted
+lyrics stay out of the repo. `compare_labels=False` asks the weaker question (right syllable
+at all), separating a mistimed chord from a misnamed one. Both sides are placed against the
+*reference's* word timeline, so it measures the chord branch without ASR error leaking in.
+
+It is **not** wired into `songscribe-eval`: no corpus here has lyrics. It needs time-aligned
+words *and* chords for one recording — a self-recorded track, or CC audio such as MTG
+Jamendo Lyrics with chords annotated by hand.
+
+**Known `align.py` bug it surfaced:** a chord spilling past a line break is placed at the new
+line's start, and `place_in_line`'s "keep the first change on a syllable" rule then discards
+the chord that belongs there. 0.2s of drift triggers it. Pinned by a test in
+`tests/test_eval_placement.py`; the fix is an `align-render` call, not an evaluation one.
 
 ## Sub-agents
 

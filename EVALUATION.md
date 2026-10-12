@@ -338,19 +338,57 @@ length and does no search at all. Supplying real downbeats — the beat-tracking
 in `README.md` — is what turns `grid` from a heuristic into a measurement, and it is the
 strongest argument for doing that work next.
 
-### What is not measured yet: lyric-chord synchronisation
+### `placement`: lyric-chord synchronisation, for songs
 
 For a song rather than an instrumental, the thing that matters is whether each chord sits
-over the right *syllable* — `align.py` already produces exactly that, as `Placement`
-offsets into a `LyricLine`. The natural metric is the fraction of chord changes assigned to
-the correct word, which is timing-free in the same way `chart` is: it does not care about
-seconds, only about which word a change lands on.
+over the right *syllable*. `metrics.placement_score` measures it, reusing `align.py`'s own
+`group_words` and `place_in_line` so it scores the chart that gets printed.
 
-It is not implemented because **no reference data here supports it**. Isophonics is chords
-only; scoring lyric-chord sync needs a reference with time-aligned lyrics *and* chords for
-the same recording. A self-recorded track is the cleanest source, since the chords played
-and the words sung are both known — and no transcribed lyrics of real songs may enter this
-repo in any case (see `CLAUDE.md`).
+It compares sequences of `(line index, word index, label)` — so it works in **word indices,
+never seconds**, and needs no lyric text at all. That has two happy consequences: it is
+immune to offset and tempo exactly as `chart` is, and it can be developed and tested with
+invented placeholder words, keeping copyrighted lyrics out of the repo entirely.
+
+```python
+placement_score(reference_chords, estimate_chords, words)  # right chord, right syllable
+placement_score(
+    reference_chords, estimate_chords, words, compare_labels=False
+)  # right syllable at all
+```
+
+The pair separates a *mistimed* chord from a *misnamed* one, which are different bugs in
+different branches.
+
+**Both sides are placed against one word timeline — the reference's.** Scoring each against
+its own ASR output would confound two independent failures; the branches are kept
+independent everywhere else for that reason, and `placement_score` takes a single `words`
+argument so the confusion is not expressible.
+
+It is **not wired into `songscribe-eval`**, because no corpus here carries lyrics: Isophonics
+is chords only. It needs a reference with time-aligned words *and* chords for the same
+recording. Options, best first:
+
+- **A self-recorded track.** The chords played and the words sung are both known, so the
+  reference is exact and free of licensing questions entirely.
+- **MTG Jamendo Lyrics.** CC-licensed audio with word-level aligned lyrics — small, but
+  genuinely redistributable. It has no chord annotations, so you would annotate those
+  yourself; on CC audio that is legitimate and the result is even committable.
+- Commercial tab and sheet-music sites are **not** an option, for the reasons in
+  [What you may and may not use](#what-you-may-and-may-not-use) plus the lyrics themselves
+  being copyrighted — see hard constraint 5 in `CLAUDE.md`.
+
+### A placement bug this metric found
+
+Writing the metric surfaced a real `align.py` behaviour. When a chord's span spills past a
+line break, `place_in_line` places it at the *new* line's start; its "two changes on one
+syllable, keep the first" rule then discards the chord that genuinely belongs there. The
+line is printed with the previous chord and no sign of the right one.
+
+A 0.2 s shift is enough to trigger it, and `placement` reports it rather than smoothing it
+over — see `tests/test_eval_placement.py::...::test_a_chord_spilling_over_a_line_break_displaces_the_next_one`.
+Whether the fix is to clip chords at line boundaries or to prefer the chord that *starts*
+within the line is an `align-render` decision, not an evaluation one, so the behaviour is
+pinned by a test rather than changed here.
 
 ### What gets excluded
 
