@@ -421,16 +421,15 @@ def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[C
     Collapsing is ``align.dedupe``'s -- merge repeats, drop flicker shorter
     than ``align.MIN_CHORD_DURATION`` -- so everything built on this describes
     the chart ``render.py`` prints rather than the raw frame timeline.
-
-    A label the vocabulary cannot express keeps its original spelling rather
-    than being dropped: dropping it would quietly shorten the sequence and let
-    a wrong chord disappear.
     """
     from ..align import dedupe
 
     projected: list[ChordEvent] = []
     for event in events:
         chord = parse(event.label)
+        # A label the vocabulary cannot express keeps its original spelling
+        # rather than being dropped: dropping it would quietly shorten the
+        # sequence and let a wrong chord disappear.
         label = None if chord is None else project(chord, vocabulary)
         projected.append(ChordEvent(event.start, event.end, label or event.label))
 
@@ -551,11 +550,10 @@ class HarmonicRhythm:
 def harmonic_rhythm(events: list[ChordEvent]) -> HarmonicRhythm:
     """Estimate the harmonic unit -- a bar, typically -- and its fit.
 
-    Works off the chord timeline alone, with no beat tracking: anchored on the
-    median chord duration, since harmonic rhythm means most chords last one
-    unit, then refined to whichever nearby value the durations are closest to
-    whole multiples of. The unit scales with tempo, which is what makes a grid
-    comparable across performances.
+    No beat tracking: anchored on the median chord duration, since harmonic
+    rhythm means most chords last one unit, then refined to whichever nearby
+    value the durations are closest to whole multiples of. The unit scales
+    with tempo, which is what makes a grid comparable across performances.
     """
     durations = [e.duration for e in events if e.duration > MIN_SEGMENT]
     if not durations:
@@ -599,13 +597,12 @@ def grid_sequence(
     """The chord grid as ``(label, units held)`` pairs, free of tempo.
 
     ``("C:maj", 1), ("A:min", 1), ("F:maj", 2)`` reads as one bar of C, one of
-    A minor, two of F -- the same grid whether the band plays it at 90 or 180
-    bpm, because the unit is measured from the music rather than assumed.
-
-    Built on :func:`dedupe_chart`, so it describes the printed chart; ``unit``
-    overrides the estimate when the true one is known, or when a comparison
-    needs both sides on one grid.
+    A minor, two of F -- the same grid at 90 or 180 bpm, because the unit is
+    measured from the music rather than assumed.
     """
+    # Built on dedupe_chart, so it describes the printed chart. `unit`
+    # overrides the estimate when the true one is known, or when a comparison
+    # needs both sides on one grid.
     collapsed = dedupe_chart(events, vocabulary)
     if not collapsed:
         return ()
@@ -686,14 +683,13 @@ def best_offset(
 
     A large gain means the recording does not share the reference's timeline --
     an encoder lead-in, a kept pre-gap, a differently trimmed master -- and the
-    reported score is measuring that mismatch rather than the model.
-
-    Pure timeline arithmetic, so it costs no model time. **Diagnostic only:**
-    the offset is a number to go and fix the audio with, never a correction to
-    fold into a score. Shifting an estimate until it fits the reference best is
-    fitting to the test set, and would turn a broken corpus into a flattering
-    one.
+    reported score is measuring that mismatch rather than the model. Pure
+    timeline arithmetic, so it costs no model time.
     """
+    # Diagnostic only: the offset is a number to go and fix the audio with,
+    # never a correction to fold into a score. Shifting an estimate until it
+    # fits the reference best is fitting to the test set, and would turn a
+    # broken corpus into a flattering one.
     measured = score(reference, estimate, vocabulary).wcsr
     best = Alignment(offset=0.0, shifted=measured, measured=measured)
     if not reference or not estimate or step <= 0:
