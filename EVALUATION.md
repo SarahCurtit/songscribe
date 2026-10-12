@@ -47,10 +47,29 @@ Point `--annotations` at the directory *containing* `chordlab/` and the builder 
 `keylab/` and `seglab/` are `.lab` files too, but they annotate a different thing, so
 they're skipped by name rather than by glob.
 
-**2. Supply the audio.** Your own copies of the recordings, in a directory of their own.
-See [What you may and may not use](#what-you-may-and-may-not-use) below before you source
-these. Everything up to and including `survey` works without this; only `score -c <backend>`
-needs it.
+**2. Supply the audio.** Isophonics distributes **no audio, from any page** — the download
+is annotations only, by design, and that is what makes it usable here. The recordings are
+your own copies. See [What you may and may not use](#what-you-may-and-may-not-use) below
+before you source them. Everything up to and including `survey` works without audio; only
+`score -c <backend>` needs it.
+
+**Match the pressing.** The annotations are timed against specific CD issues, which
+`reference-annotations.html` lists by catalogue number — for the Beatles, the original
+1987 CD issues (`CDP 7 46435 2` *Please Please Me* through `CDP 7 46447 2` *Let It Be*),
+not the 2009 remasters and not the mono editions. A different master can run at a different
+length or start at a different offset, which shifts every boundary in the file.
+
+That failure is easy to misread as a bad model, so here is its signature: **one album
+scoring far worse than the rest, with `segmentation` down as much as `majmin`.** A genuine
+model weakness shows up as wrong *labels* on correct boundaries, so `segmentation` stays
+high. If a whole album drops together, suspect the pressing before the backend.
+
+**Confidence varies by annotation and artist**, and Isophonics says so. The Beatles *chord*
+annotations are the top tier — "checked several times by Christopher Harte and the MIR
+community, use with confidence" — which is exactly the branch this harness measures. Queen
+and Zweieck chords are "moderate confidence"; Carole King chords are "not carefully
+checked"; keys generally are "use with care". So quote Beatles chord numbers plainly, and
+hedge anything derived from the other three.
 
 **3. Point the harness at both.** Once, in your shell:
 
@@ -229,7 +248,7 @@ practical risk, they don't make the access lawful.
 | Source | Position |
 |---|---|
 | Recordings you own | A rip of your own CD or a DRM-free purchased download, analysed locally. The lawful-access case, and what Isophonics assumes. |
-| Isophonics annotations | Free download for research. Check the current terms before redistributing them; this repo never commits them. |
+| Isophonics annotations | Free download for research, audio never included. Their pages state **no explicit licence**, so treat redistribution as not granted: use them locally, cite Harte's work, and keep them out of the repo. `data/` is gitignored for this reason. |
 | McGill Billboard annotations | Published for research, audio not included. Also distributes precomputed chroma features. |
 | RWC Popular Music | Licensed to researchers for a modest fee **with** the audio. The cleanest end-to-end option. |
 | CC0 / CC-BY audio (FMA, MTG-Jamendo) | Redistributable, but no chord ground truth — sanity checks, not accuracy numbers. |
