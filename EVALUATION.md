@@ -288,11 +288,69 @@ Note what that does to the comparison. On WCSR, madmom beats the baseline by 21.
 On the metric that matches the product goal, it beats it by **38.9**. Measuring the wrong
 thing was understating the model.
 
-**The honest limit:** a musician's grid is *bars*, and nothing here tracks beats yet, so
-sequence similarity is a proxy — it knows the order of the chords but not how many bars each
-occupies. Scoring a grid properly needs the downbeat tracking already on the roadmap in
-`README.md`; until that exists, `chart` is the closest available measure and `segmentation`
-is what catches durations being wrong.
+### `grid`: order *and* harmonic rhythm, in bars
+
+`chart` ignores duration entirely, so it cannot tell one chord per bar from two. That
+distinction *is* the harmonic rhythm, and it is most of what makes an instrumental chart
+readable — so `grid` reports it: chord durations quantised to a harmonic unit and compared
+as `(label, bars)` pairs.
+
+The unit is estimated from the chord timeline alone, no beat tracking required: anchored on
+the median chord duration — harmonic rhythm means most chords last one unit — then refined
+to whichever nearby value the durations are closest to whole multiples of. Because the unit
+is measured rather than assumed, it **scales with the tempo**, which is what makes the grid
+tempo-free:
+
+| Tempo | `majmin` | `chart` | `grid` units |
+|---|---|---|---|
+| 0.5× – 2.0× | 46.89% – 79.51% | 67.44% throughout | identical throughout |
+
+Two design choices worth knowing:
+
+**Both sides are measured against the *reference's* unit**, as WCSR takes its time base from
+the reference. Letting each side estimate its own would normalise away the error the metric
+exists to catch: a model that systematically merges chords has a longer typical chord, so a
+per-side unit would rescale it back to "one chord per bar" and call it correct.
+
+**Ties resolve to the coarser grid.** When every chord lasts 2 s, a 2 s unit (one per bar)
+and a 1 s unit (two per bar) both fit perfectly; the musician's reading is the former.
+
+### Where the grid stops working, and what would fix it
+
+On regular material the unit estimate is exact — residual ~0% — and the grid catches what
+`chart` cannot: a transcription with the right chord order but a two-bar chord written as
+one scores 100% on `chart` and under 50% on `grid`.
+
+On **irregular real material it does not work**, and `grid` reports `nan` rather than a
+number. The Isophonics Eleanor Rigby reference fits its best unit at a 10.2% residual — its
+chords simply do not fall on a grid recoverable from durations alone — so no score is
+emitted for it. `score` prints how many tracks were gradeable.
+
+Be sceptical of that gate. The unit is a free continuous parameter over a ±50% window, so on
+a short timeline almost any durations fit *something* to within a few percent; the residual
+only separates regular from irregular once there are enough chords for a wrong unit to
+accumulate error. `GRID_MAX_RESIDUAL` is calibrated on one real track, and
+`tests/test_eval_grid.py::TestTheReliabilityGateIsWeak` pins three plainly irregular
+fixtures that pass it anyway. **Treat `grid` as indicative, not decisive.**
+
+The exact path is to stop estimating: `grid_sequence(..., unit=...)` takes a known bar
+length and does no search at all. Supplying real downbeats — the beat-tracking roadmap item
+in `README.md` — is what turns `grid` from a heuristic into a measurement, and it is the
+strongest argument for doing that work next.
+
+### What is not measured yet: lyric-chord synchronisation
+
+For a song rather than an instrumental, the thing that matters is whether each chord sits
+over the right *syllable* — `align.py` already produces exactly that, as `Placement`
+offsets into a `LyricLine`. The natural metric is the fraction of chord changes assigned to
+the correct word, which is timing-free in the same way `chart` is: it does not care about
+seconds, only about which word a change lands on.
+
+It is not implemented because **no reference data here supports it**. Isophonics is chords
+only; scoring lyric-chord sync needs a reference with time-aligned lyrics *and* chords for
+the same recording. A self-recorded track is the cleanest source, since the chords played
+and the words sung are both known — and no transcribed lyrics of real songs may enter this
+repo in any case (see `CLAUDE.md`).
 
 ### What gets excluded
 

@@ -31,9 +31,11 @@ extra dependencies. Where the projection rules differ from ``mir_eval``'s,
 
 from __future__ import annotations
 
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from math import isnan, nan
+from statistics import median
 
 from ..types import ChordEvent
 from .harte import NO_CHORD_LABEL, Chord, parse
@@ -413,20 +415,16 @@ def segmentation(
 # --------------------------------------------------------------------------- #
 
 
-def chart_sequence(
-    events: list[ChordEvent],
-    vocabulary: str = "majmin",
-) -> tuple[str, ...]:
-    """The chord sequence a chart would actually print.
+def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[ChordEvent]:
+    """The chart's chord spans: projected into ``vocabulary``, collapsed, ``N`` gone.
 
-    Projects each label into ``vocabulary``, then collapses it the way
-    ``align.dedupe`` does -- merging repeats and dropping flicker shorter than
-    ``align.MIN_CHORD_DURATION`` -- so this is the printed chart, not the raw
-    frame-level timeline. ``N`` spans drop out: a chart has no symbol for them.
+    Collapsing is ``align.dedupe``'s -- merge repeats, drop flicker shorter
+    than ``align.MIN_CHORD_DURATION`` -- so everything built on this describes
+    the chart ``render.py`` prints rather than the raw frame timeline.
 
     A label the vocabulary cannot express keeps its original spelling rather
-    than being dropped, so it still counts as a substitution. Dropping it
-    would quietly shorten the sequence and let a wrong chord disappear.
+    than being dropped: dropping it would quietly shorten the sequence and let
+    a wrong chord disappear.
     """
     from ..align import dedupe
 
@@ -436,10 +434,21 @@ def chart_sequence(
         label = None if chord is None else project(chord, vocabulary)
         projected.append(ChordEvent(event.start, event.end, label or event.label))
 
-    return tuple(e.label for e in dedupe(projected) if e.label != NO_CHORD_LABEL)
+    return [e for e in dedupe(projected) if e.label != NO_CHORD_LABEL]
 
 
-def sequence_similarity(reference: tuple[str, ...], estimate: tuple[str, ...]) -> float:
+def chart_sequence(
+    events: list[ChordEvent],
+    vocabulary: str = "majmin",
+) -> tuple[str, ...]:
+    """The chord sequence a chart would print, with no durations.
+
+    ``N`` spans drop out: a chart has no symbol for them.
+    """
+    return tuple(e.label for e in dedupe_chart(events, vocabulary))
+
+
+def sequence_similarity(reference: Sequence[Hashable], estimate: Sequence[Hashable]) -> float:
     """How close two chord sequences are, as 1 - normalised edit distance.
 
     Timing is absent by construction: only order and identity matter. A
@@ -455,7 +464,7 @@ def sequence_similarity(reference: tuple[str, ...], estimate: tuple[str, ...]) -
     return 1.0 - _edit_distance(reference, estimate) / longest
 
 
-def _edit_distance(a: tuple[str, ...], b: tuple[str, ...]) -> int:
+def _edit_distance(a: Sequence[Hashable], b: Sequence[Hashable]) -> int:
     """Levenshtein distance between two label sequences.
 
     Rolling two rows rather than a full matrix: a chart is a few hundred
@@ -486,6 +495,152 @@ def chart_score(
     """Sequence similarity of the charts two timelines would print."""
     return sequence_similarity(
         chart_sequence(reference, vocabulary), chart_sequence(estimate, vocabulary)
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Harmonic rhythm and the tempo-independent grid
+# --------------------------------------------------------------------------- #
+
+#: The unit is searched in this window around the median chord duration. The
+#: anchor matters more than the search: "harmonic rhythm" means most chords
+#: last one unit, so the typical chord length *is* the unit. Searching freely
+#: instead degenerates -- an ever-finer grid explains any set of durations
+#: ever better, and on real music it picks a unit near the beat rather than
+#: the bar.
+GRID_WINDOW = (0.5, 1.5)
+
+#: Resolution of that search, as a fraction of the window.
+GRID_STEPS = 60
+
+#: Most units one chord may be held for; beyond this the grid has stopped
+#: describing harmonic rhythm and is counting bars of a drone.
+GRID_MAX_UNITS = 32
+
+#: Largest fit residual at which a grid is still worth reporting. Measured:
+#: material with a regular harmonic rhythm fits at ~0%, while real irregular
+#: pop sits above 10% -- the Isophonics Eleanor Rigby reference is 10.2%. Past
+#: this the chord durations are not near-multiples of any unit and a grid score
+#: would be a confident number about nothing.
+GRID_MAX_RESIDUAL = 0.08
+
+
+@dataclass(frozen=True, slots=True)
+class HarmonicRhythm:
+    """An estimated harmonic grid, and how well it actually fits.
+
+    ``residual`` is the mean rounding error as a fraction of total duration.
+    Near zero means the chords really do fall on a grid; large means they do
+    not, and :attr:`is_reliable` is how callers avoid pretending otherwise.
+    """
+
+    unit: float
+    residual: float
+    chords: int
+
+    @property
+    def is_reliable(self) -> bool:
+        return (
+            self.chords > 0
+            and not isnan(self.unit)
+            and not isnan(self.residual)
+            and self.residual <= GRID_MAX_RESIDUAL
+        )
+
+
+def harmonic_rhythm(events: list[ChordEvent]) -> HarmonicRhythm:
+    """Estimate the harmonic unit -- a bar, typically -- and its fit.
+
+    Works off the chord timeline alone, with no beat tracking: anchored on the
+    median chord duration, since harmonic rhythm means most chords last one
+    unit, then refined to whichever nearby value the durations are closest to
+    whole multiples of. The unit scales with tempo, which is what makes a grid
+    comparable across performances.
+    """
+    durations = [e.duration for e in events if e.duration > MIN_SEGMENT]
+    if not durations:
+        return HarmonicRhythm(unit=nan, residual=nan, chords=0)
+
+    total = sum(durations)
+    anchor = median(durations)
+    low, high = anchor * GRID_WINDOW[0], anchor * GRID_WINDOW[1]
+
+    best_unit, best_error = anchor, None
+    # Walked coarsest-first with a strict improvement test, so an exact tie
+    # keeps the coarser grid. That matters: when every chord lasts 2s, both a
+    # 2s unit (one chord per bar) and a 1s unit (two per bar) fit perfectly,
+    # and the musician's reading is the former.
+    for step in range(GRID_STEPS, -1, -1):
+        unit = low + (high - low) * step / GRID_STEPS
+        if unit <= MIN_SEGMENT:
+            continue
+        counts = [min(GRID_MAX_UNITS, max(1, round(d / unit))) for d in durations]
+        error = sum(abs(d - n * unit) for d, n in zip(durations, counts, strict=True)) / total
+        if best_error is None or error < best_error:
+            best_unit, best_error = unit, error
+
+    return HarmonicRhythm(
+        unit=best_unit,
+        residual=nan if best_error is None else best_error,
+        chords=len(durations),
+    )
+
+
+def harmonic_unit(events: list[ChordEvent]) -> float:
+    """The estimated harmonic unit in seconds, discarding its fit."""
+    return harmonic_rhythm(events).unit
+
+
+def grid_sequence(
+    events: list[ChordEvent],
+    vocabulary: str = "majmin",
+    unit: float | None = None,
+) -> tuple[tuple[str, int], ...]:
+    """The chord grid as ``(label, units held)`` pairs, free of tempo.
+
+    ``("C:maj", 1), ("A:min", 1), ("F:maj", 2)`` reads as one bar of C, one of
+    A minor, two of F -- the same grid whether the band plays it at 90 or 180
+    bpm, because the unit is measured from the music rather than assumed.
+
+    Built on :func:`dedupe_chart`, so it describes the printed chart; ``unit``
+    overrides the estimate when the true one is known, or when a comparison
+    needs both sides on one grid.
+    """
+    collapsed = dedupe_chart(events, vocabulary)
+    if not collapsed:
+        return ()
+
+    if unit is None:
+        unit = harmonic_unit(collapsed)
+    if isnan(unit) or unit <= MIN_SEGMENT:
+        return tuple((e.label, 1) for e in collapsed)
+
+    return tuple((e.label, max(1, round(e.duration / unit))) for e in collapsed)
+
+
+def grid_score(
+    reference: list[ChordEvent],
+    estimate: list[ChordEvent],
+    vocabulary: str = "majmin",
+) -> float:
+    """Similarity of two chord grids: order *and* harmonic rhythm.
+
+    Stricter than :func:`chart_score`, which ignores how long each chord is
+    held, so the gap between the two isolates harmonic-rhythm error. ``nan``
+    when the reference's own chords do not fall on a grid: a number there
+    would describe the estimator's guesswork rather than the model.
+    """
+    # Both sides are measured against the *reference's* unit, as WCSR takes
+    # its time base from the reference. Letting each side pick its own would
+    # normalise away the very error this metric exists to catch: a model that
+    # systematically merges chords has a longer typical chord, so a per-side
+    # unit would rescale it back to "one chord per bar" and call it correct.
+    rhythm = harmonic_rhythm(dedupe_chart(reference, vocabulary))
+    if not rhythm.is_reliable:
+        return nan
+    return sequence_similarity(
+        grid_sequence(reference, vocabulary, unit=rhythm.unit),
+        grid_sequence(estimate, vocabulary, unit=rhythm.unit),
     )
 
 

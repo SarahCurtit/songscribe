@@ -456,13 +456,27 @@ def format_report(report) -> str:
         "",
         f"{'chart':<12}{_percent(report.mean_chart()):>10}"
         f"{'':>10}   chord order as printed, timing ignored",
+        f"{'grid':<12}{_percent(report.mean_grid()):>10}"
+        f"{'':>10}   order + harmonic rhythm in bars, tempo-free"
+        + (
+            f" ({report.graded_grids()}/{len(report.results)} tracks)"
+            if report.graded_grids() != len(report.results)
+            else ""
+        ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
-        "chart is per-track and unweighted: a chart is a chart at any length.",
+        "chart and grid are per-track and unweighted: a chart is a chart at any length.",
         "",
     ]
+    if report.graded_grids() < len(report.results):
+        lines += [
+            "grid is skipped where the reference's own chords do not fall on a regular",
+            "harmonic grid, which no estimate of the bar length can fix. Supplying real",
+            "downbeats (roadmap) is what would make it available everywhere.",
+            "",
+        ]
     lines += _alignment_warning(report)
     return "\n".join(lines)
 
@@ -523,6 +537,10 @@ def report_to_dict(report) -> dict:
             for vocabulary in report.vocabularies
         },
         "chart": {"mean": _jsonable(report.mean_chart())},
+        "grid": {
+            "mean": _jsonable(report.mean_grid()),
+            "graded_tracks": report.graded_grids(),
+        },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
         "tracks": [
             {
@@ -534,6 +552,14 @@ def report_to_dict(report) -> dict:
                     "similarity": _jsonable(result.chart),
                     "reference_chords": result.reference_chart_chords,
                     "estimate_chords": result.estimate_chart_chords,
+                },
+                "grid": {
+                    "similarity": _jsonable(result.grid),
+                    "unit": None if result.harmonic is None else _jsonable(result.harmonic.unit),
+                    "residual": None
+                    if result.harmonic is None
+                    else _jsonable(result.harmonic.residual),
+                    "reliable": result.harmonic is not None and result.harmonic.is_reliable,
                 },
                 "segmentation": {
                     "over": _jsonable(result.segmentation.over),

@@ -166,11 +166,26 @@ Useful priors when debugging bad output, roughly in order of impact:
    scoring 58% WCSR but 29% on `songscribe-eval`'s `chart` metric. **WCSR flatters this
    failure; `chart` and `segmentation` are what expose it.**
 
-Which metric to believe depends on the question. WCSR asks "is each second labelled right",
-which is what published numbers compare; `chart` asks "is the printed progression right",
-which is what a musician experiences, and is timing-invariant by construction. They can
-disagree sharply — see `EVALUATION.md`. Scoring a *grid* properly (chords per bar) needs the
-roadmap's downbeat tracking; `chart` is the proxy until then.
+Which metric to believe depends on the question, and `songscribe-eval` reports four because
+they disagree sharply (see `EVALUATION.md`):
+
+| Metric | Asks | Robust to |
+|---|---|---|
+| WCSR | is each second labelled right | nothing — this is the published-numbers metric |
+| `chart` | is the printed chord order right | offset and tempo |
+| `grid` | …and the harmonic rhythm, in bars | offset and tempo |
+| `segmentation` | are the boundaries in the right places | nothing — labels ignored |
+
+`grid` is the one that distinguishes one chord per bar from two, which is most of what makes
+an instrumental chart readable. Its harmonic unit is **estimated from chord durations**, so
+it returns `nan` on material whose chords don't fall on a recoverable grid, and its
+reliability gate is calibrated on one track — treat it as indicative. `grid_sequence` takes
+a known `unit=`, which is exact; supplying real downbeats (roadmap) is what would make it a
+measurement rather than a heuristic.
+
+Lyric-chord synchronisation — whether each chord sits over the right syllable, which
+`align.py` already produces as `Placement` offsets — is **not** measured, for want of a
+reference with time-aligned lyrics and chords. Isophonics is chords only.
 
 ## Sub-agents
 

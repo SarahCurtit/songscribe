@@ -128,11 +128,49 @@ class TestTimingInvariance:
         assert metrics.score(turnaround, shifted, "majmin").wcsr < 0.6
         assert metrics.chart_score(turnaround, shifted) == 1.0
 
-    def test_a_stretch_is_still_tolerated_while_order_survives(self, turnaround):
-        # A speed difference moves every boundary by a different amount, but
-        # the printed order is unchanged, so the chart is unaffected.
-        stretched = [ChordEvent(e.start * 1.02, e.end * 1.02, e.label) for e in turnaround]
+    @pytest.mark.parametrize("factor", [0.5, 0.9, 0.95, 0.98, 1.02, 1.05, 1.1, 1.5, 2.0])
+    def test_a_tempo_difference_does_not_change_the_chart_score(self, turnaround, factor):
+        # A speed difference moves every boundary by a different amount, which
+        # is why it wrecks WCSR, but the printed order is unchanged -- so the
+        # chart is unaffected, at any factor. Measured on the real corpus: 0.90x
+        # to 1.50x all score 67.44% where WCSR spans 46.89%-79.51%.
+        stretched = [ChordEvent(e.start * factor, e.end * factor, e.label) for e in turnaround]
         assert metrics.chart_score(turnaround, stretched) == 1.0
+
+    @pytest.mark.parametrize("factor", [0.9, 1.1])
+    def test_offset_and_tempo_together_are_both_absorbed(self, turnaround, factor):
+        both = [
+            ChordEvent(e.start * factor + 1.7, e.end * factor + 1.7, e.label) for e in turnaround
+        ]
+        assert metrics.chart_score(turnaround, both) == 1.0
+
+    def test_the_flicker_threshold_is_the_one_tempo_dependent_edge(self):
+        # The single residual: dedupe's threshold is absolute seconds, so a
+        # chord within the stretch factor of MIN_CHORD_DURATION can cross it
+        # and appear in one chart but not the other. The window is tiny -- here
+        # 0.245s-0.25s for a 2% stretch -- and the threshold stays absolute on
+        # purpose, because that is what render.py prints and because flicker is
+        # an absolute-time phenomenon, not a proportional one.
+        just_under = MIN_CHORD_DURATION - 0.004
+        events = [
+            ChordEvent(0.0, 2.0, "C:maj"),
+            ChordEvent(2.0, 2.0 + just_under, "F:maj"),
+            ChordEvent(2.0 + just_under, 4.0, "G:maj"),
+        ]
+        stretched = [ChordEvent(e.start * 1.02, e.end * 1.02, e.label) for e in events]
+        assert metrics.chart_sequence(events) == ("C:maj", "G:maj")
+        assert metrics.chart_sequence(stretched) == ("C:maj", "F:maj", "G:maj")
+
+    def test_a_chord_clear_of_the_threshold_is_unaffected_by_tempo(self):
+        clear = MIN_CHORD_DURATION * 2
+        events = [
+            ChordEvent(0.0, 2.0, "C:maj"),
+            ChordEvent(2.0, 2.0 + clear, "F:maj"),
+            ChordEvent(2.0 + clear, 6.0, "G:maj"),
+        ]
+        for factor in (0.9, 1.0, 1.1):
+            stretched = [ChordEvent(e.start * factor, e.end * factor, e.label) for e in events]
+            assert metrics.chart_sequence(stretched) == ("C:maj", "F:maj", "G:maj")
 
     def test_but_reordering_is_not_tolerated(self, turnaround):
         # Timing-invariant is not error-blind: getting the progression wrong

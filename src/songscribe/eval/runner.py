@@ -56,6 +56,11 @@ class TrackResult:
     chart: float = nan
     reference_chart_chords: int = 0
     estimate_chart_chords: int = 0
+    #: Chart order *and* harmonic rhythm, in bars rather than seconds, so it
+    #: survives a tempo difference. ``nan`` when the reference's own chords do
+    #: not fall on a grid -- see metrics.HarmonicRhythm.is_reliable.
+    grid: float = nan
+    harmonic: metrics.HarmonicRhythm | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +93,20 @@ class Report:
     def mean_segmentation(self) -> float:
         values = [r.segmentation.score for r in self.results if not isnan(r.segmentation.score)]
         return sum(values) / len(values) if values else nan
+
+    def mean_grid(self) -> float:
+        """Unweighted mean grid similarity over the tracks that have a grid.
+
+        Tracks whose reference has no recoverable harmonic rhythm are absent,
+        not zero -- the same rule skipped tracks follow. :meth:`graded_grids`
+        says how many contributed.
+        """
+        values = [r.grid for r in self.results if not isnan(r.grid)]
+        return sum(values) / len(values) if values else nan
+
+    def graded_grids(self) -> int:
+        """How many tracks the grid score could actually be computed for."""
+        return sum(1 for r in self.results if not isnan(r.grid))
 
     def mean_chart(self) -> float:
         """Unweighted mean chart-sequence similarity.
@@ -233,6 +252,7 @@ def score_track(
     chart_vocabulary = "majmin" if "majmin" in scores else (next(iter(scores), "majmin"))
     reference_chart = metrics.chart_sequence(reference, chart_vocabulary)
     estimate_chart = metrics.chart_sequence(estimated, chart_vocabulary)
+    harmonic = metrics.harmonic_rhythm(metrics.dedupe_chart(reference, chart_vocabulary))
 
     return TrackResult(
         track_id=track.id,
@@ -245,6 +265,8 @@ def score_track(
         chart=metrics.sequence_similarity(reference_chart, estimate_chart),
         reference_chart_chords=len(reference_chart),
         estimate_chart_chords=len(estimate_chart),
+        grid=metrics.grid_score(reference, estimated, chart_vocabulary),
+        harmonic=harmonic,
     )
 
 
