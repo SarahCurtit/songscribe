@@ -59,10 +59,28 @@ before you source them. Everything up to and including `survey` works without au
 not the 2009 remasters and not the mono editions. A different master can run at a different
 length or start at a different offset, which shifts every boundary in the file.
 
-That failure is easy to misread as a bad model, so here is its signature: **one album
-scoring far worse than the rest, with `segmentation` down as much as `majmin`.** A genuine
-model weakness shows up as wrong *labels* on correct boundaries, so `segmentation` stays
-high. If a whole album drops together, suspect the pressing before the backend.
+How much does that cost? Measured by scoring one Beatles reference against a shifted copy
+of itself — a pure timing error, no model involved:
+
+| Offset | `majmin` | `segmentation` |
+|---|---|---|
+| 0.05 s | 98.4% | 98.2% |
+| 0.10 s | 96.8% | 96.5% |
+| 0.25 s | 91.9% | 91.2% |
+| 0.50 s | 83.8% | 82.4% |
+| 1.00 s | 67.6% | 74.2% |
+
+So the budget is tight: **a tenth of a second costs ~3 points, half a second costs ~16.**
+A constant speed difference is worse than an offset, because it accumulates — a master
+running 1% fast drifts 1.8 s over a three-minute track and scores 71%. CD-to-CD remaster
+differences are usually well inside the top row; a vinyl or tape transfer is not, and
+should be assumed unusable.
+
+The diagnostic is the *relationship* between the two columns, not either alone. A timing
+error moves `segmentation` **in step with** `majmin`, because the boundaries themselves are
+wrong. A genuine model weakness puts wrong labels on correct boundaries, so `segmentation`
+stays high while `majmin` falls. If a whole album drops with both columns together, suspect
+the rip before the backend.
 
 **Confidence varies by annotation and artist**, and Isophonics says so. The Beatles *chord*
 annotations are the top tier — "checked several times by Christopher Harte and the MIR
