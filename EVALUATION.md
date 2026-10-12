@@ -105,7 +105,10 @@ that scores best is fitting to the reference: do that and a misaligned corpus qu
 becomes a flattering one. Treat the number as an instruction to fix the audio — trim the
 lead-in with `ffmpeg -ss <offset> -i in.m4a -ac 1 -ar 44100 out.wav` — then re-run with a
 fresh `--cache`, since cached estimates are keyed by backend and track, not by the audio
-they came from. `--no-alignment-check` skips the sweep.
+they came from.
+
+The sweep costs about 10 s across 180 tracks, nothing against 4 hours of inference but
+noticeable on a cached re-score; `--no-alignment-check` skips it.
 
 The thresholds (a 5-point gain at ≥0.15 s) are set so a model's ordinary boundary slack
 doesn't trip it: on the trimmed file above, the same check stays silent.
