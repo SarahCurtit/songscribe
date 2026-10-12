@@ -292,14 +292,15 @@ def format_survey(result, label_limit: int = TOP_LABELS) -> str:
     lines.append("a backend could possibly score there. Excluded time is not a penalty.")
     lines.append("")
 
-    if label_limit > 0:
+    if label_limit > 0 and result.labels:
         lines.append(f"most common labels by time (top {label_limit}):")
         for stats in result.labels[:label_limit]:
             flag = "" if stats.parses else "  <-- UNPARSEABLE"
-            lines.append(
-                f"  {stats.label!r:20} {stats.duration / 60:7.1f} min  "
-                f"{stats.duration / result.duration:5.1%}{flag}"
-            )
+            # A corpus can total zero duration -- an annotation of nothing but
+            # zero-length segments is accepted by the parser, since published
+            # sets contain them -- so the share is guarded rather than assumed.
+            share = f"{stats.duration / result.duration:5.1%}" if result.duration else "    --"
+            lines.append(f"  {stats.label!r:20} {stats.duration / 60:7.1f} min  {share}{flag}")
         lines.append("")
 
     return "\n".join(lines)

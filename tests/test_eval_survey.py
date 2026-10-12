@@ -136,6 +136,16 @@ class TestSurveyFormatting:
         data = corpus({"a": "0.0 10.0 C:maj\n"})
         assert "most common labels" not in format_survey(survey(data), label_limit=0)
 
+    def test_a_corpus_of_zero_total_duration_still_renders(self, corpus):
+        # The parser accepts zero-length segments because published annotation
+        # sets contain them; a file of nothing but those gives a zero
+        # denominator, which must not take the report down with it.
+        data = corpus({"a": "1.0 1.0 C:maj\n"})
+        result = survey(data)
+        assert result.duration == 0.0
+        text = format_survey(result)
+        assert "C:maj" in text
+
     def test_json_output_lists_every_label(self, corpus):
         import json
 
