@@ -49,6 +49,13 @@ class TrackResult:
     reference_chords: int
     estimate_chords: int
     alignment: metrics.Alignment | None = None
+    #: Sequence similarity of the chart each side would print: no timing in it
+    #: at all, so a uniformly late transcription still scores well. This is the
+    #: number that tracks "is the chart playable", where WCSR tracks "is each
+    #: second labelled right".
+    chart: float = nan
+    reference_chart_chords: int = 0
+    estimate_chart_chords: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +87,16 @@ class Report:
 
     def mean_segmentation(self) -> float:
         values = [r.segmentation.score for r in self.results if not isnan(r.segmentation.score)]
+        return sum(values) / len(values) if values else nan
+
+    def mean_chart(self) -> float:
+        """Unweighted mean chart-sequence similarity.
+
+        Unweighted on purpose, and not duration-weighted like WCSR: a chart is
+        a chart whether the song is two minutes or seven, so every song counts
+        once here regardless of length.
+        """
+        values = [r.chart for r in self.results if not isnan(r.chart)]
         return sum(values) / len(values) if values else nan
 
     @property
@@ -213,6 +230,10 @@ def score_track(
         vocabulary = "majmin" if "majmin" in scores else next(iter(scores))
         alignment = metrics.best_offset(reference, estimated, vocabulary)
 
+    chart_vocabulary = "majmin" if "majmin" in scores else (next(iter(scores), "majmin"))
+    reference_chart = metrics.chart_sequence(reference, chart_vocabulary)
+    estimate_chart = metrics.chart_sequence(estimated, chart_vocabulary)
+
     return TrackResult(
         track_id=track.id,
         duration=end - start,
@@ -221,6 +242,9 @@ def score_track(
         reference_chords=len(reference),
         estimate_chords=len(estimated),
         alignment=alignment,
+        chart=metrics.sequence_similarity(reference_chart, estimate_chart),
+        reference_chart_chords=len(reference_chart),
+        estimate_chart_chords=len(estimate_chart),
     )
 
 

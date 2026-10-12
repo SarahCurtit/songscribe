@@ -247,6 +247,53 @@ boundary placement only. It catches a model that is harmonically right but smear
 change across a bar — a different failure from naming the wrong chord, and one WCSR alone
 hides.
 
+### WCSR is not the same question as "is the chart playable"
+
+WCSR is onset-sensitive by construction: it asks whether *each second* carries the right
+label. That is the right question for comparing against published numbers, and the wrong
+question for a chart. A transcription that is uniformly 1.7 s late annoys nobody — the
+musician reads the same progression — yet WCSR drops ~32 points for it.
+
+So a **chart** score is reported too: project both sides into the vocabulary, collapse them
+exactly as `align.dedupe` does (merge repeats, drop flicker below
+`align.MIN_CHORD_DURATION`), drop `N`, and compare the resulting chord *sequences* by
+normalised edit distance. Timing is absent by construction, so a substitution is a wrong
+chord, an insertion one the model invented, a deletion one it missed — the three things a
+musician notices. Because it is built from `align.dedupe`, it scores the chart `render.py`
+would actually print, not the raw frame timeline.
+
+Measured on Eleanor Rigby, before and after trimming a 1.7 s lead-in:
+
+| | misaligned | trimmed |
+|---|---|---|
+| `majmin` | 50.09% | 79.51% |
+| `chart` | **67.44%** | **67.44%** |
+
+Identical to the decimal. That is the invariance working: the lead-in is invisible to the
+chart score, exactly as it is invisible to a musician.
+
+**But the chart score is not WCSR with the timing taken out — it is often harsher**, and
+that is its real value. On the same track:
+
+| Backend | `majmin` | `chart` | chart chords (ref: 34) |
+|---|---|---|---|
+| madmom | 79.51% | 67.44% | 43 |
+| template | 58.02% | **28.57%** | **112** |
+
+The `template` baseline prints 112 chord changes where there are 34. Every second carries a
+defensible label, so WCSR says 58% — but the chart is unplayable, and the chart score says
+28.57%. WCSR flatters over-segmentation; the chart score does not.
+
+Note what that does to the comparison. On WCSR, madmom beats the baseline by 21.5 points.
+On the metric that matches the product goal, it beats it by **38.9**. Measuring the wrong
+thing was understating the model.
+
+**The honest limit:** a musician's grid is *bars*, and nothing here tracks beats yet, so
+sequence similarity is a proxy — it knows the order of the chords but not how many bars each
+occupies. Scoring a grid properly needs the downbeat tracking already on the roadmap in
+`README.md`; until that exists, `chart` is the closest available measure and `segmentation`
+is what catches durations being wrong.
+
 ### What gets excluded
 
 Reference time the comparison vocabulary cannot express leaves the score entirely,

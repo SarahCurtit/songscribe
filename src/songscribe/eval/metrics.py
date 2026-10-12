@@ -409,6 +409,87 @@ def segmentation(
 
 
 # --------------------------------------------------------------------------- #
+# Chart sequence
+# --------------------------------------------------------------------------- #
+
+
+def chart_sequence(
+    events: list[ChordEvent],
+    vocabulary: str = "majmin",
+) -> tuple[str, ...]:
+    """The chord sequence a chart would actually print.
+
+    Projects each label into ``vocabulary``, then collapses it the way
+    ``align.dedupe`` does -- merging repeats and dropping flicker shorter than
+    ``align.MIN_CHORD_DURATION`` -- so this is the printed chart, not the raw
+    frame-level timeline. ``N`` spans drop out: a chart has no symbol for them.
+
+    A label the vocabulary cannot express keeps its original spelling rather
+    than being dropped, so it still counts as a substitution. Dropping it
+    would quietly shorten the sequence and let a wrong chord disappear.
+    """
+    from ..align import dedupe
+
+    projected: list[ChordEvent] = []
+    for event in events:
+        chord = parse(event.label)
+        label = None if chord is None else project(chord, vocabulary)
+        projected.append(ChordEvent(event.start, event.end, label or event.label))
+
+    return tuple(e.label for e in dedupe(projected) if e.label != NO_CHORD_LABEL)
+
+
+def sequence_similarity(reference: tuple[str, ...], estimate: tuple[str, ...]) -> float:
+    """How close two chord sequences are, as 1 - normalised edit distance.
+
+    Timing is absent by construction: only order and identity matter. A
+    substitution is a wrong chord, an insertion a chord the model invented, a
+    deletion one it missed -- the three things a musician would notice reading
+    the chart. ``nan`` when both sequences are empty.
+    """
+    if not reference and not estimate:
+        return nan
+    longest = max(len(reference), len(estimate))
+    if longest == 0:
+        return nan
+    return 1.0 - _edit_distance(reference, estimate) / longest
+
+
+def _edit_distance(a: tuple[str, ...], b: tuple[str, ...]) -> int:
+    """Levenshtein distance between two label sequences.
+
+    Rolling two rows rather than a full matrix: a chart is a few hundred
+    chords at most, but there is no reason to hold n*m cells for it.
+    """
+    if not a:
+        return len(b)
+    previous = list(range(len(b) + 1))
+    for i, item in enumerate(a, start=1):
+        current = [i]
+        for j, other in enumerate(b, start=1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (item != other),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def chart_score(
+    reference: list[ChordEvent],
+    estimate: list[ChordEvent],
+    vocabulary: str = "majmin",
+) -> float:
+    """Sequence similarity of the charts two timelines would print."""
+    return sequence_similarity(
+        chart_sequence(reference, vocabulary), chart_sequence(estimate, vocabulary)
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Alignment check
 # --------------------------------------------------------------------------- #
 

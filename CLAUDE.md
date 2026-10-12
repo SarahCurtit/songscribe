@@ -159,6 +159,18 @@ Useful priors when debugging bad output, roughly in order of impact:
    Forced alignment is the planned fix, not more smoothing in `align.py`.
 4. **Line grouping** — `group_words` splits on pauses, which mis-segments very legato or
    very staccato singing. Tune `max_gap`/`max_words` before suspecting the ASR.
+5. **Over-segmentation** — a model that flickers between plausible chords keeps a
+   respectable WCSR (most seconds carry a defensible label) while printing a chart with
+   several times too many changes, which is what makes a chart unplayable. Measured: on
+   Eleanor Rigby the `template` backend prints 112 chord changes where the reference has 34,
+   scoring 58% WCSR but 29% on `songscribe-eval`'s `chart` metric. **WCSR flatters this
+   failure; `chart` and `segmentation` are what expose it.**
+
+Which metric to believe depends on the question. WCSR asks "is each second labelled right",
+which is what published numbers compare; `chart` asks "is the printed progression right",
+which is what a musician experiences, and is timing-invariant by construction. They can
+disagree sharply — see `EVALUATION.md`. Scoring a *grid* properly (chords per bar) needs the
+roadmap's downbeat tracking; `chart` is the proxy until then.
 
 ## Sub-agents
 

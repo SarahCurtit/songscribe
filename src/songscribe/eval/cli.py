@@ -454,10 +454,13 @@ def format_report(report) -> str:
         )
     lines += [
         "",
+        f"{'chart':<12}{_percent(report.mean_chart()):>10}"
+        f"{'':>10}   chord order as printed, timing ignored",
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
+        "chart is per-track and unweighted: a chart is a chart at any length.",
         "",
     ]
     lines += _alignment_warning(report)
@@ -519,6 +522,7 @@ def report_to_dict(report) -> dict:
             }
             for vocabulary in report.vocabularies
         },
+        "chart": {"mean": _jsonable(report.mean_chart())},
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
         "tracks": [
             {
@@ -526,6 +530,11 @@ def report_to_dict(report) -> dict:
                 "duration": result.duration,
                 "reference_chords": result.reference_chords,
                 "estimate_chords": result.estimate_chords,
+                "chart": {
+                    "similarity": _jsonable(result.chart),
+                    "reference_chords": result.reference_chart_chords,
+                    "estimate_chords": result.estimate_chart_chords,
+                },
                 "segmentation": {
                     "over": _jsonable(result.segmentation.over),
                     "under": _jsonable(result.segmentation.under),
