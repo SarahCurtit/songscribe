@@ -25,6 +25,13 @@ from .survey import TOP_LABELS
 #: album/track path, short enough to leave room for four scores.
 _ID_WIDTH = 52
 
+#: A best-fit time shift is only worth reporting when it beats the measured
+#: score by this much *and* is this far from zero. Below either threshold it is
+#: the ordinary slack of a model that places boundaries approximately, not a
+#: recording on the wrong timeline.
+ALIGNMENT_WARN_GAIN = 0.05
+ALIGNMENT_WARN_OFFSET = 0.15
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -134,6 +141,11 @@ def build_parser() -> argparse.ArgumentParser:
     score.add_argument("--limit", type=int, help="score only the first N tracks")
     score.add_argument("--per-track", action="store_true", help="print a row per track")
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
+    score.add_argument(
+        "--no-alignment-check",
+        action="store_true",
+        help="skip the time-offset sweep that flags recordings off the reference timeline",
+    )
 
     survey = subparsers.add_parser(
         "survey",
@@ -381,6 +393,7 @@ def _score(args: argparse.Namespace) -> int:
             refresh=args.refresh,
             limit=args.limit,
             on_track=printer,
+            check_alignment=not args.no_alignment_check,
         )
     except (OSError, ValueError, ImportError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -447,7 +460,48 @@ def format_report(report) -> str:
         "mean = per-track average; weighted = by duration across the corpus.",
         "",
     ]
+    lines += _alignment_warning(report)
     return "\n".join(lines)
+
+
+def _alignment_warning(report) -> list[str]:
+    """Name any track that scores markedly better at a time shift.
+
+    Printed after the scores rather than mixed into them, because the scores
+    stand as measured: a shift is never folded in. The point is to stop a
+    misaligned recording being read as a model result, which is a mistake the
+    numbers alone look perfectly reasonable for.
+    """
+    suspicious = [
+        result
+        for result in report.results
+        if result.alignment is not None
+        and result.alignment.is_suspicious(ALIGNMENT_WARN_GAIN, ALIGNMENT_WARN_OFFSET)
+    ]
+    if not suspicious:
+        return []
+
+    lines = [
+        f"WARNING: {len(suspicious)} of {len(report.results)} tracks score markedly better",
+        "at a time shift, which means the recording is not on the reference's timeline.",
+        "The scores above are as measured and are too low for these tracks:",
+        "",
+        f"  {'track':<{_ID_WIDTH - 2}}{'shift':>8}{'measured':>10}{'shifted':>9}",
+    ]
+    for result in sorted(suspicious, key=lambda r: -r.alignment.gain):
+        alignment = result.alignment
+        lines.append(
+            f"  {_truncate(result.track_id):<{_ID_WIDTH - 2}}{alignment.offset:+7.2f}s"
+            f"{_percent(alignment.measured):>10}{_percent(alignment.shifted):>9}"
+        )
+    lines += [
+        "",
+        "Fix the audio -- trim the lead-in, or get the pressing the annotation was",
+        "made from. Do not treat the shifted column as the result: choosing the",
+        "offset that scores best is fitting to the reference.",
+        "",
+    ]
+    return lines
 
 
 def report_to_dict(report) -> dict:
@@ -485,6 +539,17 @@ def report_to_dict(report) -> dict:
                         "ignored": score.ignored,
                     }
                     for vocabulary, score in result.scores.items()
+                },
+                "alignment": None
+                if result.alignment is None
+                else {
+                    "best_offset": result.alignment.offset,
+                    "shifted": _jsonable(result.alignment.shifted),
+                    "measured": _jsonable(result.alignment.measured),
+                    "gain": _jsonable(result.alignment.gain),
+                    "suspicious": result.alignment.is_suspicious(
+                        ALIGNMENT_WARN_GAIN, ALIGNMENT_WARN_OFFSET
+                    ),
                 },
             }
             for result in report.results

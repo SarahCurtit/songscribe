@@ -82,6 +82,34 @@ wrong. A genuine model weakness puts wrong labels on correct boundaries, so `seg
 stays high while `majmin` falls. If a whole album drops with both columns together, suspect
 the rip before the backend.
 
+**`score` now checks this for you.** After scoring, it sweeps a time offset over each
+estimate — pure timeline arithmetic, no model time — and warns when a track scores markedly
+better shifted:
+
+```
+WARNING: 1 of 1 tracks score markedly better
+at a time shift, which means the recording is not on the reference's timeline.
+The scores above are as measured and are too low for these tracks:
+
+  track                                                shift  measured  shifted
+  ...lab/The Beatles/07_-_Revolver/02_-_Eleanor_Rigby  -1.70s    50.09%   79.51%
+```
+
+That is a real example: an m4a with ~1.7 s of encoder lead-in scored 50.09%, and 79.51%
+once trimmed — the harness had been measuring the lead-in. Both backends peaked at the same
+offset, which is the tell that it is the recording and not the model, since two unrelated
+backends do not share a bias.
+
+**The shift is never folded into a score, and you shouldn't either.** Choosing the offset
+that scores best is fitting to the reference: do that and a misaligned corpus quietly
+becomes a flattering one. Treat the number as an instruction to fix the audio — trim the
+lead-in with `ffmpeg -ss <offset> -i in.m4a -ac 1 -ar 44100 out.wav` — then re-run with a
+fresh `--cache`, since cached estimates are keyed by backend and track, not by the audio
+they came from. `--no-alignment-check` skips the sweep.
+
+The thresholds (a 5-point gain at ≥0.15 s) are set so a model's ordinary boundary slack
+doesn't trip it: on the trimmed file above, the same check stays silent.
+
 **Confidence varies by annotation and artist**, and Isophonics says so. The Beatles *chord*
 annotations are the top tier — "checked several times by Christopher Harte and the MIR
 community, use with confidence" — which is exactly the branch this harness measures. Queen

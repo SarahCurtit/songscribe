@@ -47,6 +47,14 @@ MIN_SEGMENT = 1e-9
 #: them a match. Three is the MIREX definition -- a triad's worth of agreement.
 MIREX_MIN_SHARED = 3
 
+#: How far either way :func:`best_offset` looks for a better alignment, and at
+#: what resolution. Three seconds covers the realistic causes -- encoder
+#: lead-in, a rip that kept some pre-gap, a differently trimmed master -- while
+#: staying far short of the range where a sweep would start finding spurious
+#: fits in a repetitive progression.
+ALIGNMENT_SEARCH_SECONDS = 3.0
+ALIGNMENT_SEARCH_STEP = 0.05
+
 VOCABULARIES: dict[str, str] = {
     "root": "root only; ignores quality entirely",
     "majmin": "major and minor triads; sevenths reduce to their triad",
@@ -398,3 +406,70 @@ def segmentation(
         over=1.0 - directional_hamming_distance(filled_reference, filled_estimate),
         under=1.0 - directional_hamming_distance(filled_estimate, filled_reference),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Alignment check
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True, slots=True)
+class Alignment:
+    """Whether a recording shares the reference's timeline.
+
+    ``offset`` is the shift that scored best, ``shifted`` the score there and
+    ``measured`` the score as actually reported.
+    """
+
+    offset: float
+    shifted: float
+    measured: float
+
+    @property
+    def gain(self) -> float:
+        """How much the best shift beat the score being reported."""
+        if isnan(self.shifted) or isnan(self.measured):
+            return nan
+        return self.shifted - self.measured
+
+    def is_suspicious(self, min_gain: float, min_offset: float) -> bool:
+        """Whether this looks like a misaligned recording rather than noise."""
+        if isnan(self.gain):
+            return False
+        return self.gain >= min_gain and abs(self.offset) >= min_offset
+
+
+def best_offset(
+    reference: list[ChordEvent],
+    estimate: list[ChordEvent],
+    vocabulary: str = "majmin",
+    search: float = ALIGNMENT_SEARCH_SECONDS,
+    step: float = ALIGNMENT_SEARCH_STEP,
+) -> Alignment:
+    """Find the time shift of ``estimate`` that scores best against ``reference``.
+
+    A large gain means the recording does not share the reference's timeline --
+    an encoder lead-in, a kept pre-gap, a differently trimmed master -- and the
+    reported score is measuring that mismatch rather than the model.
+
+    Pure timeline arithmetic, so it costs no model time. **Diagnostic only:**
+    the offset is a number to go and fix the audio with, never a correction to
+    fold into a score. Shifting an estimate until it fits the reference best is
+    fitting to the test set, and would turn a broken corpus into a flattering
+    one.
+    """
+    measured = score(reference, estimate, vocabulary).wcsr
+    best = Alignment(offset=0.0, shifted=measured, measured=measured)
+    if not reference or not estimate or step <= 0:
+        return best
+
+    steps = int(search / step)
+    for index in range(-steps, steps + 1):
+        offset = index * step
+        if index == 0:
+            continue
+        shifted = [ChordEvent(e.start + offset, e.end + offset, e.label) for e in estimate]
+        candidate = score(reference, shifted, vocabulary).wcsr
+        if not isnan(candidate) and (isnan(best.shifted) or candidate > best.shifted):
+            best = Alignment(offset=offset, shifted=candidate, measured=measured)
+    return best

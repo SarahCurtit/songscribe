@@ -48,6 +48,7 @@ class TrackResult:
     segmentation: metrics.Segmentation
     reference_chords: int
     estimate_chords: int
+    alignment: metrics.Alignment | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,19 +189,36 @@ def score_track(
     track: Track,
     estimated: list[ChordEvent],
     vocabularies: tuple[str, ...] = metrics.DEFAULT_VOCABULARIES,
+    check_alignment: bool = True,
 ) -> TrackResult:
-    """Score one track's estimate against its reference annotation."""
+    """Score one track's estimate against its reference annotation.
+
+    ``check_alignment`` also sweeps a time offset, which costs no model time
+    and catches a recording that does not share the reference's timeline. It
+    only ever reports; the score itself is never shifted.
+    """
     from .. import lab
 
     reference = lab.read(track.reference)
     start, end = metrics.extent(reference)
+    scores = metrics.score_all(reference, estimated, vocabularies)
+
+    alignment = None
+    if check_alignment:
+        # Sweep in whichever vocabulary is being reported: asking for a
+        # vocabulary the caller excluded would report a gain against a number
+        # that appears nowhere in the output.
+        vocabulary = "majmin" if "majmin" in scores else vocabularies[0]
+        alignment = metrics.best_offset(reference, estimated, vocabulary)
+
     return TrackResult(
         track_id=track.id,
         duration=end - start,
-        scores=metrics.score_all(reference, estimated, vocabularies),
+        scores=scores,
         segmentation=metrics.segmentation(reference, estimated),
         reference_chords=len(reference),
         estimate_chords=len(estimated),
+        alignment=alignment,
     )
 
 
@@ -214,6 +232,7 @@ def evaluate(
     refresh: bool = False,
     limit: int | None = None,
     on_track: Callable[[TrackResult], None] | None = None,
+    check_alignment: bool = True,
 ) -> Report:
     """Score every usable track in ``dataset``.
 
@@ -263,7 +282,7 @@ def evaluate(
             skipped.append(track.id)
             continue
 
-        result = score_track(track, estimated, vocabularies)
+        result = score_track(track, estimated, vocabularies, check_alignment=check_alignment)
         results.append(result)
         if on_track is not None:
             on_track(result)
