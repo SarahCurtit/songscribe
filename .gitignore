@@ -47,6 +47,10 @@ out/
 annotations/
 estimates/
 .eval-cache/
+# Corpora land here: downloaded annotation archives and their extracted trees.
+# Ignored wholesale rather than by extension, because Isophonics also ships
+# .ttl, .svl and .txt alongside the .lab files.
+data/
 
 .DS_Store
 .idea/

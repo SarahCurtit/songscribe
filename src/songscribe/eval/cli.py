@@ -19,6 +19,7 @@ from .dataset import (
     write_manifest,
 )
 from .metrics import DEFAULT_VOCABULARIES, VOCABULARIES
+from .survey import TOP_LABELS
 
 #: Width of the leading column in the per-track table. Long enough for an
 #: album/track path, short enough to leave room for four scores.
@@ -133,6 +134,37 @@ def build_parser() -> argparse.ArgumentParser:
     score.add_argument("--limit", type=int, help="score only the first N tracks")
     score.add_argument("--per-track", action="store_true", help="print a row per track")
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
+
+    survey = subparsers.add_parser(
+        "survey",
+        parents=[common],
+        help="summarise a corpus's annotations; needs no audio and no model",
+        description=(
+            "Tally the chord labels in a manifest's reference annotations: how much "
+            "annotated time there is, whether every label parses, and how much of "
+            "that time each comparison vocabulary can actually score. Worth running "
+            "on a new corpus before committing hours of CPU to it."
+        ),
+    )
+    survey.add_argument("manifest", type=Path, help="manifest to survey")
+    survey.add_argument(
+        "--annotations", type=Path, help=f"annotation root (overrides {ANNOTATION_ROOT_ENV})"
+    )
+    survey.add_argument(
+        "-v",
+        "--vocabulary",
+        action="append",
+        choices=sorted(VOCABULARIES),
+        metavar="VOCAB",
+        help="vocabulary to report scoreable time for, repeatable",
+    )
+    survey.add_argument(
+        "--labels",
+        type=int,
+        default=TOP_LABELS,
+        help="how many labels to list by time (default: %(default)s; 0 for none)",
+    )
+    survey.add_argument("--json", type=Path, help="also write the survey as JSON")
     return parser
 
 
@@ -151,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "manifest":
         return _manifest(args)
+    if args.command == "survey":
+        return _survey(args)
     return _score(args)
 
 
@@ -187,6 +221,109 @@ def _manifest(args: argparse.Namespace) -> int:
         if len(tracks) > len(shown):
             print(f"    ... and {len(tracks) - len(shown)} more (--list-unpaired to see all)")
     return 0
+
+
+def _survey(args: argparse.Namespace) -> int:
+    from .survey import survey
+
+    vocabularies = tuple(args.vocabulary) if args.vocabulary else DEFAULT_VOCABULARIES
+
+    try:
+        dataset = load_manifest(args.manifest, annotation_root=args.annotations)
+    except (ManifestError, OSError) as error:
+        print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+
+    result = survey(dataset, vocabularies)
+    if not result.tracks:
+        print(
+            f"songscribe-eval: no readable annotations under {dataset.annotation_root}",
+            file=sys.stderr,
+        )
+        return 1
+
+    sys.stdout.write(format_survey(result, label_limit=args.labels))
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(survey_to_dict(result), indent=2) + "\n", encoding="utf-8")
+        print(f"wrote {args.json}", file=sys.stderr)
+    # An unparseable label is a gap in our own vocabulary, not bad data, so it
+    # is worth a non-zero exit: this is the shape of thing CI should catch.
+    return 2 if result.unparseable else 0
+
+
+def format_survey(result, label_limit: int = TOP_LABELS) -> str:
+    """Render a corpus survey as a text report."""
+    lines = [
+        "",
+        f"dataset   {result.dataset}",
+        f"tracks    {result.tracks} readable"
+        + (f", {len(result.unreadable)} unreadable" if result.unreadable else ""),
+        f"annotated {result.duration / 3600:.2f} h in {result.segments} segments",
+        f"labels    {len(result.labels)} distinct",
+        "",
+    ]
+
+    for track_id, error in result.unreadable:
+        lines.append(f"  unreadable: {track_id}: {error}")
+    if result.unreadable:
+        lines.append("")
+
+    if result.unparseable:
+        lines.append("UNPARSEABLE LABELS -- time no vocabulary can score:")
+        for stats in result.unparseable:
+            lines.append(
+                f"  {stats.label!r:28} {stats.segments:6d} segments  {stats.duration / 60:7.1f} min"
+            )
+        lines.append("")
+    else:
+        lines.append("every label parses")
+        lines.append("")
+
+    lines.append(f"{'vocabulary':<12}{'scoreable':>11}{'excluded':>11}   definition")
+    for vocabulary, fraction in result.scoreable.items():
+        excluded = (1.0 - fraction) * result.duration / 60
+        lines.append(
+            f"{vocabulary:<12}{_percent(fraction):>11}{excluded:>9.1f} m   "
+            f"{VOCABULARIES[vocabulary]}"
+        )
+    lines.append("")
+    lines.append("scoreable = reference time the vocabulary can express, so the most")
+    lines.append("a backend could possibly score there. Excluded time is not a penalty.")
+    lines.append("")
+
+    if label_limit > 0:
+        lines.append(f"most common labels by time (top {label_limit}):")
+        for stats in result.labels[:label_limit]:
+            flag = "" if stats.parses else "  <-- UNPARSEABLE"
+            lines.append(
+                f"  {stats.label!r:20} {stats.duration / 60:7.1f} min  "
+                f"{stats.duration / result.duration:5.1%}{flag}"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def survey_to_dict(result) -> dict:
+    """The survey as JSON-ready data, every label included."""
+    return {
+        "dataset": result.dataset,
+        "tracks": result.tracks,
+        "segments": result.segments,
+        "duration": result.duration,
+        "unreadable": [{"id": i, "error": e} for i, e in result.unreadable],
+        "scoreable": dict(result.scoreable),
+        "labels": [
+            {
+                "label": s.label,
+                "segments": s.segments,
+                "duration": s.duration,
+                "parses": s.parses,
+            }
+            for s in result.labels
+        ],
+    }
 
 
 def _score(args: argparse.Namespace) -> int:

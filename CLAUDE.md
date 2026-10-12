@@ -42,8 +42,10 @@ src/songscribe/
     metrics.py    WCSR, vocabularies, segmentation             (pure Python)
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
+    survey.py     corpus label/coverage report, no audio or model needed
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
+eval/           committed manifests: track ids + relative paths, no content
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
 EVALUATION.md   how to measure a backend, and which corpora are usable
@@ -103,14 +105,22 @@ pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 
+songscribe-eval survey eval/isophonics-beatles.json          # no audio, no model
 songscribe-eval manifest ~/corpora/isophonics -a ~/music -o eval/isophonics.json
-songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
+songscribe-eval score eval/isophonics-beatles.json -c madmom --cache .eval-cache --per-track
 ```
+
+`survey` is the corpus health check: it reports annotated time and whether every label
+parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in
+`eval/harte.py`, not bad data. Run it on a new corpus before anything else.
 
 `--cache` writes each estimate as a `.lab`, so re-scoring under a different vocabulary is
 instant and a long run is resumable — which matters because `madmom` runs at ~2x realtime,
-making a 180-track corpus 5-6 hours (`template` is ~180x, so ~4 minutes). Shake the paths
-out with `-c template --limit 5` before committing to the long run. See `EVALUATION.md`.
+making the 8-hour Beatles set ~4 hours (`template` is ~180x, so ~3 minutes). Shake the
+paths out with `-c template --limit 5` first. See `EVALUATION.md`.
+
+The Beatles annotations live in the gitignored `data/` (extract the Isophonics archive
+there); `eval/isophonics-beatles.json` is the committed manifest over them.
 
 `[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
 import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default

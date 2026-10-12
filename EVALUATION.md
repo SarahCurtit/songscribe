@@ -32,12 +32,25 @@ they are a free download, and they ship **without audio** — you supply your ow
 recordings. That last point is the whole reason it fits this project.
 
 **1. Get the annotations.** Download "Reference Annotations: The Beatles" (and Queen, Carole
-King, Zweieck if you want them). Unzip somewhere outside the repo — `*.lab` is gitignored,
-but keep them out anyway.
+King, Zweieck if you want them) and extract into `data/`, which is gitignored wholesale.
+The archive carries several formats side by side:
+
+```
+chordlab/   .lab chord annotations  <- the only thing this harness reads
+keylab/     key annotations
+seglab/     structural segmentation
+beat/       beat annotations
+all/        the same data as Turtle RDF (.ttl)
+```
+
+Point `--annotations` at the directory *containing* `chordlab/` and the builder finds it:
+`keylab/` and `seglab/` are `.lab` files too, but they annotate a different thing, so
+they're skipped by name rather than by glob.
 
 **2. Supply the audio.** Your own copies of the recordings, in a directory of their own.
 See [What you may and may not use](#what-you-may-and-may-not-use) below before you source
-these.
+these. Everything up to and including `survey` works without this; only `score -c <backend>`
+needs it.
 
 **3. Point the harness at both.** Once, in your shell:
 
@@ -60,17 +73,54 @@ track-number-insensitive title match. Anything it cannot pair uniquely it *repor
 than guessing at — a manifest quietly pointing at the wrong recording would produce a
 plausible, wrong score. Use `--list-unpaired` to see every miss and fix your filenames.
 
-**5. Score a backend.**
+A manifest committed to the repo is portable: `eval/isophonics-beatles.json` is the Beatles
+chordlab set, and anyone with their own copy of those annotations and recordings can point
+the two roots at them and reproduce the numbers.
+
+**5. Survey the corpus.** Needs no audio and no model, so do it before the long run:
+
+```bash
+songscribe-eval survey eval/isophonics-beatles.json
+```
+
+```
+dataset   isophonics-beatles
+tracks    180 readable
+annotated 8.15 h in 14621 segments
+labels    407 distinct
+
+every label parses
+
+vocabulary    scoreable   excluded   definition
+root            100.00%      0.0 m   root only; ignores quality entirely
+majmin           96.43%     17.4 m   major and minor triads; sevenths reduce to their triad
+sevenths         96.27%     18.2 m   maj, min, 7, maj7, min7
+mirex           100.00%      0.0 m   at least 3 pitch classes in common
+```
+
+**"every label parses" is the line that matters.** All 407 distinct labels across those
+14,621 segments — including `E:7/3`, `A:min/b3`, `C#:maj7(*b5)` and `D:min7(2,*b3,4)` —
+resolve to pitch content. An unparseable label would be a gap in `harte.py` or in
+`chords.HARTE_QUALITIES`, not bad data, and the time it accounted for would be time *no*
+vocabulary could score. `survey` exits non-zero when any label fails to parse, so it works
+as a corpus health check.
+
+`scoreable` is the ceiling, not a score: it is the reference time a vocabulary can express,
+so the most any backend could possibly get right there. On this corpus `majmin` excludes
+17 minutes out of 489 — the suspensions, diminished and augmented chords — which is the
+honest denominator to quote alongside a WCSR figure.
+
+**6. Score a backend.**
 
 ```bash
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 
-**Budget overnight for a full corpus.** Measured on one CPU, `madmom` runs at roughly
-**2× realtime**, so the ~180-track Beatles set (about 12 hours of audio) is **5–6 hours**;
-`--separate` adds demucs on top of that. The `template` baseline is ~180× realtime, so the
-same corpus takes about 4 minutes — which is why it's the right thing to shake the plumbing
-out with.
+**Budget most of a working day for a full corpus.** The Beatles chordlab set is 180 tracks
+and **8.15 hours of annotated audio**. Measured on one CPU, `madmom` runs at roughly
+**2× realtime**, so a pass over it is **about 4 hours**; `--separate` adds demucs on top of
+that. The `template` baseline is ~180× realtime — about 3 minutes for the same corpus —
+which is why it's the right thing to shake the plumbing out with.
 
 `--cache` matters at that scale: it writes each estimate as a `.lab`, so an interrupted run
 resumes instead of restarting, and re-scoring under different vocabularies is instant. The

@@ -1,0 +1,729 @@
+{
+  "version": 1,
+  "dataset": "isophonics-beatles",
+  "notes": "Chord reference annotations paired against a local audio library. Paths are relative, and no audio or annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
+  "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
+  "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "tracks": [
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/01_-_I_Saw_Her_Standing_There",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/01_-_I_Saw_Her_Standing_There.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/02_-_Misery",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/02_-_Misery.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/03_-_Anna_(Go_To_Him)",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/03_-_Anna_(Go_To_Him).lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/04_-_Chains",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/04_-_Chains.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/05_-_Boys",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/05_-_Boys.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/06_-_Ask_Me_Why",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/06_-_Ask_Me_Why.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/07_-_Please_Please_Me",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/07_-_Please_Please_Me.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/08_-_Love_Me_Do",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/08_-_Love_Me_Do.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/09_-_P._S._I_Love_You",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/09_-_P._S._I_Love_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/10_-_Baby_It's_You",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/10_-_Baby_It's_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/11_-_Do_You_Want_To_Know_A_Secret",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/11_-_Do_You_Want_To_Know_A_Secret.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/12_-_A_Taste_Of_Honey",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/12_-_A_Taste_Of_Honey.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/13_-_There's_A_Place",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/13_-_There's_A_Place.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/01_-_Please_Please_Me/14_-_Twist_And_Shout",
+      "reference": "chordlab/The Beatles/01_-_Please_Please_Me/14_-_Twist_And_Shout.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/01_-_It_Won't_Be_Long",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/01_-_It_Won't_Be_Long.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/02_-_All_I've_Got_To_Do",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/02_-_All_I've_Got_To_Do.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/03_-_All_My_Loving",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/03_-_All_My_Loving.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/04_-_Don't_Bother_Me",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/04_-_Don't_Bother_Me.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/05_-_Little_Child",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/05_-_Little_Child.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/06_-_Till_There_Was_You",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/06_-_Till_There_Was_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/07_-_Please_Mister_Postman",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/07_-_Please_Mister_Postman.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/08_-_Roll_Over_Beethoven",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/08_-_Roll_Over_Beethoven.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/09_-_Hold_Me_Tight",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/09_-_Hold_Me_Tight.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/10_-_You_Really_Got_A_Hold_On_Me",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/10_-_You_Really_Got_A_Hold_On_Me.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/11_-_I_Wanna_Be_Your_Man",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/11_-_I_Wanna_Be_Your_Man.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/12_-_Devil_In_Her_Heart",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/12_-_Devil_In_Her_Heart.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/13_-_Not_A_Second_Time",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/13_-_Not_A_Second_Time.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/02_-_With_the_Beatles/14_-_Money",
+      "reference": "chordlab/The Beatles/02_-_With_the_Beatles/14_-_Money.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/01_-_A_Hard_Day's_Night",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/01_-_A_Hard_Day's_Night.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/02_-_I_Should_Have_Known_Better",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/02_-_I_Should_Have_Known_Better.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/03_-_If_I_Fell",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/03_-_If_I_Fell.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/04_-_I'm_Happy_Just_To_Dance_With_You",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/04_-_I'm_Happy_Just_To_Dance_With_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/05_-_And_I_Love_Her",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/05_-_And_I_Love_Her.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/06_-_Tell_Me_Why",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/06_-_Tell_Me_Why.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/07_-_Can't_Buy_Me_Love",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/07_-_Can't_Buy_Me_Love.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/08_-_Any_Time_At_All",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/08_-_Any_Time_At_All.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/09_-_I'll_Cry_Instead",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/09_-_I'll_Cry_Instead.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/10_-_Things_We_Said_Today",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/10_-_Things_We_Said_Today.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/11_-_When_I_Get_Home",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/11_-_When_I_Get_Home.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/12_-_You_Can't_Do_That",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/12_-_You_Can't_Do_That.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/13_-_I'll_Be_Back",
+      "reference": "chordlab/The Beatles/03_-_A_Hard_Day's_Night/13_-_I'll_Be_Back.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/01_-_No_Reply",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/01_-_No_Reply.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/02_-_I'm_a_Loser",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/02_-_I'm_a_Loser.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/03_-_Baby's_In_Black",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/03_-_Baby's_In_Black.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/04_-_Rock_and_Roll_Music",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/04_-_Rock_and_Roll_Music.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/05_-_I'll_Follow_the_Sun",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/05_-_I'll_Follow_the_Sun.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/06_-_Mr._Moonlight",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/06_-_Mr._Moonlight.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/07_-_Kansas_City-_Hey,_Hey,_Hey,_Hey",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/07_-_Kansas_City-_Hey,_Hey,_Hey,_Hey.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/08_-_Eight_Days_a_Week",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/08_-_Eight_Days_a_Week.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/09_-_Words_of_Love",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/09_-_Words_of_Love.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/10_-_Honey_Don't",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/10_-_Honey_Don't.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/11_-_Every_Little_Thing",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/11_-_Every_Little_Thing.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/12_-_I_Don't_Want_to_Spoil_the_Party",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/12_-_I_Don't_Want_to_Spoil_the_Party.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/13_-_What_You're_Doing",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/13_-_What_You're_Doing.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/04_-_Beatles_for_Sale/14_-_Everybody's_Trying_to_Be_My_Baby",
+      "reference": "chordlab/The Beatles/04_-_Beatles_for_Sale/14_-_Everybody's_Trying_to_Be_My_Baby.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/01_-_Help!",
+      "reference": "chordlab/The Beatles/05_-_Help!/01_-_Help!.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/02_-_The_Night_Before",
+      "reference": "chordlab/The Beatles/05_-_Help!/02_-_The_Night_Before.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/03_-_You've_Got_To_Hide_Your_Love_Away",
+      "reference": "chordlab/The Beatles/05_-_Help!/03_-_You've_Got_To_Hide_Your_Love_Away.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/04_-_I_Need_You",
+      "reference": "chordlab/The Beatles/05_-_Help!/04_-_I_Need_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/05_-_Another_Girl",
+      "reference": "chordlab/The Beatles/05_-_Help!/05_-_Another_Girl.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/06_-_You're_Going_To_Lose_That_Girl",
+      "reference": "chordlab/The Beatles/05_-_Help!/06_-_You're_Going_To_Lose_That_Girl.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/07_-_Ticket_To_Ride",
+      "reference": "chordlab/The Beatles/05_-_Help!/07_-_Ticket_To_Ride.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/08_-_Act_Naturally",
+      "reference": "chordlab/The Beatles/05_-_Help!/08_-_Act_Naturally.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/09_-_It's_Only_Love",
+      "reference": "chordlab/The Beatles/05_-_Help!/09_-_It's_Only_Love.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/10_-_You_Like_Me_Too_Much",
+      "reference": "chordlab/The Beatles/05_-_Help!/10_-_You_Like_Me_Too_Much.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/11_-_Tell_Me_What_You_See",
+      "reference": "chordlab/The Beatles/05_-_Help!/11_-_Tell_Me_What_You_See.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/12_-_I've_Just_Seen_a_Face",
+      "reference": "chordlab/The Beatles/05_-_Help!/12_-_I've_Just_Seen_a_Face.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/13_-_Yesterday",
+      "reference": "chordlab/The Beatles/05_-_Help!/13_-_Yesterday.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/05_-_Help!/14_-_Dizzy_Miss_Lizzy",
+      "reference": "chordlab/The Beatles/05_-_Help!/14_-_Dizzy_Miss_Lizzy.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/01_-_Drive_My_Car",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/01_-_Drive_My_Car.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/02_-_Norwegian_Wood_(This_Bird_Has_Flown)",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/02_-_Norwegian_Wood_(This_Bird_Has_Flown).lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/03_-_You_Won't_See_Me",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/03_-_You_Won't_See_Me.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/04_-_Nowhere_Man",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/04_-_Nowhere_Man.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/05_-_Think_For_Yourself",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/05_-_Think_For_Yourself.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/06_-_The_Word",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/06_-_The_Word.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/07_-_Michelle",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/07_-_Michelle.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/08_-_What_Goes_On",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/08_-_What_Goes_On.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/09_-_Girl",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/09_-_Girl.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/10_-_I'm_Looking_Through_You",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/10_-_I'm_Looking_Through_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/11_-_In_My_Life",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/11_-_In_My_Life.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/12_-_Wait",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/12_-_Wait.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/13_-_If_I_Needed_Someone",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/13_-_If_I_Needed_Someone.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/06_-_Rubber_Soul/14_-_Run_For_Your_Life",
+      "reference": "chordlab/The Beatles/06_-_Rubber_Soul/14_-_Run_For_Your_Life.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/01_-_Taxman",
+      "reference": "chordlab/The Beatles/07_-_Revolver/01_-_Taxman.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/02_-_Eleanor_Rigby",
+      "reference": "chordlab/The Beatles/07_-_Revolver/02_-_Eleanor_Rigby.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/03_-_I'm_Only_Sleeping",
+      "reference": "chordlab/The Beatles/07_-_Revolver/03_-_I'm_Only_Sleeping.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/04_-_Love_You_To",
+      "reference": "chordlab/The Beatles/07_-_Revolver/04_-_Love_You_To.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/05_-_Here,_There_And_Everywhere",
+      "reference": "chordlab/The Beatles/07_-_Revolver/05_-_Here,_There_And_Everywhere.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/06_-_Yellow_Submarine",
+      "reference": "chordlab/The Beatles/07_-_Revolver/06_-_Yellow_Submarine.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/07_-_She_Said_She_Said",
+      "reference": "chordlab/The Beatles/07_-_Revolver/07_-_She_Said_She_Said.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/08_-_Good_Day_Sunshine",
+      "reference": "chordlab/The Beatles/07_-_Revolver/08_-_Good_Day_Sunshine.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/09_-_And_Your_Bird_Can_Sing",
+      "reference": "chordlab/The Beatles/07_-_Revolver/09_-_And_Your_Bird_Can_Sing.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/10_-_For_No_One",
+      "reference": "chordlab/The Beatles/07_-_Revolver/10_-_For_No_One.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/11_-_Doctor_Robert",
+      "reference": "chordlab/The Beatles/07_-_Revolver/11_-_Doctor_Robert.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/12_-_I_Want_To_Tell_You",
+      "reference": "chordlab/The Beatles/07_-_Revolver/12_-_I_Want_To_Tell_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/13_-_Got_To_Get_You_Into_My_Life",
+      "reference": "chordlab/The Beatles/07_-_Revolver/13_-_Got_To_Get_You_Into_My_Life.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/07_-_Revolver/14_-_Tomorrow_Never_Knows",
+      "reference": "chordlab/The Beatles/07_-_Revolver/14_-_Tomorrow_Never_Knows.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/01_-_Sgt._Pepper's_Lonely_Hearts_Club_Band",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/01_-_Sgt._Pepper's_Lonely_Hearts_Club_Band.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/02_-_With_A_Little_Help_From_My_Friends",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/02_-_With_A_Little_Help_From_My_Friends.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/03_-_Lucy_In_The_Sky_With_Diamonds",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/03_-_Lucy_In_The_Sky_With_Diamonds.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/04_-_Getting_Better",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/04_-_Getting_Better.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/05_-_Fixing_A_Hole",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/05_-_Fixing_A_Hole.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/06_-_She's_Leaving_Home",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/06_-_She's_Leaving_Home.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/07_-_Being_For_The_Benefit_Of_Mr._Kite!",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/07_-_Being_For_The_Benefit_Of_Mr._Kite!.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/08_-_Within_You_Without_You",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/08_-_Within_You_Without_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/09_-_When_I'm_Sixty-Four",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/09_-_When_I'm_Sixty-Four.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/10_-_Lovely_Rita",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/10_-_Lovely_Rita.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/11_-_Good_Morning_Good_Morning",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/11_-_Good_Morning_Good_Morning.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/12_-_Sgt._Pepper's_Lonely_Hearts_Club_Band_(Reprise)",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/12_-_Sgt._Pepper's_Lonely_Hearts_Club_Band_(Reprise).lab"
+    },
+    {
+      "id": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/13_-_A_Day_In_The_Life",
+      "reference": "chordlab/The Beatles/08_-_Sgt._Pepper's_Lonely_Hearts_Club_Band/13_-_A_Day_In_The_Life.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/01_-_Magical_Mystery_Tour",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/01_-_Magical_Mystery_Tour.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/02_-_The_Fool_On_The_Hill",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/02_-_The_Fool_On_The_Hill.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/03_-_Flying",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/03_-_Flying.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/04_-_Blue_Jay_Way",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/04_-_Blue_Jay_Way.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/05_-_Your_Mother_Should_Know",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/05_-_Your_Mother_Should_Know.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/06_-_I_Am_The_Walrus",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/06_-_I_Am_The_Walrus.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/07_-_Hello_Goodbye",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/07_-_Hello_Goodbye.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/08_-_Strawberry_Fields_Forever",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/08_-_Strawberry_Fields_Forever.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/09_-_Penny_Lane",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/09_-_Penny_Lane.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/10_-_Baby_You're_A_Rich_Man",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/10_-_Baby_You're_A_Rich_Man.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/11_-_All_You_Need_Is_Love",
+      "reference": "chordlab/The Beatles/09_-_Magical_Mystery_Tour/11_-_All_You_Need_Is_Love.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_01_-_Back_in_the_USSR",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_01_-_Back_in_the_USSR.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_02_-_Dear_Prudence",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_02_-_Dear_Prudence.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_03_-_Glass_Onion",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_03_-_Glass_Onion.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_04_-_Ob-La-Di,_Ob-La-Da",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_04_-_Ob-La-Di,_Ob-La-Da.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_05_-_Wild_Honey_Pie",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_05_-_Wild_Honey_Pie.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_06_-_The_Continuing_Story_of_Bungalow_Bill",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_06_-_The_Continuing_Story_of_Bungalow_Bill.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_07_-_While_My_Guitar_Gently_Weeps",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_07_-_While_My_Guitar_Gently_Weeps.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_08_-_Happiness_is_a_Warm_Gun",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_08_-_Happiness_is_a_Warm_Gun.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_09_-_Martha_My_Dear",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_09_-_Martha_My_Dear.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_10_-_I'm_So_Tired",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_10_-_I'm_So_Tired.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_11_-_Black_Bird",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_11_-_Black_Bird.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_12_-_Piggies",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_12_-_Piggies.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_13_-_Rocky_Raccoon",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_13_-_Rocky_Raccoon.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_14_-_Don't_Pass_Me_By",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_14_-_Don't_Pass_Me_By.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_15_-_Why_Don't_We_Do_It_In_The_Road",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_15_-_Why_Don't_We_Do_It_In_The_Road.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_16_-_I_Will",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_16_-_I_Will.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_17_-_Julia",
+      "reference": "chordlab/The Beatles/10CD1_-_The_Beatles/CD1_-_17_-_Julia.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_01_-_Birthday",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_01_-_Birthday.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_02_-_Yer_Blues",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_02_-_Yer_Blues.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_03_-_Mother_Nature's_Son",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_03_-_Mother_Nature's_Son.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_04_-_Everybody's_Got_Something_To_Hide_Except_Me_and_My_Monkey",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_04_-_Everybody's_Got_Something_To_Hide_Except_Me_and_My_Monkey.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_05_-_Sexy_Sadie",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_05_-_Sexy_Sadie.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_06_-_Helter_Skelter",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_06_-_Helter_Skelter.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_07_-_Long_Long_Long",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_07_-_Long_Long_Long.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_08_-_Revolution_1",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_08_-_Revolution_1.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_09_-_Honey_Pie",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_09_-_Honey_Pie.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_10_-_Savoy_Truffle",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_10_-_Savoy_Truffle.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_11_-_Cry_Baby_Cry",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_11_-_Cry_Baby_Cry.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_12_-_Revolution_9",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_12_-_Revolution_9.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_13_-_Good_Night",
+      "reference": "chordlab/The Beatles/10CD2_-_The_Beatles/CD2_-_13_-_Good_Night.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/01_-_Come_Together",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/01_-_Come_Together.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/02_-_Something",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/02_-_Something.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/03_-_Maxwell's_Silver_Hammer",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/03_-_Maxwell's_Silver_Hammer.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/04_-_Oh!_Darling",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/04_-_Oh!_Darling.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/05_-_Octopus's_Garden",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/05_-_Octopus's_Garden.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/06_-_I_Want_You",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/06_-_I_Want_You.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/07_-_Here_Comes_The_Sun",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/07_-_Here_Comes_The_Sun.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/08_-_Because",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/08_-_Because.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/09_-_You_Never_Give_Me_Your_Money",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/09_-_You_Never_Give_Me_Your_Money.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/10_-_Sun_King",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/10_-_Sun_King.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/11_-_Mean_Mr_Mustard",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/11_-_Mean_Mr_Mustard.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/12_-_Polythene_Pam",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/12_-_Polythene_Pam.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/13_-_She_Came_In_Through_The_Bathroom_Window",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/13_-_She_Came_In_Through_The_Bathroom_Window.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/14_-_Golden_Slumbers",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/14_-_Golden_Slumbers.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/15_-_Carry_That_Weight",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/15_-_Carry_That_Weight.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/16_-_The_End",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/16_-_The_End.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/11_-_Abbey_Road/17_-_Her_Majesty",
+      "reference": "chordlab/The Beatles/11_-_Abbey_Road/17_-_Her_Majesty.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/01_-_Two_of_Us",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/01_-_Two_of_Us.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/02_-_Dig_a_Pony",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/02_-_Dig_a_Pony.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/03_-_Across_the_Universe",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/03_-_Across_the_Universe.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/04_-_I_Me_Mine",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/04_-_I_Me_Mine.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/05_-_Dig_It",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/05_-_Dig_It.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/06_-_Let_It_Be",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/06_-_Let_It_Be.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/07_-_Maggie_Mae",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/07_-_Maggie_Mae.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/08_-_I've_Got_A_Feeling",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/08_-_I've_Got_A_Feeling.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/09_-_One_After_909",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/09_-_One_After_909.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/10_-_The_Long_and_Winding_Road",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/10_-_The_Long_and_Winding_Road.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/11_-_For_You_Blue",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/11_-_For_You_Blue.lab"
+    },
+    {
+      "id": "chordlab/The Beatles/12_-_Let_It_Be/12_-_Get_Back",
+      "reference": "chordlab/The Beatles/12_-_Let_It_Be/12_-_Get_Back.lab"
+    }
+  ]
+}
