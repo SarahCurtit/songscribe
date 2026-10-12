@@ -138,6 +138,16 @@ class TestRunnerIntegration:
         (result,) = report.results
         assert result.alignment is None
 
+    def test_an_empty_vocabulary_list_skips_the_sweep(self, misaligned):
+        # Nothing is being reported, so there is no number to compare a shift
+        # against; this must skip rather than index off the end of the list.
+        from songscribe.eval import runner
+
+        data, estimates = misaligned
+        report = runner.evaluate(data, estimates_dir=estimates, vocabularies=())
+        (result,) = report.results
+        assert result.alignment is None
+
     def test_the_reported_score_is_unaffected_by_the_check(self, misaligned):
         from songscribe.eval import runner
 

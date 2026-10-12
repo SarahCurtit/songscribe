@@ -204,11 +204,13 @@ def score_track(
     scores = metrics.score_all(reference, estimated, vocabularies)
 
     alignment = None
-    if check_alignment:
+    if check_alignment and scores:
         # Sweep in whichever vocabulary is being reported: asking for a
         # vocabulary the caller excluded would report a gain against a number
-        # that appears nowhere in the output.
-        vocabulary = "majmin" if "majmin" in scores else vocabularies[0]
+        # that appears nowhere in the output. Keyed off `scores` rather than
+        # the argument, so an empty vocabulary list skips the sweep instead of
+        # indexing off the end of it.
+        vocabulary = "majmin" if "majmin" in scores else next(iter(scores))
         alignment = metrics.best_offset(reference, estimated, vocabulary)
 
     return TrackResult(
