@@ -1,19 +1,7 @@
-"""Local word timelines, for scoring lyric-chord placement.
+"""Local, private word timelines for :func:`~songscribe.eval.metrics.placement_score`.
 
-:func:`~songscribe.eval.metrics.placement_score` needs timed words. No public
-corpus here carries them -- Isophonics is chords only -- and transcribed
-lyrics of real songs may not enter this repo at all (hard constraint 5 in
-``CLAUDE.md``). So the word timeline is a **local, private** artefact: you
-produce it from your own recording with your own pipeline, and it stays on
-your machine.
-
-That is sound rather than a compromise, because ``placement_score`` holds one
-word timeline fixed across both sides. Word errors therefore apply equally to
-reference and estimate and cancel out: the timeline has to be *consistent*,
-not *correct*, for the comparison to isolate chord placement.
-
-Files written here hold lyric text. ``.gitignore`` blocks ``*.words.json``;
-do not work around it.
+They hold lyric text, so they never enter the repo (constraint 5 in ``CLAUDE.md``):
+files must end in ``.words.json``, which ``.gitignore`` blocks.
 """
 
 from __future__ import annotations
@@ -22,6 +10,11 @@ import json
 from pathlib import Path
 
 from ..types import Word
+
+# No public corpus has timed words (Isophonics is chords only), so you produce the
+# timeline from your own recording with your own pipeline. That is sound: placement_score
+# holds one word timeline fixed for both sides, so word errors cancel out -- the timeline
+# must be consistent, not correct.
 
 #: Suffix the gitignore rule matches. Using it is what keeps a transcript out
 #: of a commit by accident.
