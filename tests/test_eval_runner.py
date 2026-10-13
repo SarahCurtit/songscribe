@@ -277,6 +277,34 @@ class TestEvaluate:
         assert report.results[0].chart == pytest.approx(1.0)
         assert report.results[1].chart == pytest.approx(0.0)
 
+    @pytest.mark.parametrize("vocabularies", [("triads", "sevenths"), ("root",)])
+    def test_chart_and_grid_do_not_follow_the_reported_vocabularies(self, tmp_path, vocabularies):
+        # Their rows carry no vocabulary name, so a re-score under other `-v`
+        # rows must print the same chart and grid as a default run. The data
+        # scores differently in each vocabulary: triads reduces 7sus4 to sus4,
+        # majmin keeps it distinct, root also hears C and Cm as one chord.
+        reference = tmp_path / "ref.lab"
+        reference.write_text(
+            "0.0 2.0 C:sus4(b7)\n2.0 4.0 C:maj\n4.0 6.0 C:sus4(b7)\n6.0 8.0 C:maj\n",
+            encoding="utf-8",
+        )
+        track = dataset.Track(id="song", reference=reference)
+        estimated = [
+            ChordEvent(0.0, 2.0, "C:sus4"),
+            ChordEvent(2.0, 4.0, "C:min"),
+            ChordEvent(4.0, 6.0, "C:sus4"),
+            ChordEvent(6.0, 8.0, "C:min"),
+        ]
+
+        default = runner.score_track(track, estimated, check_alignment=False)
+        narrowed = runner.score_track(track, estimated, vocabularies, check_alignment=False)
+
+        assert narrowed.chart == pytest.approx(default.chart)
+        assert narrowed.reference_chart_chords == default.reference_chart_chords
+        assert narrowed.estimate_chart_chords == default.estimate_chart_chords
+        assert narrowed.grid == pytest.approx(default.grid, nan_ok=True)
+        assert narrowed.harmonic == default.harmonic
+
     def test_an_aggregate_over_nothing_is_nan(self, corpus, tmp_path):
         data, estimates = corpus
         for name in ("short.lab", "long.lab"):
