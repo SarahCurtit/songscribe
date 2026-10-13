@@ -226,16 +226,21 @@ def score_track(
     estimated: list[ChordEvent],
     vocabularies: tuple[str, ...] = metrics.DEFAULT_VOCABULARIES,
     check_alignment: bool = True,
+    reference: list[ChordEvent] | None = None,
 ) -> TrackResult:
     """Score one track's estimate against its reference annotation.
 
     ``check_alignment`` also sweeps a time offset, which costs no model time
     and catches a recording that does not share the reference's timeline. It
     only ever reports; the score itself is never shifted.
+
+    ``reference`` takes an already-parsed annotation, so a caller can read it
+    under its own error handling; otherwise it is read from ``track.reference``.
     """
     from .. import lab
 
-    reference = lab.read(track.reference)
+    if reference is None:
+        reference = lab.read(track.reference)
     start, end = metrics.extent(reference)
     scores = metrics.score_all(reference, estimated, vocabularies)
 
@@ -289,6 +294,8 @@ def evaluate(
     whose reference or estimate is missing is skipped and named in the report
     rather than scored as zero -- an absent measurement is not a wrong one.
     """
+    from .. import lab
+
     if (backend is None) == (estimates_dir is None):
         raise ValueError("pass exactly one of backend= or estimates_dir=")
     for vocabulary in vocabularies:
@@ -307,6 +314,16 @@ def evaluate(
     for track in tracks:
         if not track.reference.exists():
             log.warning("%s: no reference at %s", track.id, track.reference)
+            skipped.append(track.id)
+            continue
+
+        # Read before estimating, so a bad annotation costs no model time, and
+        # under its own narrow catch: one unparseable file must not discard the
+        # tracks already scored, but an error from the metrics code still should.
+        try:
+            reference = lab.read(track.reference)
+        except (OSError, ValueError) as error:
+            log.warning("%s: unusable reference: %s", track.id, error)
             skipped.append(track.id)
             continue
 
@@ -330,7 +347,9 @@ def evaluate(
             skipped.append(track.id)
             continue
 
-        result = score_track(track, estimated, vocabularies, check_alignment=check_alignment)
+        result = score_track(
+            track, estimated, vocabularies, check_alignment=check_alignment, reference=reference
+        )
         results.append(result)
         if on_track is not None:
             on_track(result)
