@@ -132,8 +132,9 @@ songscribe-eval score eval/isophonics.json -a ~/music --annotations data/isophon
 ```
 
 The manifest's paths are relative, so `score` needs the same two roots back. To stop
-repeating them, export `SONGSCRIBE_EVAL_ROOT=~/music` and
-`SONGSCRIBE_EVAL_ANNOTATIONS=data/isophonics` instead.
+repeating them, export the roots once from the repo root, as in EVALUATION.md step 3:
+`SONGSCRIBE_EVAL_ROOT=~/music` and `SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"`.
+`$PWD` makes the annotation root absolute, so it still resolves from any other directory.
 
 No corpus to hand? The synthetic demo is a one-track corpus. Here it is with every chord a
 seventh, scored with the `template` baseline (no weights needed), all under the gitignored
