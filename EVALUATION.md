@@ -312,7 +312,9 @@ collapse them exactly as `align.dedupe` does (merge repeats, drop flicker below
 edit distance. Timing is absent by construction, so a substitution is a wrong
 chord, an insertion one the model invented, a deletion one it missed — the three things a
 musician notices. Because it is built from `align.dedupe`, it scores the chart `render.py`
-would actually print, not the raw frame timeline.
+would actually print, not the raw frame timeline. Unlike WCSR it keeps a reference `X` as a
+chord no backend can match, so `chart` (and `grid` and `placement` with it) cannot reach
+100% on a track containing one; see [What gets excluded](#what-gets-excluded).
 
 Measured on Eleanor Rigby, before and after trimming a 1.7 s lead-in:
 
@@ -486,11 +488,19 @@ pinned by a test rather than changed here.
 
 ### What gets excluded
 
-Reference time the comparison vocabulary cannot express leaves the score entirely,
-numerator and denominator both. That covers `X` (the annotator heard a chord but could not
-name it), labels this project cannot parse, and qualities outside the vocabulary — a `sus4`
-is excluded from `majmin` but scored under `triads`. Penalising a model for disagreeing with
-an admitted non-answer would measure the annotation, not the model.
+In WCSR, reference time the comparison vocabulary cannot express leaves the score entirely,
+numerator and denominator both, and `survey` counts it as excluded rather than scoreable.
+That covers `X` (the annotator heard a chord but could not name it), labels this project
+cannot parse, and qualities outside the vocabulary — a `sus4` is excluded from `majmin` but
+scored under `triads`. Penalising a model for disagreeing with an admitted non-answer would
+measure the annotation, not the model.
+
+`chart`, `grid` and `placement` do **not** exclude a reference `X`: they keep it as a literal
+token, a chord no backend emits and so none can match. Dropping it from a sequence would
+merge its neighbours and change what the sequence means. Kept, it costs every backend the
+same fixed amount, so comparisons between backends hold — but it caps their absolute value
+below 100% on any track that contains `X`: `C X G A:min F` against `C N G Am F` is 100% WCSR
+and 80% `chart`.
 
 An unparseable or out-of-vocabulary *estimate*, by contrast, is simply wrong. A model is not
 excused by emitting something unreadable.
