@@ -313,8 +313,9 @@ edit distance. Timing is absent by construction, so a substitution is a wrong
 chord, an insertion one the model invented, a deletion one it missed — the three things a
 musician notices. Because it is built from `align.dedupe`, it scores the chart `render.py`
 would actually print, not the raw frame timeline. Unlike WCSR it keeps a reference `X` as a
-chord no backend can match, so `chart` (and `grid` and `placement` with it) cannot reach
-100% on a track containing one; see [What gets excluded](#what-gets-excluded).
+token no backend emits, so an `X` long enough to print costs up to one edit in `chart` (and
+in `grid`, and in `placement` when labels are compared); see
+[What gets excluded](#what-gets-excluded).
 
 Measured on Eleanor Rigby, before and after trimming a 1.7 s lead-in:
 
@@ -496,11 +497,24 @@ scored under `triads`. Penalising a model for disagreeing with an admitted non-a
 measure the annotation, not the model.
 
 `chart`, `grid` and `placement` do **not** exclude a reference `X`: they keep it as a literal
-token, a chord no backend emits and so none can match. Dropping it from a sequence would
-merge its neighbours and change what the sequence means. Kept, it costs every backend the
-same fixed amount, so comparisons between backends hold — but it caps their absolute value
-below 100% on any track that contains `X`: `C X G A:min F` against `C N G Am F` is 100% WCSR
-and 80% `chart`.
+token, one no backend emits and so none can match (an unparseable reference label is kept
+as its raw text the same way). Dropping it from a sequence would merge its neighbours and
+change what the sequence means. Kept, an `X` is neither free nor the same price for every
+backend:
+
+- It only counts if it survives `align.dedupe`. An `X` shorter than
+  `align.MIN_CHORD_DURATION` is dropped as flicker and costs nothing.
+- One that survives costs a backend **at most one edit**, and how much of that it pays
+  depends on what the backend put there. Scores are normalised by sequence length, so that
+  edit weighs more on a short sequence than a long one.
+- In `placement` it is a miss only when labels are compared (`compare_labels=False` asks
+  only where the change lands) and only when it falls on a sung word.
+
+So no backend reaches 100% `chart` or `grid` on a track with a surviving `X` —
+`C X G A:min F` against `C N G Am F` is 100% WCSR and 80% `chart` — and the `X` can tip a
+close comparison: against reference `C X G`, `C D G E` scores 50% `chart` and `C G` 67%,
+though `C D G E` would score 75% were the `X` read as its `D`. Read a small gap between
+backends on an `X`-bearing track with that in mind.
 
 An unparseable or out-of-vocabulary *estimate*, by contrast, is simply wrong. A model is not
 excused by emitting something unreadable.

@@ -443,8 +443,10 @@ def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[C
         # disappear. It is keyed by its pitch content, not its spelling, so
         # `B:dim` and `Bdim` still match; only an unparseable label (or `X`)
         # falls back to its raw text. A reference `X` thus stays in the sequence
-        # as a guaranteed miss, unlike WCSR, which skips it: dropping it would
-        # merge its neighbours, and kept it costs every backend the same.
+        # as a token no backend emits, unlike WCSR, which skips it: dropping it
+        # would merge its neighbours. If it outlasts MIN_CHORD_DURATION it costs
+        # a backend up to one edit, depending on what that backend put there,
+        # which can tip a close comparison; see EVALUATION.md, "What gets excluded".
         label = None if chord is None else project(chord, vocabulary)
         if label is None:
             label = event.label if chord is None or chord.unknown else _content_label(chord)
