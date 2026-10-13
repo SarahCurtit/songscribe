@@ -130,7 +130,7 @@ hedge anything derived from the other three.
 **3. Point the harness at both.** Once, in your shell:
 
 ```bash
-# from the repo root, so $PWD is the checkout: a relative path would break other directories
+# run from the repo root; $PWD makes the path absolute, so it works from any directory
 export SONGSCRIBE_EVAL_ROOT=~/music/beatles                 # your recordings
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"   # the directory containing chordlab/
 ```

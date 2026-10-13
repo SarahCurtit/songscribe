@@ -108,7 +108,7 @@ pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 
-# from the repo root, so $PWD is the checkout: a relative path would break other directories
+# run from the repo root; $PWD makes the path absolute, so it works from any directory
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
 export SONGSCRIBE_EVAL_ROOT=~/music                          # your recordings
 songscribe-eval survey eval/isophonics-beatles.json          # no audio, no model
@@ -137,11 +137,12 @@ instant and a long run is resumable — which matters because `madmom` runs at ~
 making the 8-hour Beatles set ~4 hours (`template` is ~180x, so ~3 minutes). Shake the
 paths out with `-c template --limit 5` first. See `EVALUATION.md`.
 
-The Beatles annotations live in the gitignored `data/` (extract the Isophonics archive
-there); `eval/isophonics-beatles.json` is the committed manifest over them. Its `reference`
-paths start at `chordlab/`, so the annotation root — `SONGSCRIBE_EVAL_ANNOTATIONS`, as
-above, or `--annotations` — must be the directory *containing* `chordlab/`; unset, it falls
-back to `eval/` and finds nothing. The manifest is **references-only** — no `audio` paths —
+The Beatles annotations live in the gitignored `data/isophonics/` (extract the Isophonics
+archive there, so `chordlab/` sits directly under it); `eval/isophonics-beatles.json` is the
+committed manifest over them. Its `reference` paths start at `chordlab/`, so the annotation
+root — `SONGSCRIBE_EVAL_ANNOTATIONS`, as above, or `--annotations` — must be the directory
+*containing* `chordlab/`; unset, it falls back to `eval/` and finds nothing. The manifest is
+**references-only** — no `audio` paths —
 so it serves `survey` and `score --estimates` (both need that root), and `score -c` on it
 scores nothing. A `-c` run needs a manifest built locally with `manifest -a`, as above; its
 audio paths follow your own library's filenames, so it stays uncommitted. Its paths are
