@@ -599,53 +599,44 @@ class TestBuildManifest:
         assert report.ambiguous == ()
         assert report.manifest["tracks"][0]["audio"] == "Paper Harbour/06 Paper Harbour.flac"
 
-    # Step 2 used to compare album folders by exact fold, so any decoration left a
-    # title shared with a compilation ambiguous.
+    # Step 2 takes only a folder named exactly after the album (case, punctuation,
+    # a leading year or track number aside): a word rule there kept picking the
+    # wrong disc or volume silently, while a decorated folder fails safe.
     @pytest.mark.parametrize(
-        "album",
+        ("album", "paired"),
         [
-            "The Band - Paper Harbour",
-            "The Band/Paper Harbour [FLAC]",
-            "The Band/Paper Harbour (Remastered)",
-            "The Band/1971 - Paper Harbour",
-            "Band, The/Paper Harbour (Deluxe Edition)/Disc 1",
+            ("The Band/Paper Harbour", True),
+            ("The Band/1971 - Paper Harbour", True),
+            ("The Band/paper harbour", True),
+            ("The Band/Paper Harbour [FLAC]", False),
+            ("The Band/Paper Harbour (Remastered)", False),
+            ("The Band - Paper Harbour", False),
         ],
     )
-    def test_a_decorated_album_folder_beats_a_compilation(self, tmp_path, album):
+    def test_only_an_exactly_named_album_folder_beats_a_compilation(
+        self, tmp_path, capsys, album, paired
+    ):
+        from songscribe.eval import cli
+
         chords = tmp_path / "ann" / "chordlab" / "The Band" / "02_-_Paper_Harbour"
         chords.mkdir(parents=True)
         (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
         audio = tmp_path / "audio"
-        for directory in (album, "The Band/Greatest Hits", "The Band/Past Masters"):
-            (audio / directory).mkdir(parents=True)
-            (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
-
-        report = isophonics.build_manifest(tmp_path / "ann", audio)
-        assert report.ambiguous == ()
-        assert report.manifest["tracks"][0]["audio"] == f"{album}/03 Lantern Over Water.flac"
-
-    # The album's words with others around them that aren't allowlisted name
-    # someone else's record, so it must neither win nor be paired.
-    @pytest.mark.parametrize("with_album", [True, False])
-    def test_a_compilation_holding_the_album_name_is_not_the_album(self, tmp_path, with_album):
-        chords = tmp_path / "ann" / "chordlab" / "The Band" / "02_-_Paper_Harbour"
-        chords.mkdir(parents=True)
-        (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
-        audio = tmp_path / "audio"
-        folders = ["Other Singer/Paper Harbour Revisited", "The Band/Greatest Hits"]
-        if with_album:
-            folders.append("The Band - Paper Harbour")
-        for directory in folders:
+        for directory in (album, "The Band/Greatest Hits"):
             (audio / directory).mkdir(parents=True)
             (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
 
         report = isophonics.build_manifest(tmp_path / "ann", audio)
         audio_path = report.manifest["tracks"][0].get("audio")
-        if with_album:
-            assert audio_path == "The Band - Paper Harbour/03 Lantern Over Water.flac"
+        if paired:
+            assert report.ambiguous == ()
+            assert audio_path == f"{album}/03 Lantern Over Water.flac"
         else:
             assert audio_path is None
             assert len(report.ambiguous) == 1
+            argv = ["manifest", str(tmp_path / "ann"), "--audio", str(audio)]
+            assert cli.main([*argv, "--output", str(tmp_path / "m.json")]) == 0
+            assert cli.AMBIGUOUS_HINT in capsys.readouterr().out
 
     @staticmethod
     def _build_album(tmp_path, album, folders):
@@ -658,8 +649,8 @@ class TestBuildManifest:
             (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
         return isophonics.build_manifest(tmp_path / "ann", audio)
 
-    # The word rule drops numbers, which made "Live 1/" the album of a "Live_2"
-    # annotation; a folder's own extra years must still not get in the way.
+    # Step 2's exact fold keeps an album's numbers apart, so "Live 1/" is never
+    # the album of a "Live_2" annotation; a decorated folder is left ambiguous.
     @pytest.mark.parametrize(
         ("album", "folders", "expected"),
         [
@@ -679,16 +670,10 @@ class TestBuildManifest:
                 ["The Band/Live at Somewhere 1970", "The Band/Live at Somewhere 1971"],
                 "The Band/Live at Somewhere 1971",
             ),
-            (
-                "Paper_Harbour",
-                ["The Band/Paper Harbour (2009 Remaster)", "The Band/Greatest Hits"],
-                "The Band/Paper Harbour (2009 Remaster)",
-            ),
-            # An exact fold must not outrank the word rule: someone else's copy wins.
-            ("Paper_Harbour", ["Other Singer/Paper Harbour", "The Band - Paper Harbour"], None),
+            ("Paper_Harbour", ["The Band/Paper Harbour (2009 Remaster)", "The Band/Hits"], None),
         ],
     )
-    def test_an_album_number_must_appear_in_its_folder(self, tmp_path, album, folders, expected):
+    def test_an_album_folder_must_carry_its_numbers(self, tmp_path, album, folders, expected):
         report = self._build_album(tmp_path, album, folders)
         audio_path = report.manifest["tracks"][0].get("audio")
         if expected is None:

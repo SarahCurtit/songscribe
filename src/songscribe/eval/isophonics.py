@@ -283,36 +283,24 @@ def _match_audio(
     folded = fold_title(relative.name)
     candidates = _best_copies(index.get(folded, []))
     album = _fold_directory(relative.parent.name)
-    album_words = _name_words(relative.parent.name)
-    artist_words = [
-        _name_words(part)
-        for part in relative.parent.parent.parts
-        if part.lower() not in CHORD_DIRECTORIES
-    ]
-    # A self-titled album names its artist, so in the library it would match the
-    # artist folder above every album, compilations included. Checked on the
-    # annotation side, whose artist/album layout is known; a library path can't
-    # say which of its directories is the artist.
-    self_titled = (album_words and album_words in artist_words) or any(
-        _fold_directory(part) == album for part in relative.parent.parent.parts
-    )
+    # A self-titled album folds to its artist's name, so in the library it would
+    # match the artist folder above every album, compilations included. Checked
+    # on the annotation side, whose artist/album layout is known; a library path
+    # can't say which of its directories is the artist.
+    self_titled = any(_fold_directory(part) == album for part in relative.parent.parent.parts)
     if len(candidates) > 1 and relative.parent != Path(".") and not self_titled:
-        # Directories below the root only, unlike step 3: a title track's filename
-        # folds to the album name, and the root's own name (or any directory above
-        # it) is shared by every candidate, so would let all of them through. Read
-        # as words, as in step 3, so "Band - Album [FLAC]" beats "Greatest Hits".
-        others = {w for words in artist_words for w in words}
-
-        # An exact fold is one way in, not a rank above the word rule: ranked first,
-        # "Other Singer/Help!" would beat "The Beatles - Help!" to a wrong pair.
-        def names_album(part: str) -> bool:
-            return _fold_directory(part) == album or (
-                _keeps_numbers(part, relative.parent.name)
-                and _holds_name(_name_words(part), album_words, others)
-            )
-
+        # Directories below the root only: a title track's own filename folds to
+        # the album name, and a directory above the root is shared by every
+        # candidate, so either would let all of them through. Exact folds only,
+        # unlike step 3's word rule: words here kept picking a wrong copy silently
+        # (disc numbers, extra numbers, near-miss names), while an exact miss
+        # fails safe as ambiguous, whose hint says to rename or move folders.
         within_album = [
-            p for p in candidates if any(map(names_album, p.relative_to(audio_root).parent.parts))
+            p
+            for p in candidates
+            if any(
+                _fold_directory(part) == album for part in p.relative_to(audio_root).parent.parts
+            )
         ]
         if within_album:
             return within_album, False

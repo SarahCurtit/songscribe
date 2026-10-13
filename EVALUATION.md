@@ -151,7 +151,7 @@ songscribe-eval manifest data/isophonics \
 ```
 
 It walks the tree for chord `.lab` files and pairs each with a recording, trying the
-mirrored relative path, then the album directory, then a punctuation- and
+mirrored relative path, then a folder named exactly after the album, then a punctuation- and
 track-number-insensitive title match. That last step takes a lone match only when it sits
 directly in the audio root or under a folder that names the annotation's artist or album, so
 a same-titled song in someone else's folders is not picked up when your copy is missing. The
@@ -161,8 +161,8 @@ Edition*, *Vinyl Rip* or *FLAC* are ignored, so `1965 - Help! (Remastered)/`,
 `The Beatles - Help! (2009) [FLAC]/` and `A Hard Days Night/` qualify. Numbers in the
 annotation's own album name (after its track or disc prefix) are not ignored: the folder
 must carry them too, so `Live 1/` never stands in for *Live 2*, nor `Live in Paris 1970/`
-for *Live in Paris 1971*, while a folder's extra years still don't matter. A folder that holds
-the name among other words qualifies only when those other words are the annotation's other
+for *Live in Paris 1971*, while a folder's extra numbers of any kind are tolerated. A folder
+that holds the name among other words qualifies only when those other words are the annotation's other
 name (artist beside album) or one of *the*, *discography*, *collection*, *complete*,
 *anthology*, *box*, *set* — so `Beatles, The/` and `Beatles Discography/CD 05/` count, while
 `Beatles Covers/`, `Songs of The Beatles/`, `Help Yourself Sessions/`, `Abbey Road Demos/`
@@ -176,11 +176,13 @@ The report splits what did not pair. **No audio found** means no file carries th
 fix those filenames. **Title found but no folder names the artist or album** means the file
 is there but its folders don't say whose it is: point `--audio` at the artist's folder, or
 rename the album folders, rather than the files. **Ambiguous** means the title is in several
-folders and none of them names the annotation's album — read with the same word rule as
-above, so `The Beatles - Help!/`, `Help! [FLAC]/` or `Help! (Remastered)/` beside a
-`Greatest Hits/` copy pairs with the album, while `Help! Revisited/` does not count as
-it. Rename the album folder, or move compilations out of `--audio`; a self-titled album
-(*The Beatles*) can't be told from its artist folder, so for it only the latter works.
+folders and none of them is named exactly after the annotation's album. The word rule above
+does not apply here: only a folder named exactly like the album — case, punctuation and a
+leading year or track number aside, so `Help!/` or `1965 - Help/` — picks that copy over a
+`Greatest Hits/` one, while `The Beatles - Help!/` or `Help! [FLAC]/` leaves the title
+ambiguous. A looser reading kept choosing the wrong disc or volume silently. Rename the album
+folder, or move compilations out of `--audio`; a self-titled album (*The Beatles*) can't be
+told from its artist folder, so for it only the latter works.
 `--list-unpaired` lists every track in each group.
 
 This manifest is yours alone: its audio paths follow your library's filenames, so it is
