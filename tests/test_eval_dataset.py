@@ -275,7 +275,7 @@ class TestBuildManifest:
 
     # With the band's own copy missing, a same-titled song by someone else used to
     # pair and be scored as though it were the annotated recording.
-    def test_a_lone_title_under_unrelated_folders_is_reported_unpaired(self, tmp_path):
+    def test_a_lone_title_under_unrelated_folders_is_reported_unplaced(self, tmp_path):
         chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / "05_-_Fifth_Album"
         chords.mkdir(parents=True)
         (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
@@ -286,8 +286,87 @@ class TestBuildManifest:
         report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
         assert report.paired == 0
         assert report.ambiguous == ()
-        assert report.unpaired == ("chordlab/Placeholder Band/05_-_Fifth_Album/13_-_Common_Title",)
+        assert report.unpaired == ()
+        assert report.unplaced == ("chordlab/Placeholder Band/05_-_Fifth_Album/13_-_Common_Title",)
         assert report.total == 1
+
+    # A real library seldom names its folders exactly as Isophonics does; these
+    # all used to fail the exact-name check and pair nothing.
+    @pytest.mark.parametrize(
+        ("root", "folder"),
+        [
+            ("placeholder band", "2003 - Fifth Album (Remastered)"),
+            ("placeholder band", "Fifth Album [2009 Stereo Remaster]"),
+            ("Music", "The Placeholder Band - Fifth Album (2009) [FLAC]"),
+            ("Music", "Placeholder Band - Fifth Album"),
+            ("Music", "Placeholder Band Discography/CD 05"),
+            ("Placeholder Band Discography", "CD 05"),
+        ],
+    )
+    def test_a_lone_title_pairs_under_a_decorated_artist_or_album_folder(
+        self, tmp_path, root, folder
+    ):
+        chords = tmp_path / "ann" / "chordlab" / "The Placeholder Band" / "05_-_Fifth_Album"
+        chords.mkdir(parents=True)
+        (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / root / folder / "13 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / root)
+        assert report.paired == 1
+        assert report.unplaced == ()
+
+    def test_a_short_name_with_both_artist_and_album_in_one_folder_pairs(self, tmp_path):
+        chords = tmp_path / "ann" / "chordlab" / "Zork" / "02_-_Gold"
+        chords.mkdir(parents=True)
+        (chords / "04_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / "Zork - Gold (2001)" / "04 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 1
+
+    # Containment alone would let the album "Help" claim any folder with "help"
+    # in it; a contained name must share a word of five letters or more, so a
+    # four-letter album only counts when the folder reduces to it exactly.
+    @pytest.mark.parametrize(
+        ("folder", "paired"),
+        [("Hold Yourself Sessions", 0), ("Hold! (Remastered)", 1), ("1999 - Hold", 1)],
+    )
+    def test_a_short_album_name_does_not_match_a_longer_unrelated_one(
+        self, tmp_path, folder, paired
+    ):
+        chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / "06_-_Hold!"
+        chords.mkdir(parents=True)
+        (chords / "03_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / "Someone Else" / folder / "03 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == paired
+        assert len(report.unplaced) == 1 - paired
+        assert report.total == report.paired + len(report.unpaired) + len(report.unplaced)
+
+    def test_the_manifest_command_reports_unplaced_tracks_with_a_hint(self, tmp_path, capsys):
+        from songscribe.eval import cli
+
+        chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / "05_-_Fifth_Album"
+        chords.mkdir(parents=True)
+        (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / "Unrelated Singer" / "Their Album" / "07 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        argv = ["manifest", str(tmp_path / "ann"), "--audio", str(tmp_path / "audio")]
+        assert cli.main([*argv, "--output", str(tmp_path / "m.json")]) == 0
+        out = capsys.readouterr().out
+        assert "title found but no folder names the artist or album: 1" in out
+        assert cli.UNPLACED_HINT in out
+        assert "no audio found" not in out
+        assert "chordlab/Placeholder Band/05_-_Fifth_Album/13_-_Common_Title" in out
 
     @pytest.mark.parametrize(
         "rip",

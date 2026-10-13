@@ -30,6 +30,10 @@ from .survey import TOP_LABELS
 #: album/track path, short enough to leave room for four scores.
 _ID_WIDTH = 52
 
+#: Printed under the unplaced count: those tracks *were* found, so renaming the
+#: files -- the fix for a miss -- would not help; the folders are what failed.
+UNPLACED_HINT = "point --audio at the artist folder or rename album folders"
+
 
 def _positive_int(text: str) -> int:
     """An argparse type for counts that must be at least 1.
@@ -102,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument(
         "--list-unpaired",
         action="store_true",
-        help="print every track with no matching audio, not just the count",
+        help="print every track that did not pair, not just the first few",
     )
 
     score = subparsers.add_parser(
@@ -246,10 +250,17 @@ def _manifest(args: argparse.Namespace) -> int:
         return 0
 
     print(f"  paired with audio: {report.paired}")
-    for label, tracks in (("no audio found", report.unpaired), ("ambiguous", report.ambiguous)):
+    groups = (
+        ("no audio found", report.unpaired, None),
+        ("ambiguous", report.ambiguous, None),
+        ("title found but no folder names the artist or album", report.unplaced, UNPLACED_HINT),
+    )
+    for label, tracks, hint in groups:
         if not tracks:
             continue
         print(f"  {label}: {len(tracks)}")
+        if hint:
+            print(f"    ({hint})")
         shown = tracks if args.list_unpaired else tracks[:5]
         for track_id in shown:
             print(f"    {track_id}")

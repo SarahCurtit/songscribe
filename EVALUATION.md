@@ -153,11 +153,21 @@ songscribe-eval manifest data/isophonics \
 It walks the tree for chord `.lab` files and pairs each with a recording, trying the
 mirrored relative path, then the album directory, then a punctuation- and
 track-number-insensitive title match. That last step takes a lone match only when it sits
-directly in the audio root or under a folder named like the annotation's artist or album, so
-a same-titled song by someone else is not picked up when your copy is missing. Anything it
-cannot pair uniquely it *reports* rather
-than guessing at — a manifest quietly pointing at the wrong recording would produce a
-plausible, wrong score. Use `--list-unpaired` to see every miss and fix your filenames.
+directly in the audio root or under a folder that names the annotation's artist or album, so
+a same-titled song by someone else is not picked up when your copy is missing. The `--audio`
+directory's own name counts (`~/music/beatles` names the artist), and years, disc and track
+numbers, a leading "The" and words like *Remastered*, *Deluxe Edition* or *FLAC* are
+ignored, so `1965 - Help! (Remastered)/`, `The Beatles - Help! (2009) [FLAC]/` and
+`Beatles Discography/CD 05/` all qualify. A folder that only *contains* the name needs a word
+of five letters or more in common with it, so `Help Yourself Sessions/` does not stand in
+for *Help!*. Anything it cannot pair uniquely it *reports* rather than guessing at — a
+manifest quietly pointing at the wrong recording would produce a plausible, wrong score.
+
+The report splits what did not pair. **No audio found** means no file carries the title:
+fix those filenames. **Title found but no folder names the artist or album** means the file
+is there but its folders don't say whose it is: point `--audio` at the artist's folder, or
+rename the album folders, rather than the files. `--list-unpaired` lists every track in
+each group.
 
 This manifest is yours alone: its audio paths follow your library's filenames, so it is
 not committed. The committed `eval/isophonics-beatles.json` is the Beatles chordlab set

@@ -2,9 +2,8 @@
 
 Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
 relative path, the same folded title within the matching album, then a unique folded title
-at the root or under a folder named for its artist or album (folding drops case, punctuation,
-disc and track numbers). Misses are reported, never guessed at -- a wrong pairing would
-produce a plausible, wrong score.
+at the root or under a folder -- the audio root's included -- naming its artist or album.
+Misses are reported, never guessed at: a wrong pairing gives a plausible, wrong score.
 """
 
 from __future__ import annotations
@@ -40,6 +39,37 @@ OTHER_ANNOTATION_DIRECTORIES = (
 # "CD1_-_01_-_..." and a rip's "Disc 1 - 01 - ..." or "1-01 ..." must all agree.
 _TRACK_NUMBER = re.compile(r"^(?:(?:cd|disc|disk)?\d+)+")
 _NOT_ALNUM = re.compile(r"[^a-z0-9]+")
+_WORD = re.compile(r"[a-z0-9]+")
+
+#: Words a rip adds to a folder name that say nothing about which album it is,
+#: so "Help! [2009 Stereo Remaster]" and "1965 - Help! (Deluxe Edition)" both
+#: reduce to the album's own words.
+DECORATION_WORDS = frozenset(
+    {
+        "remaster",
+        "remastered",
+        "deluxe",
+        "edition",
+        "expanded",
+        "anniversary",
+        "stereo",
+        "mono",
+        "flac",
+        "mp3",
+        "aac",
+        "alac",
+        "ogg",
+        "wav",
+        "cd",
+        "disc",
+        "disk",
+    }
+)
+
+#: A folder that merely *contains* an artist or album name ("Band Discography",
+#: "Band - Album (2009)") must share a word at least this long with it: a short
+#: album like "Help" would otherwise claim "Help Yourself Sessions".
+MIN_CONTAINED_WORD = 5
 
 #: Deliberately silent about provenance: this builder reads any
 #: Isophonics-*shaped* tree, and stamping "isophonics.net" onto a manifest
@@ -68,7 +98,8 @@ class BuildReport:
 
     ``total`` counts annotations, not pairings: a references-only manifest is
     a legitimate result with nothing paired, and deriving the total from the
-    pairing counts would report it as empty.
+    pairing counts would report it as empty. ``unplaced``: a lone title found
+    under no folder naming its artist or album -- a layout problem, not a miss.
     """
 
     manifest: dict
@@ -76,6 +107,7 @@ class BuildReport:
     paired: int
     unpaired: tuple[str, ...]
     ambiguous: tuple[str, ...]
+    unplaced: tuple[str, ...] = ()
 
 
 def fold_title(name: str) -> str:
@@ -179,6 +211,7 @@ def build_manifest(
     entries: list[dict[str, str]] = []
     unpaired: list[str] = []
     ambiguous: list[str] = []
+    unplaced: list[str] = []
     paired = 0
 
     for annotation in annotations:
@@ -187,12 +220,14 @@ def build_manifest(
         entry = {"id": track_id, "reference": relative.as_posix()}
 
         if audio_root is not None:
-            matches = _match_audio(relative, audio_root, index)
+            matches, misplaced = _match_audio(relative, audio_root, index)
             if len(matches) == 1:
                 entry["audio"] = matches[0].relative_to(audio_root).as_posix()
                 paired += 1
             elif matches:
                 ambiguous.append(track_id)
+            elif misplaced:
+                unplaced.append(track_id)
             else:
                 unpaired.append(track_id)
 
@@ -207,6 +242,7 @@ def build_manifest(
         paired=paired,
         unpaired=tuple(unpaired),
         ambiguous=tuple(ambiguous),
+        unplaced=tuple(unplaced),
     )
 
 
@@ -214,13 +250,16 @@ def _match_audio(
     relative: Path,
     audio_root: Path,
     index: dict[str, list[Path]],
-) -> list[Path]:
-    """Candidate audio files for one annotation, best strategy first."""
+) -> tuple[list[Path], bool]:
+    """Candidate audio files for one annotation, best strategy first.
+
+    The flag is true when a lone title was found but rejected for its folders.
+    """
     # 1. The library mirrors the annotation tree exactly.
     for extension in AUDIO_EXTENSIONS:
         exact = audio_root / relative.with_suffix(extension)
         if exact.is_file():
-            return [exact]
+            return [exact], False
 
     # 2. The album directory matches but the filename differs in punctuation.
     folded = fold_title(relative.name)
@@ -243,7 +282,7 @@ def _match_audio(
             )
         ]
         if within_album:
-            return within_album
+            return within_album, False
 
     # 3. A unique title elsewhere. Several hits are left ambiguous: two albums
     #    with the same track title would otherwise be scored against each
@@ -252,23 +291,66 @@ def _match_audio(
         # A lone hit is accepted only beside a folder named for the annotation's
         # artist or album, or loose at the root of a flat library: with one track
         # missing, a same-titled song by someone else would pair and score
-        # silently. Relax this here if a library's layout says nothing useful.
-        return []
-    return candidates
+        # silently. Reported apart from misses, since the fix is the layout.
+        return [], True
+    return candidates, False
 
 
 def _plausible_home(candidate: Path, relative: Path, audio_root: Path) -> bool:
-    """True if ``candidate`` sits at the root or under the annotation's artist or album."""
+    """True if ``candidate`` sits at the root or under the annotation's artist or album.
+
+    The audio root's own name counts: ``--audio ~/music/band`` names the artist.
+    """
     library = candidate.relative_to(audio_root).parent.parts
     if not library:
         return True
-    # Empty folds are dropped so two all-punctuation names can't "agree".
-    expected = {
-        _fold_directory(part)
-        for part in relative.parent.parts
-        if part.lower() not in CHORD_DIRECTORIES
-    } - {""}
-    return any(_fold_directory(part) in expected for part in library)
+    expected = [
+        _name_words(part) for part in relative.parent.parts if part.lower() not in CHORD_DIRECTORIES
+    ]
+    expected = [words for words in expected if words]
+    folders = [_name_words(part) for part in (audio_root.resolve().name, *library)]
+    return any(_names_agree(folder, expected) for folder in folders if folder)
+
+
+def _name_words(name: str) -> tuple[str, ...]:
+    """The words of a folder name that identify an artist or album.
+
+    Separate from :func:`_fold` so steps 1-2 keep their exact matching. Numbers
+    (track, disc, year) and :data:`DECORATION_WORDS` go wherever they sit, and a
+    leading "the", so "The Band - Album (2009) [FLAC]" reads as ``band album``.
+    """
+    words = [w for w in _WORD.findall(name.lower()) if w not in DECORATION_WORDS]
+    words = [w for w in words if not _TRACK_NUMBER.fullmatch(w)]
+    return tuple(words[1:] if words[:1] == ["the"] else words)
+
+
+def _names_agree(folder: tuple[str, ...], expected: list[tuple[str, ...]]) -> bool:
+    """True if a library folder's words name one of the annotation's folders.
+
+    Equal word lists always agree. Otherwise one must run contiguously inside
+    the other and share a word of :data:`MIN_CONTAINED_WORD` letters, the folder
+    side needing two words so a generic "Music" can't claim "Music Of The Band";
+    or the folder must hold every annotation name at once ("Band - Album").
+    """
+    if folder in expected:
+        return True
+    if len(expected) > 1 and all(_contains(folder, words) for words in expected):
+        return True
+    for words in expected:
+        if _contains(folder, words) and _has_long_word(words):
+            return True
+        if len(folder) > 1 and _contains(words, folder) and _has_long_word(folder):
+            return True
+    return False
+
+
+def _contains(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
+    size = len(shorter)
+    return any(longer[i : i + size] == shorter for i in range(len(longer) - size + 1))
+
+
+def _has_long_word(words: tuple[str, ...]) -> bool:
+    return any(len(w) >= MIN_CONTAINED_WORD for w in words)
 
 
 def _best_copies(paths: list[Path]) -> list[Path]:
