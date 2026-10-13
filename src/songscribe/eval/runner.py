@@ -1,22 +1,7 @@
 """Run a chord backend over a dataset and aggregate the scores.
 
-Estimates are cached as ``.lab`` files keyed by backend, input variant (full
-mix or separated stem) and track. ``madmom``
-runs at roughly 2x realtime on one CPU, so the 8-hour Isophonics Beatles set
-takes about 4 hours -- long enough that a run will sometimes be interrupted,
-and far too long to repeat because a scoring rule changed. Re-scoring cached
-estimates under a different vocabulary is instant, and it is the scoring rules
-that get iterated on, not usually the model.
-
-Two corpus-level aggregates are reported, because they answer different
-questions and MIREX reports both:
-
-* **mean** -- the unweighted mean of per-track WCSR. Every song counts once.
-* **weighted** -- total correct duration over total compared duration. Every
-  second counts once, so long songs pull harder.
-
-Heavy imports stay inside functions, per the project's rule: importing this
-module must not drag in librosa or madmom.
+Estimates are cached as ``.lab`` files keyed by backend, input variant (full mix or
+separated stem) and track; the report gives per-track mean and duration-weighted WCSR.
 """
 
 from __future__ import annotations
