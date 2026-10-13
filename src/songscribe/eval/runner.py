@@ -237,15 +237,13 @@ def score_track(
 ) -> TrackResult:
     """Score one track's estimate against its reference annotation.
 
-    ``check_alignment`` also sweeps a time offset, which costs no model time
-    and catches a recording that does not share the reference's timeline. It
-    only ever reports; the score itself is never shifted.
-
-    ``reference`` takes an already-parsed annotation, so a caller can read it
-    under its own error handling; otherwise it is read from ``track.reference``.
+    ``check_alignment`` also sweeps a time offset as a diagnostic only; the score
+    itself is never shifted. ``reference`` takes an already-parsed annotation;
+    otherwise it is read from ``track.reference``.
     """
     from .. import lab
 
+    # A pre-parsed reference lets the caller read it under its own error handling.
     if reference is None:
         reference = lab.read(track.reference)
     start, end = metrics.extent(reference)
@@ -253,6 +251,9 @@ def score_track(
 
     alignment = None
     if check_alignment and scores:
+        # The sweep costs no model time and catches a recording that does not
+        # share the reference's timeline.
+        #
         # Sweep in whichever vocabulary is being reported: asking for a
         # vocabulary the caller excluded would report a gain against a number
         # that appears nowhere in the output. Keyed off `scores` rather than
