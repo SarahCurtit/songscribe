@@ -790,6 +790,22 @@ class TestBuildManifest:
         with pytest.raises(NotADirectoryError):
             isophonics.build_manifest(tmp_path / "nope")
 
+    def test_a_missing_audio_directory_raises(self, annotations, tmp_path):
+        with pytest.raises(NotADirectoryError, match="no audio directory"):
+            isophonics.build_manifest(annotations, tmp_path / "musci")
+
+    def test_the_manifest_command_keeps_the_old_output_on_a_missing_audio_root(
+        self, annotations, tmp_path, capsys
+    ):
+        from songscribe.eval import cli
+
+        output = tmp_path / "m.json"
+        output.write_text("previous manifest", encoding="utf-8")
+        argv = ["manifest", str(annotations), "--audio", str(tmp_path / "musci")]
+        assert cli.main([*argv, "--output", str(output)]) == 1
+        assert "no audio directory at" in capsys.readouterr().err
+        assert output.read_text(encoding="utf-8") == "previous manifest"
+
     def test_a_directory_with_no_annotations_raises(self, tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()

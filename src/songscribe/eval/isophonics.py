@@ -220,6 +220,10 @@ def build_manifest(
         raise FileNotFoundError(f"no .lab files under {annotation_root}")
 
     audio_root = Path(audio_root).expanduser() if audio_root else None
+    # A mistyped audio root would otherwise index nothing and report every
+    # track as unpaired, pointing at filenames rather than the path.
+    if audio_root is not None and not audio_root.is_dir():
+        raise NotADirectoryError(f"no audio directory at {audio_root}")
     index = index_audio(audio_root) if audio_root else {}
 
     entries: list[dict[str, str]] = []
