@@ -146,16 +146,12 @@ class TestGridReliabilityGating:
 
 
 class TestTheReliabilityGateIsWeak:
-    """Recording a known limitation rather than hiding it.
+    """Known limitation: the residual gate is weak on short timelines.
 
-    The unit is a free continuous parameter searched over a +/-50% window, so
-    on a short timeline almost any durations fit *something* to within a few
-    percent. The residual only separates regular from irregular material once
-    there are enough chords for a wrong unit to accumulate error -- a real
-    track has 30-50 chart chords, these fixtures have 8-12.
-
-    Which is why ``GRID_MAX_RESIDUAL`` is a threshold calibrated on limited
-    data, and why supplying a known unit is the reliable path.
+    The unit is searched over a +/-50% window, so on 8-12 chord fixtures almost any
+    durations fit some unit within a few percent; the gate only discriminates at
+    real-track lengths (30-50 chords). ``GRID_MAX_RESIDUAL`` is calibrated on limited
+    data, so a known ``unit=`` is the reliable path.
     """
 
     @pytest.mark.parametrize(
