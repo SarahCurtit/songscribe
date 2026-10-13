@@ -1,9 +1,10 @@
 """Build an evaluation manifest from an Isophonics annotation tree.
 
 Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
-relative path, then the same folded title within the matching album, then a unique folded
-title anywhere (folding drops case, punctuation, and disc and track numbers). Unpaired files
-are reported, never guessed at -- a wrong pairing would produce a plausible, wrong score.
+relative path, the same folded title within the matching album, then a unique folded title
+at the root or under a folder named for its artist or album (folding drops case, punctuation,
+disc and track numbers). Misses are reported, never guessed at -- a wrong pairing would
+produce a plausible, wrong score.
 """
 
 from __future__ import annotations
@@ -244,10 +245,30 @@ def _match_audio(
         if within_album:
             return within_album
 
-    # 3. A unique title anywhere under the audio root. Several hits are left
-    #    ambiguous: two albums with the same track title would otherwise be
-    #    scored against each other's recording.
+    # 3. A unique title elsewhere. Several hits are left ambiguous: two albums
+    #    with the same track title would otherwise be scored against each
+    #    other's recording.
+    if len(candidates) == 1 and not _plausible_home(candidates[0], relative, audio_root):
+        # A lone hit is accepted only beside a folder named for the annotation's
+        # artist or album, or loose at the root of a flat library: with one track
+        # missing, a same-titled song by someone else would pair and score
+        # silently. Relax this here if a library's layout says nothing useful.
+        return []
     return candidates
+
+
+def _plausible_home(candidate: Path, relative: Path, audio_root: Path) -> bool:
+    """True if ``candidate`` sits at the root or under the annotation's artist or album."""
+    library = candidate.relative_to(audio_root).parent.parts
+    if not library:
+        return True
+    # Empty folds are dropped so two all-punctuation names can't "agree".
+    expected = {
+        _fold_directory(part)
+        for part in relative.parent.parts
+        if part.lower() not in CHORD_DIRECTORIES
+    } - {""}
+    return any(_fold_directory(part) in expected for part in library)
 
 
 def _best_copies(paths: list[Path]) -> list[Path]:

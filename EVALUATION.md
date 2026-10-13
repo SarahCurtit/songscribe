@@ -152,7 +152,10 @@ songscribe-eval manifest data/isophonics \
 
 It walks the tree for chord `.lab` files and pairs each with a recording, trying the
 mirrored relative path, then the album directory, then a punctuation- and
-track-number-insensitive title match. Anything it cannot pair uniquely it *reports* rather
+track-number-insensitive title match. That last step takes a lone match only when it sits
+directly in the audio root or under a folder named like the annotation's artist or album, so
+a same-titled song by someone else is not picked up when your copy is missing. Anything it
+cannot pair uniquely it *reports* rather
 than guessing at — a manifest quietly pointing at the wrong recording would produce a
 plausible, wrong score. Use `--list-unpaired` to see every miss and fix your filenames.
 

@@ -260,15 +260,34 @@ class TestBuildManifest:
         assert report.paired == 1
         assert report.unpaired == ("chordlab/The Band/01_-_First_Album/02_-_Counting_Windows",)
 
-    def test_audio_is_paired_by_folded_title_anywhere_under_the_root(self, annotations, tmp_path):
-        audio = tmp_path / "audio" / "Some Other Layout"
-        audio.mkdir(parents=True)
+    @pytest.mark.parametrize("folder", ["Music/the band/Some Rip", "Music/First Album", "."])
+    def test_a_lone_title_pairs_under_its_artist_or_album_or_at_the_root(
+        self, annotations, tmp_path, folder
+    ):
+        audio = tmp_path / "audio" / folder
+        audio.mkdir(parents=True, exist_ok=True)
         (audio / "01 Lantern Over Water.mp3").write_bytes(b"x")
         (audio / "02 Counting Windows.mp3").write_bytes(b"x")
 
         report = isophonics.build_manifest(annotations, tmp_path / "audio")
         assert report.paired == 2
         assert report.unpaired == ()
+
+    # With the band's own copy missing, a same-titled song by someone else used to
+    # pair and be scored as though it were the annotated recording.
+    def test_a_lone_title_under_unrelated_folders_is_reported_unpaired(self, tmp_path):
+        chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / "05_-_Fifth_Album"
+        chords.mkdir(parents=True)
+        (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / "Unrelated Singer" / "Their Album" / "07 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 0
+        assert report.ambiguous == ()
+        assert report.unpaired == ("chordlab/Placeholder Band/05_-_Fifth_Album/13_-_Common_Title",)
+        assert report.total == 1
 
     @pytest.mark.parametrize(
         "rip",
