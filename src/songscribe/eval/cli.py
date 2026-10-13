@@ -54,8 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evaluate a chord backend against reference annotations.",
         epilog=(
             "Manifests hold relative paths only: no audio and no annotations, "
-            f"so they are safe to commit. Point {AUDIO_ROOT_ENV} at your "
-            f"recordings and {ANNOTATION_ROOT_ENV} at your .lab files. "
+            f"so they are safe to commit. Point {AUDIO_ROOT_ENV} and {ANNOTATION_ROOT_ENV} "
+            "at the directories passed to 'songscribe-eval manifest' as --audio and as "
+            "its annotation argument (for Isophonics, the one containing chordlab/). "
             "See EVALUATION.md."
         ),
     )
@@ -127,9 +128,16 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument(
         "--estimates", type=Path, help="score pre-computed .lab estimates in this directory"
     )
-    score.add_argument("-a", "--audio", type=Path, help=f"audio root (overrides {AUDIO_ROOT_ENV})")
     score.add_argument(
-        "--annotations", type=Path, help=f"annotation root (overrides {ANNOTATION_ROOT_ENV})"
+        "-a",
+        "--audio",
+        type=Path,
+        help=f"directory passed to 'manifest --audio' (overrides {AUDIO_ROOT_ENV})",
+    )
+    score.add_argument(
+        "--annotations",
+        type=Path,
+        help=f"annotation directory passed to 'manifest' (overrides {ANNOTATION_ROOT_ENV})",
     )
     score.add_argument(
         "-v",
@@ -175,7 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     survey.add_argument("manifest", type=Path, help="manifest to survey")
     survey.add_argument(
-        "--annotations", type=Path, help=f"annotation root (overrides {ANNOTATION_ROOT_ENV})"
+        "--annotations",
+        type=Path,
+        help=f"annotation directory passed to 'manifest' (overrides {ANNOTATION_ROOT_ENV})",
     )
     survey.add_argument(
         "-v",
