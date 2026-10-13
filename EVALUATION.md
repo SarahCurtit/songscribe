@@ -104,8 +104,8 @@ backends do not share a bias.
 that scores best is fitting to the reference: do that and a misaligned corpus quietly
 becomes a flattering one. Treat the number as an instruction to fix the audio — trim the
 lead-in with `ffmpeg -ss <offset> -i in.m4a -ac 1 -ar 44100 out.wav` — then re-run with a
-fresh `--cache`, since cached estimates are keyed by backend and track, not by the audio
-they came from.
+fresh `--cache`, since cached estimates are keyed by backend, input variant and track, not
+by the audio they came from.
 
 The sweep costs about 10 s across 180 tracks, nothing against 4 hours of inference but
 noticeable on a cached re-score; `--no-alignment-check` skips it.
