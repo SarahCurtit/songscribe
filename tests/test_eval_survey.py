@@ -105,10 +105,18 @@ class TestScoreableTime:
         assert result.scoreable["sevenths"] == pytest.approx(0.0)
 
     def test_unknown_reference_time_is_scoreable_nowhere(self, corpus):
-        # Including under mirex and root, which exclude nothing else.
+        # Including under root, which excludes nothing else, and mirex.
         data = corpus({"a": "0.0 10.0 X\n10.0 20.0 C:maj\n"})
         result = survey(data, vocabularies=("root", "mirex"))
         assert result.scoreable["root"] == pytest.approx(0.5)
+        assert result.scoreable["mirex"] == pytest.approx(0.5)
+
+    def test_a_power_chord_is_excluded_from_mirex_only(self, corpus):
+        # Two pitch classes can never share three, so mirex cannot score it,
+        # while root still can.
+        data = corpus({"a": "0.0 10.0 A:(1,5)\n10.0 20.0 C:maj\n"})
+        result = survey(data, vocabularies=("root", "mirex"))
+        assert result.scoreable["root"] == pytest.approx(1.0)
         assert result.scoreable["mirex"] == pytest.approx(0.5)
 
     def test_no_chord_time_is_scoreable_everywhere(self, corpus):

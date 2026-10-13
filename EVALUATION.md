@@ -180,6 +180,11 @@ so the most any backend could possibly get right there. On this corpus `majmin` 
 17 minutes out of 489 — the suspensions, diminished and augmented chords — which is the
 honest denominator to quote alongside a WCSR figure.
 
+The `mirex` row above predates a fix: `mirex` now also excludes reference chords with fewer
+than 3 pitch classes (power chords like `A:(1,5)`, bare roots like `E:(1)`), which no
+estimate could ever match. Any such labels in the corpus will pull it below 100% once
+re-measured.
+
 **6. Score a backend.**
 
 ```bash

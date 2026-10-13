@@ -150,6 +150,19 @@ class TestMirexComparison:
     def test_no_chord_against_no_chord_is_right(self):
         assert metrics.compare(parse("N"), parse("N"), "mirex") is True
 
+    @pytest.mark.parametrize("label", ["A:(1,5)", "E:(1)", "C:(1,b3)"])
+    def test_a_reference_under_three_pitch_classes_is_skipped(self, label):
+        # Not even a perfect estimate could reach three shared pitch classes.
+        assert metrics.compare(parse(label), parse(label), "mirex") is None
+        assert metrics.compare(parse(label), parse("C:maj"), "mirex") is None
+
+    def test_a_skipped_reference_leaves_the_denominator(self):
+        reference = timeline((0.0, 10.0, "A:(1,5)"), (10.0, 20.0, "C:maj"))
+        result = metrics.score(reference, reference, "mirex")
+        assert result.compared == pytest.approx(10.0)
+        assert result.ignored == pytest.approx(10.0)
+        assert result.wcsr == pytest.approx(1.0)
+
 
 class TestFillGaps:
     def test_an_uncovered_middle_becomes_no_chord(self):

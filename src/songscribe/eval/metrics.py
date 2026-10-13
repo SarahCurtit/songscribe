@@ -169,6 +169,11 @@ def compare(reference: Chord | None, estimate: Chord | None, vocabulary: str) ->
     if vocabulary == "mirex":
         if reference.is_no_chord:
             return estimate is not None and estimate.is_no_chord
+        # A power chord or bare root can never share three pitch classes with
+        # anything, itself included, so it is skipped as mir_eval does rather
+        # than counted as time no estimate could get right.
+        if len(reference.pitch_classes) < MIREX_MIN_SHARED:
+            return None
         if estimate is None or estimate.is_no_chord:
             return False
         shared = reference.pitch_classes & estimate.pitch_classes
