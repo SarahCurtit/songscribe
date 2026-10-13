@@ -110,9 +110,12 @@ trim its magnitude with `ffmpeg -ss 1.70 -i in.m4a -ac 1 -ar 44100 out.wav` (nev
 `-ss -1.70`, which trims nothing). A positive one means it starts early, which `-ss` cannot
 fix; pad that much silence instead, delaying every channel before `-ac 1` downmixes them:
 `ffmpeg -i in.m4a -af "adelay=<ms>|<ms>" -ac 1 -ar 44100 out.wav` (a mono source ignores
-the second delay, and this form, unlike `all=1`, works on FFmpeg 4.2). Then re-run with a
-fresh `--cache`, since cached estimates are keyed by backend, input variant and track, not
-by the audio they came from.
+the second delay, and this form, unlike `all=1`, works on FFmpeg 4.2). The manifest still
+points at `in.m4a`, so move that out of the audio library, put `out.wav` in its folder
+with the same stem, and rebuild the manifest with `manifest --audio`. Keeping both loses:
+a copy in another folder fails the album match, and one beside a FLAC original ranks
+below it. Then re-run with a fresh `--cache`, since cached estimates are keyed by backend,
+input variant and track, not by the audio they came from.
 
 The sweep costs about 10 s across 180 tracks, nothing against 4 hours of inference but
 noticeable on a cached re-score; `--no-alignment-check` skips it.
