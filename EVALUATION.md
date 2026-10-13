@@ -154,14 +154,20 @@ It walks the tree for chord `.lab` files and pairs each with a recording, trying
 mirrored relative path, then the album directory, then a punctuation- and
 track-number-insensitive title match. That last step takes a lone match only when it sits
 directly in the audio root or under a folder that names the annotation's artist or album, so
-a same-titled song by someone else is not picked up when your copy is missing. The `--audio`
-directory's own name counts (`~/music/beatles` names the artist), and years, disc and track
-numbers, a leading "The" and words like *Remastered*, *Deluxe Edition* or *FLAC* are
-ignored, so `1965 - Help! (Remastered)/`, `The Beatles - Help! (2009) [FLAC]/` and
-`Beatles Discography/CD 05/` all qualify. A folder that only *contains* the name needs a word
-of five letters or more in common with it, so `Help Yourself Sessions/` does not stand in
-for *Help!*. Anything it cannot pair uniquely it *reports* rather than guessing at — a
-manifest quietly pointing at the wrong recording would produce a plausible, wrong score.
+a same-titled song in someone else's folders is not picked up when your copy is missing. The
+`--audio` directory's own name counts (`~/music/beatles` names the artist), and years, disc
+and track numbers, a leading "The" and words like *Remastered*, *Deluxe Edition* or *FLAC*
+are ignored, so `1965 - Help! (Remastered)/` and `The Beatles - Help! (2009) [FLAC]/`
+qualify. A folder that holds the name among other words qualifies only when those other
+words are the annotation's other name (artist beside album) or one of *the*, *discography*,
+*collection*, *complete*, *anthology*, *box*, *set* — so `Beatles, The/` and
+`Beatles Discography/CD 05/` count, while `Beatles Covers/`, `Songs of The Beatles/`,
+`Help Yourself Sessions/` and `Abbey Road Demos/` do not, and neither does `Queen Latifah/`
+for Queen. A folder that is only *part* of a name (`Lonely Hearts/`) never counts. The check
+reads folder names, not recordings: a folder named exactly like the album — someone else's
+`Let It Be/` — or an `--audio` root named for the artist still vouches for whatever is in
+it. Anything it cannot pair uniquely it *reports* rather than guessing at — a manifest
+quietly pointing at the wrong recording would produce a plausible, wrong score.
 
 The report splits what did not pair. **No audio found** means no file carries the title:
 fix those filenames. **Title found but no folder names the artist or album** means the file

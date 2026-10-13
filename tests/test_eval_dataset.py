@@ -328,9 +328,8 @@ class TestBuildManifest:
         report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
         assert report.paired == 1
 
-    # Containment alone would let the album "Help" claim any folder with "help"
-    # in it; a contained name must share a word of five letters or more, so a
-    # four-letter album only counts when the folder reduces to it exactly.
+    # Containment alone would let the album "Hold" claim any folder with "hold"
+    # in it; "Yourself Sessions" is neither the artist nor an allowed extra.
     @pytest.mark.parametrize(
         ("folder", "paired"),
         [("Hold Yourself Sessions", 0), ("Hold! (Remastered)", 1), ("1999 - Hold", 1)],
@@ -349,6 +348,58 @@ class TestBuildManifest:
         assert report.paired == paired
         assert len(report.unplaced) == 1 - paired
         assert report.total == report.paired + len(report.unpaired) + len(report.unplaced)
+
+    # Each folder names the band or the album, but inside someone else's record:
+    # a cover, a tribute, a demo set, or a longer artist name sharing a prefix.
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            "Placeholder Band Covers",
+            "Various Artists/Songs of The Placeholder Band",
+            "The Placeholder Band Tribute Band/Another Album",
+            "Some Crooner/Sings the Placeholder Band",
+            "Placeholder Band Revival/Live 1999",
+            "Placeholder Band Wilkins/Their Album",
+            "Other Singer/Fifth Album Demos",
+            "Other Singer/Fifth Album Revisited",
+            "Other Singer/Album",
+        ],
+    )
+    def test_a_lone_title_inside_someone_elses_record_is_unplaced(self, tmp_path, folder):
+        chords = tmp_path / "ann" / "chordlab" / "The Placeholder Band" / "05_-_Fifth_Album"
+        chords.mkdir(parents=True)
+        (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / folder / "07 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 0
+        assert len(report.unplaced) == 1
+
+    # Only the other name or a word from the allowlist may sit beside a contained
+    # name, which is what an artist's own "Band - Album" or "Band, The" looks like.
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            "Placeholder Band - Fifth Album (2009) [FLAC]",
+            "Placeholder Band, The/Some Rip",
+            "Placeholder Band Discography/CD 05",
+            "The Placeholder Band Complete Box Set/Disc 5",
+            "Zork/The Placeholder Band Anthology",
+        ],
+    )
+    def test_a_lone_title_beside_allowed_words_pairs(self, tmp_path, folder):
+        chords = tmp_path / "ann" / "chordlab" / "The Placeholder Band" / "05_-_Fifth_Album"
+        chords.mkdir(parents=True)
+        (chords / "13_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "audio" / folder / "13 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 1
+        assert report.unplaced == ()
 
     def test_the_manifest_command_reports_unplaced_tracks_with_a_hint(self, tmp_path, capsys):
         from songscribe.eval import cli

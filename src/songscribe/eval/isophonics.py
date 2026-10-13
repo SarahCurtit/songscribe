@@ -2,8 +2,8 @@
 
 Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
 relative path, the same folded title within the matching album, then a unique folded title
-at the root or under a folder -- the audio root's included -- naming its artist or album.
-Misses are reported, never guessed at: a wrong pairing gives a plausible, wrong score.
+at the root or under a folder (the audio root's included) that is its artist or album, give
+or take the other name and a few allowlisted words. Misses are reported, never guessed at.
 """
 
 from __future__ import annotations
@@ -66,10 +66,13 @@ DECORATION_WORDS = frozenset(
     }
 )
 
-#: A folder that merely *contains* an artist or album name ("Band Discography",
-#: "Band - Album (2009)") must share a word at least this long with it: a short
-#: album like "Help" would otherwise claim "Help Yourself Sessions".
-MIN_CONTAINED_WORD = 5
+#: The only words a folder may add around an artist or album name it contains,
+#: besides the annotation's other name ("Band - Album"). Anything else marks
+#: someone else's record about the band -- "Band Covers", "Songs of Band",
+#: "Band Tribute Band", "Album Demos" -- or simply a longer name ("Band Surname").
+CONTAINED_NAME_EXTRAS = frozenset(
+    {"the", "discography", "collection", "complete", "anthology", "box", "set"}
+)
 
 #: Deliberately silent about provenance: this builder reads any
 #: Isophonics-*shaped* tree, and stamping "isophonics.net" onto a manifest
@@ -327,30 +330,32 @@ def _name_words(name: str) -> tuple[str, ...]:
 def _names_agree(folder: tuple[str, ...], expected: list[tuple[str, ...]]) -> bool:
     """True if a library folder's words name one of the annotation's folders.
 
-    Equal word lists always agree. Otherwise one must run contiguously inside
-    the other and share a word of :data:`MIN_CONTAINED_WORD` letters, the folder
-    side needing two words so a generic "Music" can't claim "Music Of The Band";
-    or the folder must hold every annotation name at once ("Band - Album").
+    Equal word lists agree, as does a folder holding every annotation name at
+    once. A folder holding one name contiguously agrees only if each word left
+    over is in :data:`CONTAINED_NAME_EXTRAS` or the annotation's other name. A
+    folder is never matched by being *part of* a name: "Hearts" isn't an album.
     """
     if folder in expected:
         return True
     if len(expected) > 1 and all(_contains(folder, words) for words in expected):
         return True
     for words in expected:
-        if _contains(folder, words) and _has_long_word(words):
-            return True
-        if len(folder) > 1 and _contains(words, folder) and _has_long_word(folder):
-            return True
+        others = {w for name in expected if name != words for w in name}
+        for start in _runs(folder, words):
+            leftover = folder[:start] + folder[start + len(words) :]
+            if all(w in CONTAINED_NAME_EXTRAS or w in others for w in leftover):
+                return True
     return False
 
 
-def _contains(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
+def _runs(longer: tuple[str, ...], shorter: tuple[str, ...]) -> list[int]:
+    """Every index at which ``shorter`` runs contiguously inside ``longer``."""
     size = len(shorter)
-    return any(longer[i : i + size] == shorter for i in range(len(longer) - size + 1))
+    return [i for i in range(len(longer) - size + 1) if longer[i : i + size] == shorter]
 
 
-def _has_long_word(words: tuple[str, ...]) -> bool:
-    return any(len(w) >= MIN_CONTAINED_WORD for w in words)
+def _contains(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
+    return bool(_runs(longer, shorter))
 
 
 def _best_copies(paths: list[Path]) -> list[Path]:
