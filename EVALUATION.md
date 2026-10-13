@@ -43,9 +43,9 @@ beat/       beat annotations
 all/        the same data as Turtle RDF (.ttl)
 ```
 
-Point `--annotations` at the directory *containing* `chordlab/` and the builder finds it:
-`keylab/` and `seglab/` are `.lab` files too, but they annotate a different thing, so
-they're skipped by name rather than by glob.
+Pass the directory *containing* `chordlab/` to `songscribe-eval manifest` and the builder
+finds it: `keylab/` and `seglab/` are `.lab` files too, but they annotate a different
+thing, so they're skipped by name rather than by glob.
 
 **2. Supply the audio.** Isophonics distributes **no audio, from any page** — the download
 is annotations only, by design, and that is what makes it usable here. The recordings are
