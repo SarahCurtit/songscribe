@@ -272,7 +272,12 @@ def score_track(
         vocabulary = "majmin" if "majmin" in scores else next(iter(scores))
         alignment = metrics.best_offset(reference, estimated, vocabulary)
 
-    chart_vocabulary = "majmin" if "majmin" in scores else (next(iter(scores), "majmin"))
+    # The chart metrics project each chord on its own, which mirex cannot do
+    # (it is a pairwise pitch-class overlap), so it is never picked here. The
+    # alignment sweep above needs no such guard: it goes through score().
+    chart_vocabulary = (
+        "majmin" if "majmin" in scores else next((v for v in scores if v != "mirex"), "majmin")
+    )
     reference_chart = metrics.chart_sequence(reference, chart_vocabulary)
     estimate_chart = metrics.chart_sequence(estimated, chart_vocabulary)
     harmonic = metrics.harmonic_rhythm(metrics.dedupe_chart(reference, chart_vocabulary))

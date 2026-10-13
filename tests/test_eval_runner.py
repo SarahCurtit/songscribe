@@ -237,6 +237,16 @@ class TestEvaluate:
         with pytest.raises(ValueError, match="unknown vocabulary"):
             runner.evaluate(data, estimates_dir=estimates, vocabularies=("nope",))
 
+    def test_scoring_in_mirex_alone_scores_every_track(self, corpus):
+        # mirex has no per-chord projection, so the chart metrics cannot be
+        # built in it; they must fall back rather than abort the whole run.
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates, vocabularies=("mirex",))
+        assert [r.track_id for r in report.results] == ["short", "long"]
+        assert report.mean("mirex") == pytest.approx(0.5)
+        assert report.results[0].chart == pytest.approx(1.0)
+        assert report.results[1].chart == pytest.approx(0.0)
+
     def test_an_aggregate_over_nothing_is_nan(self, corpus, tmp_path):
         data, estimates = corpus
         for name in ("short.lab", "long.lab"):
