@@ -172,6 +172,22 @@ class TestFoldTitle:
     def test_punctuation_case_and_track_numbers_fold_away(self, name, expected):
         assert isophonics.fold_title(name) == expected
 
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "CD1_-_01_-_Lantern_Over_Water.lab",
+            "CD2-07 Lantern Over Water.flac",
+            "Disc 1 - 01 - Lantern Over Water.flac",
+            "disk 2 03 Lantern Over Water.mp3",
+            "2-14 Lantern Over Water.flac",
+        ],
+    )
+    def test_a_disc_number_folds_away_with_the_track_number(self, name):
+        assert isophonics.fold_title(name) == "lanternoverwater"
+
+    def test_disc_words_inside_a_title_are_kept(self):
+        assert isophonics.fold_title("04 Discount Lanterns.flac") == "discountlanterns"
+
     def test_an_all_digit_title_is_not_folded_to_nothing(self):
         assert isophonics.fold_title("1979.flac") == "1979"
 
@@ -253,6 +269,25 @@ class TestBuildManifest:
         report = isophonics.build_manifest(annotations, tmp_path / "audio")
         assert report.paired == 2
         assert report.unpaired == ()
+
+    @pytest.mark.parametrize(
+        "rip",
+        [
+            "Double Album/Disc 1/01 Paper Kites At Dusk.flac",
+            "Double Album/1-01 Paper Kites At Dusk.flac",
+        ],
+    )
+    def test_a_disc_prefixed_annotation_pairs_with_a_rip(self, tmp_path, rip):
+        # Isophonics names a two-disc album's files "CD1_-_01_-_...", unlike any rip.
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "03CD1_-_Double_Album"
+        chords.mkdir(parents=True)
+        (chords / "CD1_-_01_-_Paper_Kites_At_Dusk.lab").write_text("0.0 1.0 C:maj\n", "utf-8")
+        (tmp_path / "audio" / rip).parent.mkdir(parents=True)
+        (tmp_path / "audio" / rip).write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 1
+        assert report.manifest["tracks"][0]["audio"] == rip
 
     def test_a_title_in_two_albums_is_left_ambiguous_rather_than_guessed(
         self, annotations, tmp_path

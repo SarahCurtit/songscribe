@@ -2,8 +2,8 @@
 
 Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
 relative path, then the same folded title within the matching album, then a unique folded
-title anywhere (folding drops case, punctuation and track numbers). Unpaired files are
-reported, never guessed at -- a wrong pairing would produce a plausible, wrong score.
+title anywhere (folding drops case, punctuation, and disc and track numbers). Unpaired files
+are reported, never guessed at -- a wrong pairing would produce a plausible, wrong score.
 """
 
 from __future__ import annotations
@@ -35,7 +35,9 @@ OTHER_ANNOTATION_DIRECTORIES = (
     "beatlab",
 )
 
-_TRACK_NUMBER = re.compile(r"^\d+")
+# Repeated so a disc number goes with the track number: the White Album's
+# "CD1_-_01_-_..." and a rip's "Disc 1 - 01 - ..." or "1-01 ..." must all agree.
+_TRACK_NUMBER = re.compile(r"^(?:(?:cd|disc|disk)?\d+)+")
 _NOT_ALNUM = re.compile(r"[^a-z0-9]+")
 
 #: Deliberately silent about provenance: this builder reads any
@@ -80,8 +82,8 @@ def fold_title(name: str) -> str:
 
     ``"01_-_I_Saw_Her_Standing_There.lab"`` and
     ``"01 I Saw Her Standing There.flac"`` both fold to
-    ``"isawherstandingthere"``: leading track numbers, case, punctuation and
-    spacing all go, being what differs between an annotation tree and a rip.
+    ``"isawherstandingthere"``: leading disc and track numbers, case,
+    punctuation and spacing all go, being what differs between the two.
     """
     stem = Path(name).stem.lower()
     folded = _NOT_ALNUM.sub("", stem)
