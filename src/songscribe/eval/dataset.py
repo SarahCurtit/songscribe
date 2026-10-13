@@ -1,21 +1,9 @@
 """Evaluation manifests: which tracks to score, and where their files are.
 
-A manifest holds track identifiers and *relative* paths, never audio and never
-annotation text. That split is deliberate and is what makes an evaluation
-publishable: the manifest, the metrics and the runner can all be committed and
-shared, while the recordings stay on the machine that is licensed to hold
-them. Someone else with their own copy of the same corpus points the roots at
-it and reproduces the numbers.
-
-Roots are resolved in this order, first hit winning:
-
-1. an explicit argument (``--audio``/``--annotations`` on the command line),
-2. the :data:`AUDIO_ROOT_ENV` / :data:`ANNOTATION_ROOT_ENV` environment
-   variables,
-3. the directory containing the manifest.
-
-See ``EVALUATION.md`` for the corpora this is built for and the licence
-position on each.
+A manifest holds track ids and *relative* paths, never content, so it is publishable while
+the corpus stays local. Roots resolve from the explicit argument, then the
+``SONGSCRIBE_EVAL_*`` env vars, then the manifest's directory. Corpora and licences are in
+``EVALUATION.md``.
 """
 
 from __future__ import annotations
