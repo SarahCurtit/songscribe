@@ -131,7 +131,8 @@ timeline** — an encoder lead-in or the wrong master makes the harness measure 
 instead of the model. A real case: an m4a with ~1.7s of lead-in scored 50% and 80% trimmed.
 Never fold the suggested shift into a score; that is fitting to the reference. Fix the audio,
 **replace** the original with it (same folder and stem), rebuild with `manifest --audio`,
-and re-run with a **fresh `--cache`**, since cache keys are backend+track, not audio.
+and re-run with a **fresh `--cache`**, since cache keys are backend, input variant and track,
+not audio.
 
 `--cache` writes each estimate as a `.lab`, so re-scoring under a different vocabulary is
 instant and a long run is resumable — which matters because `madmom` runs at ~2x realtime,
