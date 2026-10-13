@@ -158,7 +158,10 @@ a same-titled song in someone else's folders is not picked up when your copy is 
 `--audio` directory's own name counts (`~/music/beatles` names the artist), and years, disc
 and track numbers, apostrophes, a leading "The" and words like *Remastered*, *Deluxe
 Edition*, *Vinyl Rip* or *FLAC* are ignored, so `1965 - Help! (Remastered)/`,
-`The Beatles - Help! (2009) [FLAC]/` and `A Hard Days Night/` qualify. A folder that holds
+`The Beatles - Help! (2009) [FLAC]/` and `A Hard Days Night/` qualify. Numbers in the
+annotation's own album name (after its track or disc prefix) are not ignored: the folder
+must carry them too, so `Live 1/` never stands in for *Live 2*, nor `Live in Paris 1970/`
+for *Live in Paris 1971*, while a folder's extra years still don't matter. A folder that holds
 the name among other words qualifies only when those other words are the annotation's other
 name (artist beside album) or one of *the*, *discography*, *collection*, *complete*,
 *anthology*, *box*, *set* — so `Beatles, The/` and `Beatles Discography/CD 05/` count, while

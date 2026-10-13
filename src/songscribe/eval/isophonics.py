@@ -303,9 +303,12 @@ def _match_audio(
         # as words, as in step 3, so "Band - Album [FLAC]" beats "Greatest Hits".
         others = {w for words in artist_words for w in words}
 
+        # An exact fold is one way in, not a rank above the word rule: ranked first,
+        # "Other Singer/Help!" would beat "The Beatles - Help!" to a wrong pair.
         def names_album(part: str) -> bool:
-            return _fold_directory(part) == album or _holds_name(
-                _name_words(part), album_words, others
+            return _fold_directory(part) == album or (
+                _keeps_numbers(part, relative.parent.name)
+                and _holds_name(_name_words(part), album_words, others)
             )
 
         within_album = [
@@ -334,20 +337,22 @@ def _plausible_home(candidate: Path, relative: Path, audio_root: Path) -> bool:
     library = candidate.relative_to(audio_root).parent.parts
     if not library:
         return True
-    expected = [
-        _name_words(part) for part in relative.parent.parts if part.lower() not in CHORD_DIRECTORIES
+    names = [
+        part
+        for part in relative.parent.parts
+        if part.lower() not in CHORD_DIRECTORIES and _name_words(part)
     ]
-    expected = [words for words in expected if words]
-    folders = [_name_words(part) for part in (audio_root.resolve().name, *library)]
-    return any(_names_agree(folder, expected) for folder in folders if folder)
+    folders = (audio_root.resolve().name, *library)
+    return any(_names_agree(folder, names) for folder in folders if _name_words(folder))
 
 
 def _name_words(name: str) -> tuple[str, ...]:
     """The words of a folder name that identify an artist or album.
 
     Separate from :func:`_fold` so steps 1-2 keep their exact matching. Numbers
-    (track, disc, year) and :data:`DECORATION_WORDS` go wherever they sit, and a
-    leading "the", so "The Band - Album (2009) [FLAC]" reads as ``band album``.
+    (track, disc, year; :func:`_keeps_numbers` checks those apart) and
+    :data:`DECORATION_WORDS` go wherever they sit, and a leading "the", so
+    "The Band - Album (2009) [FLAC]" reads as ``band album``.
     """
     text = _APOSTROPHES.sub("", name.lower())
     words = [w for w in _WORD.findall(text) if w not in DECORATION_WORDS]
@@ -355,21 +360,43 @@ def _name_words(name: str) -> tuple[str, ...]:
     return tuple(words[1:] if words[:1] == ["the"] else words)
 
 
-def _names_agree(folder: tuple[str, ...], expected: list[tuple[str, ...]]) -> bool:
-    """True if a library folder's words name one of the annotation's folders.
+def _name_numbers(name: str, prefixed: bool = True) -> frozenset[str]:
+    """The numbers in a name, leading zeros dropped; ``prefixed`` skips a track prefix.
 
-    Equal word lists agree. A folder holding one name contiguously agrees only if
-    each word left over is in :data:`CONTAINED_NAME_EXTRAS` or the annotation's
-    other name, so "Band - Album" agrees and "Band - Album (Karaoke)" doesn't. A
-    folder is never matched by being *part of* a name: "Hearts" isn't an album.
+    The prefix is the leading run of track, disc or catalogue numbers ("07_-_",
+    "10CD1_-_"), unless it is the whole name, as for an album called "1977".
     """
-    if folder in expected:
-        return True
-    for index, words in enumerate(expected):
+    words = _WORD.findall(name.lower())
+    start = 0
+    while prefixed and start < len(words) - 1 and _TRACK_NUMBER.fullmatch(words[start]):
+        start += 1
+    return frozenset(w.lstrip("0") or "0" for w in words[start:] if w.isdigit())
+
+
+def _keeps_numbers(folder: str, name: str) -> bool:
+    """True if ``folder`` carries every number of the annotation's ``name``.
+
+    :func:`_name_words` drops numbers, which would make "Live 1" name "Live 2";
+    a folder's extra numbers are fine, so "Album (2009 Remaster)" still names "Album".
+    """
+    return _name_numbers(name) <= _name_numbers(folder, prefixed=False)
+
+
+def _names_agree(folder: str, names: list[str]) -> bool:
+    """True if a library folder names one of the annotation's folders ``names``.
+
+    It agrees if its words equal a name's or hold one contiguously with each word
+    left over in :data:`CONTAINED_NAME_EXTRAS` or the other name, and it carries
+    that name's numbers: "Band - Album" agrees, "Band - Album (Karaoke)" doesn't.
+    A folder is never matched by being *part of* a name: "Hearts" isn't an album.
+    """
+    words = _name_words(folder)
+    expected = [_name_words(name) for name in names]
+    for index, name in enumerate(expected):
         # By position, not value: a self-titled album's name equals its artist's,
         # and "Band - Band" must still find the other one.
-        others = {w for i, name in enumerate(expected) if i != index for w in name}
-        if _holds_name(folder, words, others):
+        others = {w for i, other in enumerate(expected) if i != index for w in other}
+        if _keeps_numbers(folder, names[index]) and _holds_name(words, name, others):
             return True
     return False
 

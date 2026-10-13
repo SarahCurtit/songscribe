@@ -647,6 +647,75 @@ class TestBuildManifest:
             assert audio_path is None
             assert len(report.ambiguous) == 1
 
+    @staticmethod
+    def _build_album(tmp_path, album, folders):
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / album
+        chords.mkdir(parents=True)
+        (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        audio = tmp_path / "audio"
+        for directory in folders:
+            (audio / directory).mkdir(parents=True)
+            (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
+        return isophonics.build_manifest(tmp_path / "ann", audio)
+
+    # The word rule drops numbers, which made "Live 1/" the album of a "Live_2"
+    # annotation; a folder's own extra years must still not get in the way.
+    @pytest.mark.parametrize(
+        ("album", "folders", "expected"),
+        [
+            ("Live_2", ["The Band/Live 1", "The Band/Greatest Hits"], None),
+            ("Live_2", ["The Band/Live 1", "The Band/Live 2"], "The Band/Live 2"),
+            ("07_-_Live_2", ["The Band/Live 1", "The Band/Live 2"], "The Band/Live 2"),
+            ("Vol._2", ["The Band/Vol. 1", "The Band/Greatest Hits"], None),
+            ("Vol._2", ["The Band/Vol. 1", "The Band/Vol. 2"], "The Band/Vol. 2"),
+            (
+                "Anthology_2",
+                ["The Band/Anthology 2", "The Band/Anthology 3"],
+                "The Band/Anthology 2",
+            ),
+            ("Live_at_Somewhere_1971", ["The Band/Live at Somewhere 1970", "The Band/Hits"], None),
+            (
+                "Live_at_Somewhere_1971",
+                ["The Band/Live at Somewhere 1970", "The Band/Live at Somewhere 1971"],
+                "The Band/Live at Somewhere 1971",
+            ),
+            (
+                "Paper_Harbour",
+                ["The Band/Paper Harbour (2009 Remaster)", "The Band/Greatest Hits"],
+                "The Band/Paper Harbour (2009 Remaster)",
+            ),
+            # An exact fold must not outrank the word rule: someone else's copy wins.
+            ("Paper_Harbour", ["Other Singer/Paper Harbour", "The Band - Paper Harbour"], None),
+        ],
+    )
+    def test_an_album_number_must_appear_in_its_folder(self, tmp_path, album, folders, expected):
+        report = self._build_album(tmp_path, album, folders)
+        audio_path = report.manifest["tracks"][0].get("audio")
+        if expected is None:
+            assert audio_path is None
+            assert len(report.ambiguous) == 1
+        else:
+            assert audio_path == f"{expected}/03 Lantern Over Water.flac"
+
+    # Step 3 admits a lone copy by its album folder alone, so the same number rule
+    # applies: another volume's folder says nothing about whose recording it is.
+    @pytest.mark.parametrize(
+        ("album", "folder", "paired"),
+        [
+            ("Live_2", "Somebody/Live 1", False),
+            ("Live_2", "Somebody/Live 2", True),
+            ("Vol._2", "Somebody/Vol. 1", False),
+            ("Live_at_Somewhere_1971", "Somebody/Live at Somewhere 1970", False),
+            ("Paper_Harbour", "Somebody/Paper Harbour (2009 Remaster)", True),
+        ],
+    )
+    def test_a_lone_copy_needs_the_album_number_in_its_folder(
+        self, tmp_path, album, folder, paired
+    ):
+        report = self._build_album(tmp_path, album, [folder])
+        assert ("audio" in report.manifest["tracks"][0]) is paired
+        assert len(report.unplaced) == (0 if paired else 1)
+
     def test_the_manifest_command_reports_ambiguous_tracks_with_a_hint(self, tmp_path, capsys):
         from songscribe.eval import cli
 
