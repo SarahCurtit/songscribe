@@ -4,9 +4,6 @@ The Isophonics/MIREX convention: one chord per line, ``start end label``,
 times in seconds from the start of the recording. It is the lingua franca for
 chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 :mod:`songscribe.eval` reads.
-
-Pure Python and dependency-free, like :mod:`songscribe.align` -- a parser is
-exactly the sort of thing that should be testable without a model on disk.
 """
 
 from __future__ import annotations
