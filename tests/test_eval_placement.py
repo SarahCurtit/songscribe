@@ -93,13 +93,11 @@ class TestPlacementIgnoresWhatAMusicianIgnores:
         assert metrics.placement_score(reference, shift(reference, 1.0), WORDS) < 1.0
 
     def test_a_chord_spilling_over_a_line_break_displaces_the_next_one(self, reference):
-        """A real ``align.py`` behaviour this metric surfaces.
+        """Pins a real ``align.py`` behaviour this metric surfaces.
 
-        Shifting by 0.2s pushes the first chord's *end* past the second line's
-        first word. ``place_in_line`` then places it at that line's start and,
-        by its "two changes on one syllable, keep the first" rule, drops the
-        chord that genuinely belongs there -- so the second line is printed
-        with the wrong chord and no sign of the right one.
+        A 0.2s shift spills the first chord's *end* past line 2's first word, and
+        ``place_in_line``'s "two changes on one syllable, keep the first" rule then
+        drops line 2's real chord -- printed wrong, with no sign of the right one.
         """
         spilled = metrics.placement_sequence(shift(reference, 0.2), WORDS)
         assert spilled == ((0, 0, "C:maj"), (1, 0, "C:maj"))
