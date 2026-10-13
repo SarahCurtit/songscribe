@@ -102,8 +102,11 @@ backends do not share a bias.
 
 **The shift is never folded into a score, and you shouldn't either.** Choosing the offset
 that scores best is fitting to the reference: do that and a misaligned corpus quietly
-becomes a flattering one. Treat the number as an instruction to fix the audio — trim the
-lead-in with `ffmpeg -ss <offset> -i in.m4a -ac 1 -ar 44100 out.wav` — then re-run with a
+becomes a flattering one. Treat the number as an instruction to fix the audio. The shift is
+what the estimate had to move to fit, so a negative one means the recording starts late:
+trim its magnitude with `ffmpeg -ss 1.70 -i in.m4a -ac 1 -ar 44100 out.wav` (never
+`-ss -1.70`, which trims nothing). A positive one means it starts early, which `-ss` cannot
+fix; pad that much silence instead (`-af adelay=<ms>:all=1`). Then re-run with a
 fresh `--cache`, since cached estimates are keyed by backend, input variant and track, not
 by the audio they came from.
 
