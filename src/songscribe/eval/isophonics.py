@@ -1,9 +1,9 @@
 """Build an evaluation manifest from an Isophonics annotation tree.
 
 Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
-relative path, the same filename under any album, then a punctuation- and track-number-
-insensitive title match. Unpaired files are reported, never guessed at -- a manifest that
-points at the wrong recording would produce a plausible, wrong score.
+relative path, then the same folded title within the matching album, then a unique folded
+title anywhere (folding drops case, punctuation and track numbers). Unpaired files are
+reported, never guessed at -- a wrong pairing would produce a plausible, wrong score.
 """
 
 from __future__ import annotations
