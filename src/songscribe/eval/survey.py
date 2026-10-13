@@ -1,14 +1,8 @@
-"""Survey a corpus's reference annotations, without running a model.
+"""Corpus health check from annotations alone -- no audio, no model.
 
-Answers the questions worth asking *before* committing hours of CPU to a
-corpus: do all its labels parse, how much annotated time is there, and how
-much of that time each comparison vocabulary can actually score. A model run
-cannot tell you any of that -- a vocabulary that silently excludes a third of
-the reference would just look like a confident, meaningless number.
-
-It is also the only part of the evaluation that works with annotations alone,
-which is the usual order things arrive in: the annotations are a download, the
-recordings are not.
+Reports annotated time, whether every label parses, and how much time each
+vocabulary can score. Worth knowing before a model run: a vocabulary that
+silently excludes a third of the reference just looks like a confident number.
 """
 
 from __future__ import annotations
