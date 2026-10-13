@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from songscribe.eval import dataset
-from songscribe.eval.cli import format_survey, survey_to_dict
+from songscribe.eval.cli import build_parser, format_survey, survey_to_dict
 from songscribe.eval.survey import survey
 
 
@@ -161,3 +161,23 @@ class TestSurveyFormatting:
         document = survey_to_dict(survey(data))
         assert {entry["label"] for entry in document["labels"]} == {"C:maj", "A:min"}
         assert "NaN" not in json.dumps(document)
+
+
+class TestCountArguments:
+    # The only tests that drive the eval parser, so they live beside the
+    # survey's, which already exercises this CLI's text and JSON output.
+
+    @pytest.mark.parametrize("value", ["0", "-1"])
+    def test_limit_below_one_is_rejected(self, value, capsys):
+        with pytest.raises(SystemExit) as raised:
+            build_parser().parse_args(["score", "m.json", "-c", "template", "--limit", value])
+        assert raised.value.code == 2
+        assert "--limit: must be at least 1" in capsys.readouterr().err
+
+    def test_a_positive_limit_is_accepted(self):
+        args = build_parser().parse_args(["score", "m.json", "-c", "template", "--limit", "3"])
+        assert args.limit == 3
+
+    def test_survey_labels_still_accepts_zero(self):
+        # 0 is documented as "list no labels", so --labels keeps a plain int.
+        assert build_parser().parse_args(["survey", "m.json", "--labels", "0"]).labels == 0

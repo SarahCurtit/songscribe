@@ -33,6 +33,21 @@ ALIGNMENT_WARN_GAIN = 0.05
 ALIGNMENT_WARN_OFFSET = 0.15
 
 
+def _positive_int(text: str) -> int:
+    """An argparse type for counts that must be at least 1.
+
+    A plain ``int`` lets ``--limit -1`` through, and slicing with it silently
+    drops the last track instead of limiting anything.
+    """
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: {text!r}") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="songscribe-eval",
@@ -138,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run demucs first (much slower, and the single biggest accuracy factor)",
     )
-    score.add_argument("--limit", type=int, help="score only the first N tracks")
+    score.add_argument("--limit", type=_positive_int, help="score only the first N tracks")
     score.add_argument("--per-track", action="store_true", help="print a row per track")
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
     score.add_argument(
