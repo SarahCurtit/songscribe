@@ -211,15 +211,28 @@ class TestBuildManifest:
         report = isophonics.build_manifest(annotations)
         assert report.manifest["notes"] == isophonics.REFERENCES_ONLY_NOTES
 
-    def test_a_build_with_audio_keeps_the_paired_notes(self, annotations, tmp_path):
+    def test_a_build_that_pairs_a_track_keeps_the_paired_notes(self, annotations, tmp_path):
         (tmp_path / "audio").mkdir()
+        (tmp_path / "audio" / "Lantern Over Water.flac").write_bytes(b"")
         report = isophonics.build_manifest(annotations, tmp_path / "audio")
+        assert report.paired == 1
         assert report.manifest["notes"] == isophonics.DEFAULT_NOTES
+
+    def test_an_audio_root_that_pairs_nothing_writes_references_only_notes(
+        self, annotations, tmp_path
+    ):
+        (tmp_path / "audio").mkdir()
+        (tmp_path / "audio" / "Unrelated Song.flac").write_bytes(b"")
+        report = isophonics.build_manifest(annotations, tmp_path / "audio")
+        assert report.paired == 0
+        assert report.manifest["notes"] == isophonics.REFERENCES_ONLY_NOTES
 
     def test_explicit_notes_win_either_way(self, annotations, tmp_path):
         (tmp_path / "audio").mkdir()
+        (tmp_path / "audio" / "Lantern Over Water.flac").write_bytes(b"")
         assert isophonics.build_manifest(annotations, notes="mine").manifest["notes"] == "mine"
         with_audio = isophonics.build_manifest(annotations, tmp_path / "audio", notes="mine")
+        assert with_audio.paired == 1
         assert with_audio.manifest["notes"] == "mine"
 
     def test_audio_is_paired_by_mirrored_path(self, annotations, tmp_path):
