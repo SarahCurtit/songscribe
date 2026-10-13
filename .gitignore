@@ -41,8 +41,11 @@ out/
 
 # Evaluation: reference annotations and model estimates. The annotations are
 # other people's work under their own licences, and the estimates are derived
-# from audio -- neither belongs in the repo. Manifests (relative paths only,
-# no content) are safe to commit, so eval/*.json is deliberately not ignored.
+# from audio -- neither belongs in the repo. Only references-only manifests
+# (relative paths, no content) are meant to be committed, so eval/*.json is not
+# ignored wholesale. eval/isophonics.json, the documented `--audio` build target,
+# carries paths into the user's own library, so it is ignored.
+eval/isophonics.json
 *.lab
 annotations/
 estimates/
