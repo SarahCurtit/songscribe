@@ -43,9 +43,12 @@ src/songscribe/
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
+    reference.py  local word timelines for placement scoring (gitignored data)
+    viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
 eval/           committed manifests: track ids + relative paths, no content
+notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
 EVALUATION.md   how to measure a backend, and which corpora are usable
@@ -113,6 +116,12 @@ songscribe-eval score eval/isophonics-beatles.json -c madmom --cache .eval-cache
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in
 `eval/harte.py`, not bad data. Run it on a new corpus before anything else.
+
+`notebooks/annotations.ipynb` draws the same data: chord timelines raw vs collapsed-to-chart,
+harmonic rhythm, root profile, corpus label coverage, reference-against-estimate with an
+agreement strip, and the alignment offset curve. The shaping lives in `eval/viz.py`, which has
+**no plotting dependency** so it stays testable on the core deps CI installs; matplotlib and
+jupyterlab are in the `dev` extra. Commit the notebook with outputs stripped.
 
 `score` sweeps a time offset per track and **warns when a recording isn't on the reference's
 timeline** — an encoder lead-in or the wrong master makes the harness measure the mismatch
