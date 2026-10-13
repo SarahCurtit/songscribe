@@ -126,7 +126,7 @@ words you sang. Otherwise use CC0 audio, and keep it in the gitignored `audio/` 
 measure — Weighted Chord Symbol Recall, the fraction of annotated *time* labelled correctly.
 
 ```bash
-songscribe-eval manifest ~/corpora/isophonics --audio ~/music -o eval/isophonics.json
+songscribe-eval manifest data/isophonics --audio ~/music -o eval/isophonics.json
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 

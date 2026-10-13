@@ -32,8 +32,9 @@ they are a free download, and they ship **without audio** — you supply your ow
 recordings. That last point is the whole reason it fits this project.
 
 **1. Get the annotations.** Download "Reference Annotations: The Beatles" (and Queen, Carole
-King, Zweieck if you want them) and extract into `data/`, which is gitignored wholesale.
-The archive carries several formats side by side:
+King, Zweieck if you want them) and extract into `data/isophonics/` — `data/` is gitignored
+wholesale — so that `chordlab/` sits directly under it. The archive carries several formats
+side by side:
 
 ```
 chordlab/   .lab chord annotations  <- the only thing this harness reads
@@ -43,7 +44,8 @@ beat/       beat annotations
 all/        the same data as Turtle RDF (.ttl)
 ```
 
-Pass the directory *containing* `chordlab/` to `songscribe-eval manifest` and the builder
+Pass the directory *containing* `chordlab/` (here `data/isophonics`, not
+`data/isophonics/chordlab`) to `songscribe-eval manifest` and the builder
 finds it: `keylab/` and `seglab/` are `.lab` files too, but they annotate a different
 thing, so they're skipped by name rather than by glob.
 
@@ -128,14 +130,18 @@ hedge anything derived from the other three.
 **3. Point the harness at both.** Once, in your shell:
 
 ```bash
-export SONGSCRIBE_EVAL_ROOT=~/music/beatles              # your recordings
-export SONGSCRIBE_EVAL_ANNOTATIONS=~/corpora/isophonics  # the .lab files
+export SONGSCRIBE_EVAL_ROOT=~/music/beatles          # your recordings
+export SONGSCRIBE_EVAL_ANNOTATIONS=data/isophonics   # the directory containing chordlab/
 ```
+
+The annotation root must be the directory *containing* `chordlab/`, because manifest
+`reference` paths — the committed one's included — start at `chordlab/`. Point it at
+`chordlab/` itself and `survey` reports no readable annotations.
 
 **4. Build a manifest.**
 
 ```bash
-songscribe-eval manifest ~/corpora/isophonics \
+songscribe-eval manifest data/isophonics \
     --audio ~/music/beatles \
     --output eval/isophonics.json
 ```
