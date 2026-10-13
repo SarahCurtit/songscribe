@@ -67,18 +67,21 @@ def fold_title(name: str) -> str:
 def find_annotations(annotation_root: Path) -> list[Path]:
     """Every chord ``.lab`` file under ``annotation_root``, sorted.
 
-    If the tree has a recognised chord directory, only that subtree is read --
-    Isophonics ships key and beat annotations in the same download, and those
-    are ``.lab`` files too but describe a different thing.
+    If a recognised chord directory exists at any depth, only those subtrees
+    are read -- Isophonics ships key and beat annotations in the same download,
+    and those are ``.lab`` files too but describe a different thing.
     """
     if not annotation_root.is_dir():
         return []
 
-    chord_roots = [
-        child
-        for child in sorted(annotation_root.iterdir())
-        if child.is_dir() and child.name.lower() in CHORD_DIRECTORIES
+    candidates = [
+        path
+        for path in sorted(annotation_root.rglob("*"))
+        if path.is_dir() and path.name.lower() in CHORD_DIRECTORIES
     ]
+    # A chord directory inside another is already covered by the outer one's
+    # rglob; searching it again would list its files twice.
+    chord_roots = [d for d in candidates if not any(o in d.parents for o in candidates)]
 
     search = chord_roots or [annotation_root]
     found: list[Path] = []

@@ -300,6 +300,40 @@ class TestBuildManifest:
         report = isophonics.build_manifest(flat)
         assert [t["id"] for t in report.manifest["tracks"]] == ["song"]
 
+    def test_a_chord_directory_below_the_root_still_excludes_key_and_segment_labels(self, tmp_path):
+        archive = tmp_path / "data" / "The Band Annotations"
+        for sub in ("chordlab", "keylab", "seglab"):
+            album = archive / sub / "01_-_First_Album"
+            album.mkdir(parents=True)
+            (album / "01_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C\n", encoding="utf-8")
+
+        report = isophonics.build_manifest(tmp_path / "data")
+        assert [t["id"] for t in report.manifest["tracks"]] == [
+            "The Band Annotations/chordlab/01_-_First_Album/01_-_Lantern_Over_Water"
+        ]
+
+    def test_every_archive_with_its_own_chord_directory_is_read(self, tmp_path):
+        for band in ("The Band", "Other Band"):
+            album = tmp_path / "data" / band / "chordlab" / "Album"
+            album.mkdir(parents=True)
+            (album / "Lantern_Over_Water.lab").write_text("0.0 1.0 C\n", encoding="utf-8")
+            (tmp_path / "data" / band / "keylab").mkdir()
+            (tmp_path / "data" / band / "keylab" / "Lantern_Over_Water.lab").touch()
+
+        report = isophonics.build_manifest(tmp_path / "data")
+        assert [t["id"] for t in report.manifest["tracks"]] == [
+            "Other Band/chordlab/Album/Lantern_Over_Water",
+            "The Band/chordlab/Album/Lantern_Over_Water",
+        ]
+
+    def test_a_chord_directory_nested_in_another_is_not_counted_twice(self, tmp_path):
+        nested = tmp_path / "ann" / "chordlab" / "The Band" / "chords"
+        nested.mkdir(parents=True)
+        (nested / "Lantern_Over_Water.lab").write_text("0.0 1.0 C\n", encoding="utf-8")
+
+        report = isophonics.build_manifest(tmp_path / "ann")
+        assert report.total == 1
+
     def test_a_missing_directory_raises(self, tmp_path):
         with pytest.raises(NotADirectoryError):
             isophonics.build_manifest(tmp_path / "nope")
