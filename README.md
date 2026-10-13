@@ -130,18 +130,40 @@ songscribe-eval manifest ~/corpora/isophonics --audio ~/music -o eval/isophonics
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 
+No corpus to hand? The synthetic demo is a one-track corpus. Here it is with every chord a
+seventh, scored with the `template` baseline (no weights needed), all under the gitignored
+`audio/` directory:
+
+```bash
+songscribe-demo -p Cmaj7 G7 Am7 Fmaj7 -o audio/demo7/demo.wav
+songscribe-eval manifest audio/demo7 --audio audio/demo7 -o audio/demo7/demo.json
+songscribe-eval score audio/demo7/demo.json -c template
 ```
+
+```
+dataset   demo7
+backend   template
+tracks    1 scored
+duration  0.3 min of annotated audio
+
 vocabulary        mean  weighted   definition
-root             92.3%     92.3%   root only; ignores quality entirely
-majmin           92.3%     92.3%   major and minor triads; sevenths reduce to their triad
-sevenths          0.0%      0.0%   maj, min, 7, maj7, min7
-mirex            99.7%     99.7%   at least 3 pitch classes in common
+root            97.99%    97.99%   root only; ignores quality entirely
+majmin          97.99%    97.99%   major and minor triads; sevenths reduce to their triad
+sevenths         0.00%     0.00%   maj, min, 7, maj7, min7
+mirex           98.84%    98.84%   at least 3 pitch classes in common
+
+chart          100.00%             chord order as printed, timing ignored
+grid           100.00%             order + harmonic rhythm in bars, tempo-free
+segmentation    97.99%             boundary agreement, labels ignored
+
+mean = per-track average; weighted = by duration across the corpus.
+chart and grid are per-track and unweighted: a chart is a chart at any length.
 ```
 
 Several vocabularies, because the gap between them is the diagnostic. A high `majmin` beside
-a near-zero `sevenths` is the vocabulary ceiling, not a broken model — the backend cannot
-emit a seventh at all, so it guesses the triad every time, and `mirex` stays high because a
-triad shares three pitch classes with its parent seventh.
+a near-zero `sevenths` is the vocabulary ceiling, not a broken backend — neither `template`
+nor the default madmom model can emit a seventh, so each guesses the triad every time, and
+`mirex` stays high because a triad shares three pitch classes with its parent seventh.
 
 Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
 the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
