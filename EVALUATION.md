@@ -254,10 +254,10 @@ label. That is the right question for comparing against published numbers, and t
 question for a chart. A transcription that is uniformly 1.7 s late annoys nobody — the
 musician reads the same progression — yet WCSR drops ~32 points for it.
 
-So a **chart** score is reported too: project both sides into the vocabulary, collapse them
-exactly as `align.dedupe` does (merge repeats, drop flicker below
-`align.MIN_CHORD_DURATION`), drop `N`, and compare the resulting chord *sequences* by
-normalised edit distance. Timing is absent by construction, so a substitution is a wrong
+So a **chart** score is reported too: project both sides into the vocabulary, drop `N`,
+collapse them exactly as `align.dedupe` does (merge repeats, drop flicker below
+`align.MIN_CHORD_DURATION`), and compare the resulting chord *sequences* by normalised
+edit distance. Timing is absent by construction, so a substitution is a wrong
 chord, an insertion one the model invented, a deletion one it missed — the three things a
 musician notices. Because it is built from `align.dedupe`, it scores the chart `render.py`
 would actually print, not the raw frame timeline.
