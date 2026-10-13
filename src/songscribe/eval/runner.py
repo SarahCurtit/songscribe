@@ -201,17 +201,18 @@ def _recognise(
     source: str | Path = audio_path
     temporary: tempfile.TemporaryDirectory | None = None
 
-    if use_separation:
-        if separate.available():
-            temporary = tempfile.TemporaryDirectory(prefix="songscribe-eval-")
-            _, source = separate.isolate_vocals(audio_path, temporary.name)
-        else:
-            # Loud, because a run silently done on the full mix is not
-            # comparable with one done on the accompaniment stem, and the gap
-            # is the single largest accuracy factor in the pipeline.
-            log.warning("demucs not installed; scoring %s on the full mix", audio_path.name)
+    if use_separation and not separate.available():
+        # Loud, because a run silently done on the full mix is not
+        # comparable with one done on the accompaniment stem, and the gap
+        # is the single largest accuracy factor in the pipeline.
+        log.warning("demucs not installed; scoring %s on the full mix", audio_path.name)
 
     try:
+        if use_separation and separate.available():
+            # Inside the try, so a failed split still removes its stems:
+            # evaluate() skips the track and carries on to the next one.
+            temporary = tempfile.TemporaryDirectory(prefix="songscribe-eval-")
+            _, source = separate.isolate_vocals(audio_path, temporary.name)
         samples, sample_rate = audio.load(source, chords.sample_rate_for(backend))
         return chords.recognise(samples, sample_rate, backend=backend), temporary is not None
     finally:
@@ -317,10 +318,16 @@ def evaluate(
     whose reference or estimate is missing is skipped and named in the report
     rather than scored as zero -- an absent measurement is not a wrong one.
     """
-    from .. import lab
+    import subprocess
+
+    from .. import chords, lab, separate
 
     if (backend is None) == (estimates_dir is None):
         raise ValueError("pass exactly one of backend= or estimates_dir=")
+    # Checked here because the per-track catch below takes ValueError: an
+    # unknown backend would otherwise skip every track instead of aborting.
+    if backend is not None:
+        chords.sample_rate_for(backend)
     for vocabulary in vocabularies:
         if vocabulary not in metrics.VOCABULARIES:
             raise ValueError(
@@ -365,7 +372,16 @@ def evaluate(
                     use_separation=use_separation,
                     refresh=refresh,
                 )
-        except (OSError, ValueError, ImportError) as error:
+        # demucs failing on one track is a per-track problem like a missing
+        # file. Its specific types rather than RuntimeError, which would also
+        # swallow NotImplementedError from an unwired backend on every track.
+        except (
+            OSError,
+            ValueError,
+            ImportError,
+            subprocess.CalledProcessError,
+            separate.SeparationError,
+        ) as error:
             log.warning("%s: %s", track.id, error)
             skipped.append(track.id)
             continue

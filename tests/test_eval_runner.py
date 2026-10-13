@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 from math import isnan
 
 import pytest
 
+from songscribe import separate
 from songscribe.eval import dataset, runner
 from songscribe.eval.cli import format_report, report_to_dict
 from songscribe.types import ChordEvent
@@ -256,6 +258,73 @@ class TestEvaluate:
         assert isnan(report.mean("majmin"))
         assert isnan(report.weighted("majmin"))
         assert isnan(report.mean_segmentation())
+
+
+class TestEvaluateWithSeparation:
+    """A demucs failure is one track's problem, not the whole run's."""
+
+    @pytest.fixture
+    def data(self, tmp_path):
+        tracks = []
+        for name in ("short", "long"):
+            (tmp_path / f"{name}.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+            (tmp_path / f"{name}.wav").write_bytes(b"")
+            tracks.append(
+                dataset.Track(
+                    id=name, reference=tmp_path / f"{name}.lab", audio=tmp_path / f"{name}.wav"
+                )
+            )
+        return dataset.Dataset(name="tiny", tracks=tuple(tracks))
+
+    @pytest.fixture
+    def model(self, monkeypatch):
+        """Stubs every stage, demucs included, so nothing heavy ever runs."""
+        from songscribe import audio, chords
+
+        monkeypatch.setattr(separate, "available", lambda: True)
+        monkeypatch.setattr(separate, "isolate_vocals", lambda path, out_dir: (path, path))
+        monkeypatch.setattr(audio, "load", lambda source, rate: ([], rate))
+        monkeypatch.setattr(
+            chords, "recognise", lambda samples, rate, backend: [ChordEvent(0.0, 1.0, "C")]
+        )
+
+    def _fail_on(self, monkeypatch, error):
+        def isolate_vocals(path, out_dir):
+            if path.stem == "long":
+                raise error
+            return path, path
+
+        monkeypatch.setattr(separate, "isolate_vocals", isolate_vocals)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            subprocess.CalledProcessError(1, ["demucs"]),
+            separate.SeparationError("demucs produced no no_vocals stem"),
+        ],
+        ids=["demucs-exit-status", "missing-stem"],
+    )
+    def test_a_failed_separation_skips_the_track(self, data, model, monkeypatch, error):
+        self._fail_on(monkeypatch, error)
+        report = runner.evaluate(data, backend="madmom", use_separation=True)
+        assert report.skipped == ("long",)
+        assert [r.track_id for r in report.results] == ["short"]
+
+    def test_an_unwired_backend_still_aborts_the_run(self, data, model, monkeypatch):
+        # NotImplementedError is a RuntimeError; skipping it per track would
+        # turn "this backend does not exist yet" into an empty report.
+        from songscribe import chords
+
+        def unwired(samples, rate, backend):
+            raise NotImplementedError("not wired up")
+
+        monkeypatch.setattr(chords, "recognise", unwired)
+        with pytest.raises(NotImplementedError):
+            runner.evaluate(data, backend="btc", use_separation=True)
+
+    def test_an_unknown_backend_raises_before_any_work(self, data):
+        with pytest.raises(ValueError, match="unknown chord backend"):
+            runner.evaluate(data, backend="definitely-not-a-model")
 
 
 class TestReportFormatting:

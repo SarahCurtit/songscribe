@@ -17,6 +17,15 @@ from pathlib import Path
 DEMUCS_MODEL = "htdemucs"
 
 
+class SeparationError(RuntimeError):
+    """demucs ran but did not leave the stems this pipeline needs.
+
+    Its own type so a batch caller can skip the one track it happened on
+    without also swallowing every other ``RuntimeError`` -- including
+    ``NotImplementedError`` from a backend that should abort the run.
+    """
+
+
 def available() -> bool:
     """Whether demucs can be run from this interpreter.
 
@@ -63,7 +72,7 @@ def separate(path: str | Path, out_dir: str | Path, model: str = DEMUCS_MODEL) -
     stems = {wav.stem: wav for wav in stem_dir.glob("*.wav")}
     missing = {"vocals", "no_vocals"} - stems.keys()
     if missing:
-        raise RuntimeError(
+        raise SeparationError(
             f"demucs produced no {', '.join(sorted(missing))} stem in {stem_dir}; "
             f"found {sorted(stems) or 'nothing'}"
         )
