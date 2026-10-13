@@ -1,19 +1,9 @@
 """Chord labels parsed into pitch content, for comparison.
 
-Scoring cannot be done on label strings. ``C:maj`` and ``C`` name the same
-chord, ``C#`` and ``Db`` name the same root, ``C:maj7`` and ``C:maj`` agree on
-their triad and differ only in an extension some vocabularies ignore. All of
-that has to be decided on the notes a label denotes, not on its spelling.
-
-So both sides of an evaluation are parsed into a :class:`Chord` -- a root
-pitch class plus the set of semitone intervals above it -- and the comparison
-happens there. Harte notation (``C:min7(b5)/b3``, what reference annotations
-use) and this project's compact shorthand (``Cm7b5``, what backends emit) both
-parse; :func:`parse` accepts either, so a reference and an estimate go through
-the same door.
-
-Reference: Harte et al., "Symbolic representation of musical chords: a
-proposed syntax for text annotations", ISMIR 2005.
+Both sides parse into a root plus semitone intervals, so spelling (``C``/``C:maj``,
+``C#``/``Db``) never decides a match; Harte and compact shorthand both parse.
+Reference: Harte et al., "Symbolic representation of musical chords: a proposed
+syntax for text annotations", ISMIR 2005.
 """
 
 from __future__ import annotations
