@@ -27,6 +27,10 @@ _CACHE_SEPARATOR = "__"
 _SEPARATED_SUFFIX = "+separated"
 
 
+class AudioDecodeError(Exception):
+    """A track's audio exists but could not be decoded."""
+
+
 @dataclass(frozen=True, slots=True)
 class TrackResult:
     """Scores for one track."""
@@ -201,7 +205,15 @@ def _recognise(
             # evaluate() skips the track and carries on to the next one.
             temporary = tempfile.TemporaryDirectory(prefix="songscribe-eval-")
             _, source = separate.isolate_vocals(audio_path, temporary.name)
-        samples, sample_rate = audio.load(source, chords.sample_rate_for(backend))
+        try:
+            samples, sample_rate = audio.load(source, chords.sample_rate_for(backend))
+        except ImportError:
+            # A missing decoder package fails every track alike; let it abort.
+            raise
+        except Exception as error:
+            # The decoders raise unrelated types for a bad file (audioread's
+            # NoBackendError, EOFError on an empty one), so wrap them all.
+            raise AudioDecodeError(f"cannot decode {source}: {error!r}") from error
         return chords.recognise(samples, sample_rate, backend=backend), temporary is not None
     finally:
         if temporary is not None:
@@ -360,16 +372,18 @@ def evaluate(
                     use_separation=use_separation,
                     refresh=refresh,
                 )
-        # demucs failing on one track is a per-track problem like a missing
-        # file. Its specific types rather than RuntimeError, which would also
-        # swallow NotImplementedError from an unwired backend on every track.
-        # ImportError is left out for the same reason: a missing model package
-        # fails every uncached track, and skipping them would score a subset.
+        # demucs failing, or an undecodable file, on one track is a per-track
+        # problem like a missing file. Specific types rather than RuntimeError,
+        # which would also swallow NotImplementedError from an unwired backend
+        # on every track. ImportError is left out for the same reason: a missing
+        # model package fails every uncached track, and skipping them would
+        # score a subset.
         except (
             OSError,
             ValueError,
             subprocess.CalledProcessError,
             separate.SeparationError,
+            AudioDecodeError,
         ) as error:
             log.warning("%s: %s", track.id, error)
             skipped.append(track.id)

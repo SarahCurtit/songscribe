@@ -395,6 +395,42 @@ class TestEvaluateWithSeparation:
         with pytest.raises(ModuleNotFoundError, match="madmom"):
             runner.evaluate(data, backend="madmom", cache_dir=cache)
 
+    def _fail_to_decode(self, monkeypatch, error):
+        from songscribe import audio
+
+        def load(source, rate):
+            if source.stem == "long":
+                raise error
+            return [], rate
+
+        monkeypatch.setattr(audio, "load", load)
+
+    @pytest.mark.parametrize(
+        "error",
+        # Stand-ins for what librosa surfaced on a non-audio and an empty .wav:
+        # audioread's NoBackendError subclasses plain Exception.
+        [type("NoBackendError", (Exception,), {})(), EOFError()],
+        ids=["no-backend", "empty-file"],
+    )
+    def test_an_undecodable_file_skips_the_track(self, data, model, monkeypatch, caplog, error):
+        self._fail_to_decode(monkeypatch, error)
+        report = runner.evaluate(data, backend="madmom")
+        assert report.skipped == ("long",)
+        assert [r.track_id for r in report.results] == ["short"]
+        assert "long: cannot decode" in caplog.text
+
+    def test_the_decode_error_keeps_its_cause(self, data, model, monkeypatch):
+        cause = EOFError()
+        self._fail_to_decode(monkeypatch, cause)
+        with pytest.raises(runner.AudioDecodeError) as raised:
+            runner.estimate(data.tracks[1], "madmom")
+        assert raised.value.__cause__ is cause
+
+    def test_a_missing_decoder_package_still_aborts_the_run(self, data, model, monkeypatch):
+        self._fail_to_decode(monkeypatch, ModuleNotFoundError("No module named 'librosa'"))
+        with pytest.raises(ModuleNotFoundError, match="librosa"):
+            runner.evaluate(data, backend="madmom")
+
     def test_an_unknown_backend_raises_before_any_work(self, data):
         with pytest.raises(ValueError, match="unknown chord backend"):
             runner.evaluate(data, backend="definitely-not-a-model")
