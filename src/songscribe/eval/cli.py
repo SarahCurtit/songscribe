@@ -475,6 +475,7 @@ def format_report(report) -> str:
         "",
         f"dataset   {report.dataset}",
         f"backend   {report.backend}",
+        f"input     {_input_variant(report)}",
         f"tracks    {len(report.results)} scored"
         + (f", {len(report.skipped)} skipped" if report.skipped else ""),
         f"duration  {report.total_duration / 60:.1f} min of annotated audio",
@@ -513,6 +514,19 @@ def format_report(report) -> str:
         ]
     lines += _alignment_warning(report)
     return "\n".join(lines)
+
+
+def _input_variant(report) -> str:
+    """What the backend heard: separated and full-mix scores are not comparable."""
+    if report.separated is None:
+        return "not applicable (pre-computed estimates)"
+    if not report.separated:
+        return "full mix"
+    if not report.fallbacks:
+        return "separated stems"
+    return (
+        f"separated stems ({report.fallbacks} of {len(report.results)} fell back to the full mix)"
+    )
 
 
 def _alignment_warning(report) -> list[str]:
@@ -560,6 +574,9 @@ def report_to_dict(report) -> dict:
     return {
         "dataset": report.dataset,
         "backend": report.backend,
+        # null for pre-computed estimates, whose input is not known here.
+        "separated": report.separated,
+        "separation_fallbacks": report.fallbacks,
         "vocabularies": list(report.vocabularies),
         "total_duration": report.total_duration,
         "skipped": list(report.skipped),

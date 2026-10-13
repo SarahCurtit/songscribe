@@ -436,6 +436,89 @@ class TestEvaluateWithSeparation:
             runner.evaluate(data, backend="definitely-not-a-model")
 
 
+class TestReportInputVariant:
+    """Separated and full-mix scores are not comparable, so the report says which."""
+
+    @pytest.fixture
+    def data(self, tmp_path):
+        tracks = []
+        for name in ("short", "long"):
+            (tmp_path / f"{name}.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+            (tmp_path / f"{name}.wav").write_bytes(b"")
+            tracks.append(
+                dataset.Track(
+                    id=name, reference=tmp_path / f"{name}.lab", audio=tmp_path / f"{name}.wav"
+                )
+            )
+        return dataset.Dataset(name="tiny", tracks=tuple(tracks))
+
+    @pytest.fixture
+    def model(self, monkeypatch):
+        """A chord branch that separates whatever it is asked to and counts runs."""
+        runs = []
+
+        def fake_recognise(audio_path, backend, use_separation):
+            runs.append(audio_path.stem)
+            return [ChordEvent(0.0, 1.0, "C")], use_separation
+
+        monkeypatch.setattr(runner, "_recognise", fake_recognise)
+        return runs
+
+    def test_a_full_mix_run_says_so(self, data, model, monkeypatch):
+        monkeypatch.setattr(separate, "available", lambda: True)
+        report = runner.evaluate(data, backend="madmom")
+        assert (report.separated, report.fallbacks) == (False, 0)
+        assert "input     full mix\n" in format_report(report)
+
+    def test_a_separated_run_says_so(self, data, model, monkeypatch):
+        monkeypatch.setattr(separate, "available", lambda: True)
+        report = runner.evaluate(data, backend="madmom", use_separation=True)
+        assert (report.separated, report.fallbacks) == (True, 0)
+        assert "input     separated stems\n" in format_report(report)
+        document = report_to_dict(report)
+        assert document["separated"] is True
+        assert document["separation_fallbacks"] == 0
+
+    def test_every_full_mix_fallback_is_counted(self, data, model, monkeypatch):
+        monkeypatch.setattr(separate, "available", lambda: False)
+        report = runner.evaluate(data, backend="madmom", use_separation=True)
+        assert (report.separated, report.fallbacks) == (True, 2)
+        assert "separated stems (2 of 2 fell back to the full mix)" in format_report(report)
+        assert report_to_dict(report)["separation_fallbacks"] == 2
+
+    def test_a_cache_hit_on_a_fallback_still_counts(self, data, model, monkeypatch, tmp_path):
+        # The rerun reads the full-mix entry without running anything, but it
+        # is still a full-mix score in a run that asked for separation.
+        monkeypatch.setattr(separate, "available", lambda: False)
+        cache = tmp_path / "cache"
+        runner.evaluate(data, backend="madmom", cache_dir=cache, use_separation=True)
+        model.clear()
+        report = runner.evaluate(data, backend="madmom", cache_dir=cache, use_separation=True)
+        assert model == [], "the rerun must be served from cache"
+        assert report.fallbacks == 2
+
+    def test_a_skipped_track_is_not_counted_as_a_fallback(self, data, model, monkeypatch):
+        def recognise(audio_path, backend, use_separation):
+            if audio_path.stem == "long":
+                raise runner.AudioDecodeError("cannot decode long.wav")
+            return [ChordEvent(0.0, 1.0, "C")], use_separation
+
+        monkeypatch.setattr(separate, "available", lambda: False)
+        monkeypatch.setattr(runner, "_recognise", recognise)
+        report = runner.evaluate(data, backend="madmom", use_separation=True)
+        assert report.skipped == ("long",)
+        assert report.fallbacks == 1
+
+    def test_precomputed_estimates_have_no_input_variant(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.separated is None
+        assert "input     not applicable (pre-computed estimates)" in format_report(report)
+        document = report_to_dict(report)
+        assert document["separated"] is None
+        assert document["separation_fallbacks"] == 0
+
+
 class TestReportFormatting:
     def test_the_summary_names_the_dataset_and_every_vocabulary(self, corpus):
         data, estimates = corpus

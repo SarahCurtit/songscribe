@@ -150,6 +150,7 @@ songscribe-eval score audio/demo7/demo.json -a audio/demo7 --annotations audio/d
 ```
 dataset   demo7
 backend   template
+input     full mix
 tracks    1 scored
 duration  0.3 min of annotated audio
 

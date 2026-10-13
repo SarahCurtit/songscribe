@@ -65,6 +65,13 @@ class Report:
     vocabularies: tuple[str, ...]
     results: tuple[TrackResult, ...]
     skipped: tuple[str, ...] = ()
+    #: Whether separation was asked for; ``None`` when the estimates were read
+    #: from disk, whose input nobody here can vouch for. Separated and full-mix
+    #: scores are not comparable, so the report has to say which this was.
+    separated: bool | None = None
+    #: Scored tracks that ran on the full mix although separation was asked
+    #: for (demucs missing). Without it a fallback leaves no trace in the output.
+    fallbacks: int = 0
 
     def mean(self, vocabulary: str) -> float:
         """Unweighted mean of per-track WCSR, skipping unscoreable tracks."""
@@ -155,6 +162,17 @@ def estimate(
     a label the reference also uses, and discarding it would turn a correct
     silence into a gap the scorer has to infer.
     """
+    return _estimate(track, backend, cache_dir, use_separation, refresh)[0]
+
+
+def _estimate(
+    track: Track,
+    backend: str,
+    cache_dir: Path | None,
+    use_separation: bool,
+    refresh: bool,
+) -> tuple[list[ChordEvent], bool]:
+    """:func:`estimate`, also returning whether the estimate is of the separated stem."""
     from .. import lab, separate
 
     # Resolved before the lookup, so a full-mix fallback reads the entry it
@@ -169,7 +187,7 @@ def estimate(
     cached = cache_path(cache_dir, backend, track.id, separated) if cache_dir else None
     if cached is not None and cached.exists() and not refresh:
         log.debug("cache hit %s", cached)
-        return lab.read(cached)
+        return lab.read(cached), separated
 
     if track.audio is None:
         raise FileNotFoundError(f"{track.id}: manifest has no audio path")
@@ -181,7 +199,7 @@ def estimate(
         # Keyed on what actually ran, not what was asked for: a full-mix
         # fallback cached as separated would be served as such on every rerun.
         lab.write(cache_path(cache_dir, backend, track.id, separated), events)
-    return events
+    return events, separated
 
 
 def _recognise(
@@ -340,6 +358,7 @@ def evaluate(
 
     results: list[TrackResult] = []
     skipped: list[str] = []
+    fallbacks = 0
 
     for track in tracks:
         if not track.reference.exists():
@@ -365,13 +384,9 @@ def evaluate(
                     skipped.append(track.id)
                     continue
             else:
-                estimated = estimate(
-                    track,
-                    backend,
-                    cache_dir=cache_dir,
-                    use_separation=use_separation,
-                    refresh=refresh,
-                )
+                estimated, separated = _estimate(track, backend, cache_dir, use_separation, refresh)
+                if use_separation and not separated:
+                    fallbacks += 1
         # demucs failing, or an undecodable file, on one track is a per-track
         # problem like a missing file. Specific types rather than RuntimeError,
         # which would also swallow NotImplementedError from an unwired backend
@@ -402,4 +417,6 @@ def evaluate(
         vocabularies=tuple(vocabularies),
         results=tuple(results),
         skipped=tuple(skipped),
+        separated=None if estimates_dir is not None else use_separation,
+        fallbacks=fallbacks,
     )
