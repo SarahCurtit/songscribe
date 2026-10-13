@@ -130,8 +130,9 @@ hedge anything derived from the other three.
 **3. Point the harness at both.** Once, in your shell:
 
 ```bash
-export SONGSCRIBE_EVAL_ROOT=~/music/beatles          # your recordings
-export SONGSCRIBE_EVAL_ANNOTATIONS=data/isophonics   # the directory containing chordlab/
+# from the repo root, so $PWD is the checkout: a relative path would break other directories
+export SONGSCRIBE_EVAL_ROOT=~/music/beatles                 # your recordings
+export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"   # the directory containing chordlab/
 ```
 
 The annotation root must be the directory *containing* `chordlab/`, because manifest

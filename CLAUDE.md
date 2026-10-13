@@ -108,7 +108,8 @@ pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 
-export SONGSCRIBE_EVAL_ANNOTATIONS=data/isophonics           # the directory holding chordlab/
+# from the repo root, so $PWD is the checkout: a relative path would break other directories
+export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
 export SONGSCRIBE_EVAL_ROOT=~/music                          # your recordings
 songscribe-eval survey eval/isophonics-beatles.json          # no audio, no model
 songscribe-eval manifest data/isophonics -a ~/music -o eval/isophonics.json
