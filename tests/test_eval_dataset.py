@@ -360,6 +360,22 @@ class TestBuildManifest:
         assert report.ambiguous == ()
         assert report.manifest["tracks"][0]["audio"] == "Paper Harbour/06 Paper Harbour.flac"
 
+    # The decoy shares everything before the first dot, so a fold that cut album
+    # names at a dot left the title ambiguous, or paired it with the decoy.
+    @pytest.mark.parametrize("album", ["Mr. Placeholder's Band", "Mr Placeholders Band"])
+    def test_an_album_with_a_dot_in_its_name_pairs_with_its_own_copy(self, tmp_path, album):
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "05_-_Mr._Placeholder's_Band"
+        chords.mkdir(parents=True)
+        (chords / "02_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        audio = tmp_path / "audio"
+        for directory in (album, "Mr. Decoy Album"):
+            (audio / directory).mkdir(parents=True)
+            (audio / directory / "02 Lantern Over Water.flac").write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", audio)
+        assert report.ambiguous == ()
+        assert report.manifest["tracks"][0]["audio"] == f"{album}/02 Lantern Over Water.flac"
+
     def test_a_directory_above_the_audio_root_does_not_count_as_the_album(
         self, annotations, tmp_path
     ):

@@ -85,8 +85,20 @@ def fold_title(name: str) -> str:
     ``"isawherstandingthere"``: leading disc and track numbers, case,
     punctuation and spacing all go, being what differs between the two.
     """
-    stem = Path(name).stem.lower()
-    folded = _NOT_ALNUM.sub("", stem)
+    return _fold(Path(name).stem)
+
+
+def _fold_directory(name: str) -> str:
+    """:func:`fold_title` for a directory name, which has no suffix to drop.
+
+    ``.stem`` would cut ``"05_-_Mr._Placeholder's_Band"`` at its first dot, and
+    every album sharing that prefix would then claim the same tracks.
+    """
+    return _fold(name)
+
+
+def _fold(text: str) -> str:
+    folded = _NOT_ALNUM.sub("", text.lower())
     # Strip the track number only after folding, so "01_-_Help" and "01 Help"
     # both lose exactly the same prefix.
     return _TRACK_NUMBER.sub("", folded) or folded
@@ -213,14 +225,16 @@ def _match_audio(
     folded = fold_title(relative.name)
     candidates = _best_copies(index.get(folded, []))
     if len(candidates) > 1 and relative.parent != Path("."):
-        album = fold_title(relative.parent.name)
+        album = _fold_directory(relative.parent.name)
         # Directories below the root only: a title track's own filename folds to
         # the album name, and a directory above the root is shared by every
         # candidate, so either would let all of them through.
         within_album = [
             p
             for p in candidates
-            if any(fold_title(part) == album for part in p.relative_to(audio_root).parent.parts)
+            if any(
+                _fold_directory(part) == album for part in p.relative_to(audio_root).parent.parts
+            )
         ]
         if within_album:
             return within_album
