@@ -364,10 +364,11 @@ def evaluate(
         # demucs failing on one track is a per-track problem like a missing
         # file. Its specific types rather than RuntimeError, which would also
         # swallow NotImplementedError from an unwired backend on every track.
+        # ImportError is left out for the same reason: a missing model package
+        # fails every uncached track, and skipping them would score a subset.
         except (
             OSError,
             ValueError,
-            ImportError,
             subprocess.CalledProcessError,
             separate.SeparationError,
         ) as error:

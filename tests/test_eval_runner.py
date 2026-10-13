@@ -350,6 +350,23 @@ class TestEvaluateWithSeparation:
         with pytest.raises(NotImplementedError):
             runner.evaluate(data, backend="btc", use_separation=True)
 
+    def test_a_missing_model_package_aborts_even_with_a_partial_cache(
+        self, data, model, monkeypatch, tmp_path
+    ):
+        # Skipping it per track would report the cached tracks alone as the
+        # corpus figure, with exit status 0.
+        from songscribe import chords, lab
+
+        cache = tmp_path / "cache"
+        lab.write(runner.cache_path(cache, "madmom", "short"), [ChordEvent(0.0, 1.0, "C")])
+
+        def uninstalled(samples, rate, backend):
+            raise ModuleNotFoundError("No module named 'madmom'", name="madmom")
+
+        monkeypatch.setattr(chords, "recognise", uninstalled)
+        with pytest.raises(ModuleNotFoundError, match="madmom"):
+            runner.evaluate(data, backend="madmom", cache_dir=cache)
+
     def test_an_unknown_backend_raises_before_any_work(self, data):
         with pytest.raises(ValueError, match="unknown chord backend"):
             runner.evaluate(data, backend="definitely-not-a-model")
