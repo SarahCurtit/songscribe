@@ -1,14 +1,9 @@
-"""Data preparation for looking at chord annotations.
+"""Data preparation for looking at chord annotations, plot-library-free on purpose.
 
-Plot-library-free on purpose. Every function here returns plain tuples, so the
-shaping is unit-tested in CI with no plotting backend installed, and the
-notebook in ``notebooks/`` stays a thin layer of matplotlib calls over it.
-That split matters because the interesting bugs are in the shaping -- which
-chord got which colour, which bin a duration fell in -- not in the drawing.
-
-Colours are returned as **root pitch classes** (0-11), not RGB: same root,
-same colour, whatever palette the caller picks. ``NO_COLOUR`` marks a span
-with no root, meaning ``N`` or a label that would not parse.
+Functions return plain tuples so the shaping -- where the interesting bugs live -- is
+unit-tested on core deps and the notebook stays a thin layer of matplotlib calls. Colours
+are root pitch classes (0-11), not RGB, so a root keeps its colour under any palette;
+``NO_COLOUR`` marks a span with no root.
 """
 
 from __future__ import annotations
