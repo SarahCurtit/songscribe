@@ -132,12 +132,13 @@ songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-t
 
 No corpus to hand? The synthetic demo is a one-track corpus. Here it is with every chord a
 seventh, scored with the `template` baseline (no weights needed), all under the gitignored
-`audio/` directory:
+`audio/` directory. The explicit `-a`/`--annotations` roots override any
+`SONGSCRIBE_EVAL_ROOT`/`SONGSCRIBE_EVAL_ANNOTATIONS` you've exported for a real corpus:
 
 ```bash
 songscribe-demo -p Cmaj7 G7 Am7 Fmaj7 -o audio/demo7/demo.wav
 songscribe-eval manifest audio/demo7 --audio audio/demo7 -o audio/demo7/demo.json
-songscribe-eval score audio/demo7/demo.json -c template
+songscribe-eval score audio/demo7/demo.json -a audio/demo7 --annotations audio/demo7 -c template
 ```
 
 ```
