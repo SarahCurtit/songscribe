@@ -1,32 +1,9 @@
-"""Chord recognition metrics: WCSR over a comparison vocabulary.
+"""Chord recognition metrics: WCSR, the MIREX measure, over a comparison vocabulary.
 
-Weighted Chord Symbol Recall is the MIREX measure, and the only one worth
-leading with: it is the fraction of *annotated time* a model labels correctly.
-Counting segments instead would let a model win by getting a hundred passing
-chords right and the tonic wrong.
-
-The shape of the computation:
-
-1. Reference and estimate are each made gapless over the reference's extent,
-   filling anything uncovered with ``N`` -- the pipeline drops ``N`` spans, so
-   an estimate arrives full of holes that mean "no chord here".
-2. The two timelines are merged on the union of their boundaries, giving
-   sub-segments over which both sides hold one label.
-3. Each sub-segment is scored by projecting both labels into the comparison
-   vocabulary. Reference segments the vocabulary cannot express are excluded
-   from the score entirely, numerator and denominator both.
+1. Make reference and estimate gapless over the reference's extent, filling with ``N``.
+2. Merge the two on the union of their boundaries into single-label sub-segments.
+3. Project both labels into the vocabulary; skip reference time it cannot express.
 4. WCSR is correct duration over compared duration.
-
-Step 3 is where the vocabularies differ, and it is the whole reason several
-are reported: ``majmin`` asks whether the triad is right, ``sevenths`` whether
-the seventh is too. The default backend only knows triads (see ``CLAUDE.md``),
-so its ``sevenths`` score is bounded well below its ``majmin`` score by the
-vocabulary rather than by the model -- which is exactly what the pair of
-numbers is there to show.
-
-Pure Python: no numpy, no mir_eval, so this runs in CI with no weights and no
-extra dependencies. Where the projection rules differ from ``mir_eval``'s,
-:data:`VOCABULARIES` says how.
 """
 
 from __future__ import annotations
@@ -65,6 +42,10 @@ VOCABULARIES: dict[str, str] = {
     "mirex": f"at least {MIREX_MIN_SHARED} pitch classes in common",
 }
 
+#: Several are reported because they ask different questions: ``majmin`` whether the
+#: triad is right, ``sevenths`` whether the seventh is too. The default backend only knows
+#: triads (see ``CLAUDE.md``), so its ``sevenths`` score is bounded well below its
+#: ``majmin`` score by the vocabulary rather than the model -- which the pair is there to show.
 DEFAULT_VOCABULARIES = ("root", "majmin", "sevenths", "mirex")
 
 #: Which (third, fifth) pair names which triad.
@@ -362,6 +343,8 @@ def score(
             f"unknown vocabulary {vocabulary!r}, expected one of {sorted(VOCABULARIES)}"
         )
 
+    # Weighted by time, not counted by segment: counting segments would let a model win by
+    # getting a hundred passing chords right and the tonic wrong.
     correct = compared = ignored = 0.0
     # Labels repeat heavily within a track, so parsing is memoised: a 200-chord
     # annotation holds maybe fifteen distinct labels.
