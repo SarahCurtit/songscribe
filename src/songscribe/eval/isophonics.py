@@ -168,7 +168,14 @@ def _match_audio(
     candidates = index.get(folded, [])
     if len(candidates) > 1 and relative.parent != Path("."):
         album = fold_title(relative.parent.name)
-        within_album = [p for p in candidates if any(fold_title(part) == album for part in p.parts)]
+        # Directories below the root only: a title track's own filename folds to
+        # the album name, and a directory above the root is shared by every
+        # candidate, so either would let all of them through.
+        within_album = [
+            p
+            for p in candidates
+            if any(fold_title(part) == album for part in p.relative_to(audio_root).parent.parts)
+        ]
         if within_album:
             return within_album
 

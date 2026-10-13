@@ -251,6 +251,34 @@ class TestBuildManifest:
             "01_-_First_Album/Lantern Over Water.flac"
         )
 
+    def test_a_title_track_pairs_with_the_copy_in_its_own_album(self, tmp_path):
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "Paper Harbour"
+        chords.mkdir(parents=True)
+        (chords / "06_-_Paper_Harbour.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        audio = tmp_path / "audio"
+        (audio / "Paper Harbour").mkdir(parents=True)
+        (audio / "Paper Harbour" / "06 Paper Harbour.flac").write_bytes(b"x")
+        (audio / "Best Of").mkdir(parents=True)
+        (audio / "Best Of" / "12 Paper Harbour.flac").write_bytes(b"x")
+
+        report = isophonics.build_manifest(tmp_path / "ann", audio)
+        assert report.ambiguous == ()
+        assert report.manifest["tracks"][0]["audio"] == "Paper Harbour/06 Paper Harbour.flac"
+
+    def test_a_directory_above_the_audio_root_does_not_count_as_the_album(
+        self, annotations, tmp_path
+    ):
+        audio = tmp_path / "01_-_First_Album" / "library"
+        for album in ("01_-_First_Album", "Live Album"):
+            (audio / album).mkdir(parents=True)
+            (audio / album / "Lantern Over Water.flac").write_bytes(b"x")
+
+        report = isophonics.build_manifest(annotations, audio)
+        paired = {t["id"]: t.get("audio") for t in report.manifest["tracks"]}
+        assert paired["chordlab/The Band/01_-_First_Album/01_-_Lantern_Over_Water"] == (
+            "01_-_First_Album/Lantern Over Water.flac"
+        )
+
     def test_a_manifest_without_an_audio_root_has_references_only(self, annotations):
         report = isophonics.build_manifest(annotations)
         assert all("audio" not in t for t in report.manifest["tracks"])
