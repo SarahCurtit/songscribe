@@ -110,7 +110,7 @@ songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 
 songscribe-eval survey eval/isophonics-beatles.json          # no audio, no model
 songscribe-eval manifest ~/corpora/isophonics -a ~/music -o eval/isophonics.json
-songscribe-eval score eval/isophonics-beatles.json -c madmom --cache .eval-cache --per-track
+songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 
 `survey` is the corpus health check: it reports annotated time and whether every label
@@ -135,7 +135,11 @@ making the 8-hour Beatles set ~4 hours (`template` is ~180x, so ~3 minutes). Sha
 paths out with `-c template --limit 5` first. See `EVALUATION.md`.
 
 The Beatles annotations live in the gitignored `data/` (extract the Isophonics archive
-there); `eval/isophonics-beatles.json` is the committed manifest over them.
+there); `eval/isophonics-beatles.json` is the committed manifest over them. It is
+**references-only** — no `audio` paths — so it serves `survey` and `score --estimates`, and
+`score -c` on it scores nothing. A `-c` run needs a manifest built locally with
+`manifest -a`, as above; its audio paths follow your own library's filenames, so it stays
+uncommitted.
 
 `[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
 import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default

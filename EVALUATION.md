@@ -141,9 +141,11 @@ track-number-insensitive title match. Anything it cannot pair uniquely it *repor
 than guessing at — a manifest quietly pointing at the wrong recording would produce a
 plausible, wrong score. Use `--list-unpaired` to see every miss and fix your filenames.
 
-A manifest committed to the repo is portable: `eval/isophonics-beatles.json` is the Beatles
-chordlab set, and anyone with their own copy of those annotations and recordings can point
-the two roots at them and reproduce the numbers.
+This manifest is yours alone: its audio paths follow your library's filenames, so it is
+not committed. The committed `eval/isophonics-beatles.json` is the Beatles chordlab set
+**references-only** — 180 tracks, no `audio` paths. It is enough for `survey` and for
+`score --estimates`, which need only the annotation root; `score -c` on it finds no
+recordings and scores nothing. To run a backend, build your own as above.
 
 **5. Survey the corpus.** Needs no audio and no model, so do it before the long run:
 
