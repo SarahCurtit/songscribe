@@ -1,7 +1,7 @@
 {
   "version": 1,
   "dataset": "isophonics-beatles",
-  "notes": "Chord reference annotations paired against a local audio library. Paths are relative, and no audio or annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
+  "notes": "Chord reference annotations only, not paired with any audio. Paths are relative, and no annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
   "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
   "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
   "tracks": [

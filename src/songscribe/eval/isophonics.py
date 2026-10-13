@@ -48,6 +48,14 @@ DEFAULT_NOTES = (
     "identifiers -- so this manifest carries no licensed material."
 )
 
+#: Written instead of :data:`DEFAULT_NOTES` when no audio root is given, so a
+#: references-only manifest doesn't claim a pairing it never made.
+REFERENCES_ONLY_NOTES = (
+    "Chord reference annotations only, not paired with any audio. Paths are "
+    "relative, and no annotation text is stored here -- only identifiers -- "
+    "so this manifest carries no licensed material."
+)
+
 
 @dataclass(frozen=True, slots=True)
 class BuildReport:
@@ -132,12 +140,13 @@ def build_manifest(
     annotation_root: str | Path,
     audio_root: str | Path | None = None,
     name: str = "isophonics",
-    notes: str = DEFAULT_NOTES,
+    notes: str | None = None,
 ) -> BuildReport:
     """Pair annotations with audio and assemble a manifest.
 
     ``audio_root`` may be omitted, which produces a manifest with references
     only -- enough to score pre-computed estimates, not to run a model.
+    ``notes`` defaults to text matching whichever of the two was built.
     """
     annotation_root = Path(annotation_root).expanduser()
     if not annotation_root.is_dir():
@@ -149,6 +158,8 @@ def build_manifest(
 
     audio_root = Path(audio_root).expanduser() if audio_root else None
     index = index_audio(audio_root) if audio_root else {}
+    if notes is None:
+        notes = DEFAULT_NOTES if audio_root is not None else REFERENCES_ONLY_NOTES
 
     entries: list[dict[str, str]] = []
     unpaired: list[str] = []

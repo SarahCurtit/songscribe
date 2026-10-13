@@ -207,6 +207,21 @@ class TestBuildManifest:
         for track in report.manifest["tracks"]:
             assert not track["reference"].startswith("/")
 
+    def test_a_references_only_build_does_not_claim_a_pairing(self, annotations):
+        report = isophonics.build_manifest(annotations)
+        assert report.manifest["notes"] == isophonics.REFERENCES_ONLY_NOTES
+
+    def test_a_build_with_audio_keeps_the_paired_notes(self, annotations, tmp_path):
+        (tmp_path / "audio").mkdir()
+        report = isophonics.build_manifest(annotations, tmp_path / "audio")
+        assert report.manifest["notes"] == isophonics.DEFAULT_NOTES
+
+    def test_explicit_notes_win_either_way(self, annotations, tmp_path):
+        (tmp_path / "audio").mkdir()
+        assert isophonics.build_manifest(annotations, notes="mine").manifest["notes"] == "mine"
+        with_audio = isophonics.build_manifest(annotations, tmp_path / "audio", notes="mine")
+        assert with_audio.manifest["notes"] == "mine"
+
     def test_audio_is_paired_by_mirrored_path(self, annotations, tmp_path):
         audio = tmp_path / "audio" / "chordlab" / "The Band" / "01_-_First_Album"
         audio.mkdir(parents=True)
