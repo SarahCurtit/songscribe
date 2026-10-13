@@ -1,6 +1,7 @@
 """Run a chord backend over a dataset and aggregate the scores.
 
-Estimates are cached as ``.lab`` files keyed by backend and track. ``madmom``
+Estimates are cached as ``.lab`` files keyed by backend, input variant (full
+mix or separated stem) and track. ``madmom``
 runs at roughly 2x realtime on one CPU, so the 8-hour Isophonics Beatles set
 takes about 4 hours -- long enough that a run will sometimes be interrupted,
 and far too long to repeat because a scoring rule changed. Re-scoring cached
@@ -36,6 +37,9 @@ log = logging.getLogger(__name__)
 #: separators. Flattening them keeps the cache one directory deep and avoids
 #: having to recreate the corpus tree.
 _CACHE_SEPARATOR = "__"
+#: Appended to the backend's cache directory for estimates made on the
+#: separated stem. No registered backend name contains "+", so it cannot collide.
+_SEPARATED_SUFFIX = "+separated"
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,9 +142,15 @@ def flatten_track_id(track_id: str) -> str:
     return track_id.replace("/", _CACHE_SEPARATOR).replace("\\", _CACHE_SEPARATOR)
 
 
-def cache_path(cache_dir: Path, backend: str, track_id: str) -> Path:
-    """Where a cached estimate for one track and backend lives."""
-    return cache_dir / backend / f"{flatten_track_id(track_id)}.lab"
+def cache_path(cache_dir: Path, backend: str, track_id: str, separated: bool = False) -> Path:
+    """Where a cached estimate for one track, backend and input variant lives.
+
+    Separated and full-mix estimates are kept apart: separation is the largest
+    accuracy factor in the pipeline, so reusing one as the other would report
+    a score for an input the model never saw.
+    """
+    variant = f"{backend}{_SEPARATED_SUFFIX}" if separated else backend
+    return cache_dir / variant / f"{flatten_track_id(track_id)}.lab"
 
 
 def estimate(
@@ -158,7 +168,7 @@ def estimate(
     """
     from .. import lab
 
-    cached = cache_path(cache_dir, backend, track.id) if cache_dir else None
+    cached = cache_path(cache_dir, backend, track.id, use_separation) if cache_dir else None
     if cached is not None and cached.exists() and not refresh:
         log.debug("cache hit %s", cached)
         return lab.read(cached)
@@ -168,14 +178,22 @@ def estimate(
     if not track.audio.exists():
         raise FileNotFoundError(f"{track.id}: no audio at {track.audio}")
 
-    events = _recognise(track.audio, backend, use_separation=use_separation)
-    if cached is not None:
-        lab.write(cached, events)
+    events, separated = _recognise(track.audio, backend, use_separation=use_separation)
+    if cache_dir is not None:
+        # Keyed on what actually ran, not what was asked for: a full-mix
+        # fallback cached as separated would be served as such on every rerun.
+        lab.write(cache_path(cache_dir, backend, track.id, separated), events)
     return events
 
 
-def _recognise(audio_path: Path, backend: str, use_separation: bool) -> list[ChordEvent]:
-    """Run the chord branch of the pipeline on one file."""
+def _recognise(
+    audio_path: Path, backend: str, use_separation: bool
+) -> tuple[list[ChordEvent], bool]:
+    """Run the chord branch of the pipeline on one file.
+
+    Also returns whether separation actually ran, which differs from
+    ``use_separation`` when demucs is missing.
+    """
     import tempfile
 
     from .. import audio, chords, separate
@@ -195,7 +213,7 @@ def _recognise(audio_path: Path, backend: str, use_separation: bool) -> list[Cho
 
     try:
         samples, sample_rate = audio.load(source, chords.sample_rate_for(backend))
-        return chords.recognise(samples, sample_rate, backend=backend)
+        return chords.recognise(samples, sample_rate, backend=backend), temporary is not None
     finally:
         if temporary is not None:
             temporary.cleanup()

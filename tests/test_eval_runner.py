@@ -6,6 +6,7 @@ import pytest
 
 from songscribe.eval import dataset, runner
 from songscribe.eval.cli import format_report, report_to_dict
+from songscribe.types import ChordEvent
 
 
 @pytest.fixture
@@ -65,6 +66,68 @@ class TestCachePath:
         events = runner.read_estimate(tmp_path / "madmom", track_id)
         assert events is not None, f"cache miss for {track_id!r}"
         assert [e.label for e in events] == ["C"]
+
+    def test_it_is_keyed_by_input_variant(self, tmp_path):
+        full_mix = runner.cache_path(tmp_path, "madmom", "song")
+        separated = runner.cache_path(tmp_path, "madmom", "song", separated=True)
+        assert full_mix != separated
+
+
+class TestEstimateCache:
+    """The cache must never serve one input variant's estimate as the other's."""
+
+    @pytest.fixture
+    def track(self, tmp_path):
+        audio = tmp_path / "song.wav"
+        audio.write_bytes(b"")
+        return dataset.Track(id="song", reference=tmp_path / "song.lab", audio=audio)
+
+    @pytest.fixture
+    def model(self, monkeypatch):
+        """A fake chord branch that labels by input variant and counts runs."""
+        calls = []
+
+        def fake_recognise(audio_path, backend, use_separation):
+            calls.append(use_separation)
+            label = "G" if use_separation else "C"
+            return [ChordEvent(0.0, 1.0, label)], use_separation
+
+        monkeypatch.setattr(runner, "_recognise", fake_recognise)
+        return calls
+
+    def test_separated_and_full_mix_runs_do_not_share_entries(self, tmp_path, track, model):
+        cache = tmp_path / "cache"
+        full_mix = runner.estimate(track, "madmom", cache_dir=cache)
+        separated = runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+
+        assert [e.label for e in full_mix] == ["C"]
+        assert [e.label for e in separated] == ["G"]
+        assert model == [False, True], "the second variant must run the model, not hit cache"
+
+    def test_each_variant_still_hits_its_own_entry(self, tmp_path, track, model):
+        cache = tmp_path / "cache"
+        runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+        again = runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+        assert [e.label for e in again] == ["G"]
+        assert model == [True]
+
+    def test_a_full_mix_fallback_is_not_cached_as_separated(self, tmp_path, track, monkeypatch):
+        # demucs missing: separation was asked for but the full mix was scored.
+        from songscribe import audio, chords, separate
+
+        monkeypatch.setattr(separate, "available", lambda: False)
+        monkeypatch.setattr(audio, "load", lambda source, rate: ([], rate))
+        monkeypatch.setattr(
+            chords,
+            "recognise",
+            lambda samples, rate, backend: [ChordEvent(0.0, 1.0, "C")],
+        )
+
+        cache = tmp_path / "cache"
+        runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+
+        assert not runner.cache_path(cache, "madmom", "song", separated=True).exists()
+        assert runner.cache_path(cache, "madmom", "song").exists()
 
 
 class TestReadEstimate:
