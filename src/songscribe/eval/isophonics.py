@@ -40,6 +40,10 @@ OTHER_ANNOTATION_DIRECTORIES = (
 _TRACK_NUMBER = re.compile(r"^(?:(?:cd|disc|disk)?\d+)+")
 _NOT_ALNUM = re.compile(r"[^a-z0-9]+")
 _WORD = re.compile(r"[a-z0-9]+")
+# Apostrophes join rather than split, as in _fold: "Day's" and "Days" must give
+# the same word. Dots still split, which already makes "Sgt. Pepper" and "Sgt
+# Pepper" agree; joining them would glue "Vol.1" and "Sgt.Pepper" into one word.
+_APOSTROPHES = re.compile(r"['\u2018\u2019\u02bc]")
 
 #: Words a rip adds to a folder name that say nothing about which album it is,
 #: so "Help! [2009 Stereo Remaster]" and "1965 - Help! (Deluxe Edition)" both
@@ -52,6 +56,13 @@ DECORATION_WORDS = frozenset(
         "edition",
         "expanded",
         "anniversary",
+        "reissue",
+        "japan",
+        "japanese",
+        "import",
+        "vinyl",
+        "lp",
+        "rip",
         "stereo",
         "mono",
         "flac",
@@ -322,7 +333,8 @@ def _name_words(name: str) -> tuple[str, ...]:
     (track, disc, year) and :data:`DECORATION_WORDS` go wherever they sit, and a
     leading "the", so "The Band - Album (2009) [FLAC]" reads as ``band album``.
     """
-    words = [w for w in _WORD.findall(name.lower()) if w not in DECORATION_WORDS]
+    text = _APOSTROPHES.sub("", name.lower())
+    words = [w for w in _WORD.findall(text) if w not in DECORATION_WORDS]
     words = [w for w in words if not _TRACK_NUMBER.fullmatch(w)]
     return tuple(words[1:] if words[:1] == ["the"] else words)
 
@@ -330,17 +342,17 @@ def _name_words(name: str) -> tuple[str, ...]:
 def _names_agree(folder: tuple[str, ...], expected: list[tuple[str, ...]]) -> bool:
     """True if a library folder's words name one of the annotation's folders.
 
-    Equal word lists agree, as does a folder holding every annotation name at
-    once. A folder holding one name contiguously agrees only if each word left
-    over is in :data:`CONTAINED_NAME_EXTRAS` or the annotation's other name. A
+    Equal word lists agree. A folder holding one name contiguously agrees only if
+    each word left over is in :data:`CONTAINED_NAME_EXTRAS` or the annotation's
+    other name, so "Band - Album" agrees and "Band - Album (Karaoke)" doesn't. A
     folder is never matched by being *part of* a name: "Hearts" isn't an album.
     """
     if folder in expected:
         return True
-    if len(expected) > 1 and all(_contains(folder, words) for words in expected):
-        return True
-    for words in expected:
-        others = {w for name in expected if name != words for w in name}
+    for index, words in enumerate(expected):
+        # By position, not value: a self-titled album's name equals its artist's,
+        # and "Band - Band" must still find the other one.
+        others = {w for i, name in enumerate(expected) if i != index for w in name}
         for start in _runs(folder, words):
             leftover = folder[:start] + folder[start + len(words) :]
             if all(w in CONTAINED_NAME_EXTRAS or w in others for w in leftover):
@@ -352,10 +364,6 @@ def _runs(longer: tuple[str, ...], shorter: tuple[str, ...]) -> list[int]:
     """Every index at which ``shorter`` runs contiguously inside ``longer``."""
     size = len(shorter)
     return [i for i in range(len(longer) - size + 1) if longer[i : i + size] == shorter]
-
-
-def _contains(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
-    return bool(_runs(longer, shorter))
 
 
 def _best_copies(paths: list[Path]) -> list[Path]:

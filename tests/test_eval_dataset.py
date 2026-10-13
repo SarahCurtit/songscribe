@@ -363,6 +363,10 @@ class TestBuildManifest:
             "Other Singer/Fifth Album Demos",
             "Other Singer/Fifth Album Revisited",
             "Other Singer/Album",
+            # Both names present is no excuse: the extra word still marks a cover.
+            "Various Artists/The Placeholder Band - Fifth Album (Karaoke)",
+            "Fifth Album Revisited - A Tribute to The Placeholder Band",
+            "Fifth Album - The Placeholder Band Covers",
         ],
     )
     def test_a_lone_title_inside_someone_elses_record_is_unplaced(self, tmp_path, folder):
@@ -398,6 +402,52 @@ class TestBuildManifest:
         rip.write_bytes(b"")
 
         report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 1
+        assert report.unplaced == ()
+
+    # Rips drop or add apostrophes freely; _fold already ignores them, and a flat
+    # library with no artist folder used to leave every such album unplaced.
+    @pytest.mark.parametrize(
+        ("album", "folder"),
+        [
+            ("03_-_A_Long_Day's_Lantern", "A Long Days Lantern"),
+            ("03_-_A_Long_Days_Lantern", "A Long Day's Lantern"),
+            ("03_-_A_Long_Day's_Lantern", "A Long Day\u2019s Lantern"),
+            ("03_-_Capt._Zork's_Parade", "Capt Zorks Parade"),
+            ("03_-_Capt_Zorks_Parade", "Capt. Zork's Parade"),
+        ],
+    )
+    def test_an_album_folder_differing_only_in_apostrophes_pairs(self, tmp_path, album, folder):
+        chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / album
+        chords.mkdir(parents=True)
+        (chords / "05_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "Music" / folder / "05 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "Music")
+        assert report.paired == 1
+        assert report.unplaced == ()
+
+    # A self-titled album's two names are equal, so "Band - Band" must still count
+    # the second as the other name; rip descriptors are decoration, not a cover.
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            "Placeholder Band - Placeholder Band (2009) [FLAC]",
+            "The Placeholder Band - Placeholder Band [24-96 Vinyl Rip]",
+            "Placeholder Band - Placeholder Band (Japanese Edition)",
+        ],
+    )
+    def test_a_band_and_album_folder_pairs_for_a_self_titled_album(self, tmp_path, folder):
+        chords = tmp_path / "ann" / "chordlab" / "Placeholder Band" / "07_-_Placeholder_Band"
+        chords.mkdir(parents=True)
+        (chords / "05_-_Common_Title.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        rip = tmp_path / "Music" / folder / "05 Common Title.flac"
+        rip.parent.mkdir(parents=True)
+        rip.write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "Music")
         assert report.paired == 1
         assert report.unplaced == ()
 
