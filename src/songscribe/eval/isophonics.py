@@ -279,21 +279,33 @@ def _match_audio(
     folded = fold_title(relative.name)
     candidates = _best_copies(index.get(folded, []))
     album = _fold_directory(relative.parent.name)
-    # A self-titled album folds to its artist's name, so in the library it would
-    # match the artist folder above every album, compilations included. Checked
-    # on the annotation side, whose artist/album layout is known; a library path
-    # can't say which of its directories is the artist.
-    self_titled = any(_fold_directory(part) == album for part in relative.parent.parent.parts)
+    album_words = _name_words(relative.parent.name)
+    artist_words = [
+        _name_words(part)
+        for part in relative.parent.parent.parts
+        if part.lower() not in CHORD_DIRECTORIES
+    ]
+    # A self-titled album names its artist, so in the library it would match the
+    # artist folder above every album, compilations included. Checked on the
+    # annotation side, whose artist/album layout is known; a library path can't
+    # say which of its directories is the artist.
+    self_titled = (album_words and album_words in artist_words) or any(
+        _fold_directory(part) == album for part in relative.parent.parent.parts
+    )
     if len(candidates) > 1 and relative.parent != Path(".") and not self_titled:
-        # Directories below the root only: a title track's own filename folds to
-        # the album name, and a directory above the root is shared by every
-        # candidate, so either would let all of them through.
-        within_album = [
-            p
-            for p in candidates
-            if any(
-                _fold_directory(part) == album for part in p.relative_to(audio_root).parent.parts
+        # Directories below the root only, unlike step 3: a title track's filename
+        # folds to the album name, and the root's own name (or any directory above
+        # it) is shared by every candidate, so would let all of them through. Read
+        # as words, as in step 3, so "Band - Album [FLAC]" beats "Greatest Hits".
+        others = {w for words in artist_words for w in words}
+
+        def names_album(part: str) -> bool:
+            return _fold_directory(part) == album or _holds_name(
+                _name_words(part), album_words, others
             )
+
+        within_album = [
+            p for p in candidates if any(map(names_album, p.relative_to(audio_root).parent.parts))
         ]
         if within_album:
             return within_album, False
@@ -353,10 +365,22 @@ def _names_agree(folder: tuple[str, ...], expected: list[tuple[str, ...]]) -> bo
         # By position, not value: a self-titled album's name equals its artist's,
         # and "Band - Band" must still find the other one.
         others = {w for i, name in enumerate(expected) if i != index for w in name}
-        for start in _runs(folder, words):
-            leftover = folder[:start] + folder[start + len(words) :]
-            if all(w in CONTAINED_NAME_EXTRAS or w in others for w in leftover):
-                return True
+        if _holds_name(folder, words, others):
+            return True
+    return False
+
+
+def _holds_name(folder: tuple[str, ...], name: tuple[str, ...], others: set[str]) -> bool:
+    """True if ``folder`` is ``name``, or holds it contiguously among allowed words.
+
+    Allowed: :data:`CONTAINED_NAME_EXTRAS` and ``others``, the annotation's other name.
+    """
+    if not name:
+        return False
+    for start in _runs(folder, name):
+        leftover = folder[:start] + folder[start + len(name) :]
+        if all(w in CONTAINED_NAME_EXTRAS or w in others for w in leftover):
+            return True
     return False
 
 

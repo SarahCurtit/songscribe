@@ -599,6 +599,71 @@ class TestBuildManifest:
         assert report.ambiguous == ()
         assert report.manifest["tracks"][0]["audio"] == "Paper Harbour/06 Paper Harbour.flac"
 
+    # Step 2 used to compare album folders by exact fold, so any decoration left a
+    # title shared with a compilation ambiguous.
+    @pytest.mark.parametrize(
+        "album",
+        [
+            "The Band - Paper Harbour",
+            "The Band/Paper Harbour [FLAC]",
+            "The Band/Paper Harbour (Remastered)",
+            "The Band/1971 - Paper Harbour",
+            "Band, The/Paper Harbour (Deluxe Edition)/Disc 1",
+        ],
+    )
+    def test_a_decorated_album_folder_beats_a_compilation(self, tmp_path, album):
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "02_-_Paper_Harbour"
+        chords.mkdir(parents=True)
+        (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        audio = tmp_path / "audio"
+        for directory in (album, "The Band/Greatest Hits", "The Band/Past Masters"):
+            (audio / directory).mkdir(parents=True)
+            (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", audio)
+        assert report.ambiguous == ()
+        assert report.manifest["tracks"][0]["audio"] == f"{album}/03 Lantern Over Water.flac"
+
+    # The album's words with others around them that aren't allowlisted name
+    # someone else's record, so it must neither win nor be paired.
+    @pytest.mark.parametrize("with_album", [True, False])
+    def test_a_compilation_holding_the_album_name_is_not_the_album(self, tmp_path, with_album):
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "02_-_Paper_Harbour"
+        chords.mkdir(parents=True)
+        (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        audio = tmp_path / "audio"
+        folders = ["Other Singer/Paper Harbour Revisited", "The Band/Greatest Hits"]
+        if with_album:
+            folders.append("The Band - Paper Harbour")
+        for directory in folders:
+            (audio / directory).mkdir(parents=True)
+            (audio / directory / "03 Lantern Over Water.flac").write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", audio)
+        audio_path = report.manifest["tracks"][0].get("audio")
+        if with_album:
+            assert audio_path == "The Band - Paper Harbour/03 Lantern Over Water.flac"
+        else:
+            assert audio_path is None
+            assert len(report.ambiguous) == 1
+
+    def test_the_manifest_command_reports_ambiguous_tracks_with_a_hint(self, tmp_path, capsys):
+        from songscribe.eval import cli
+
+        chords = tmp_path / "ann" / "chordlab" / "The Band" / "02_-_Paper_Harbour"
+        chords.mkdir(parents=True)
+        (chords / "03_-_Lantern_Over_Water.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        for directory in ("Greatest Hits", "Past Masters"):
+            (tmp_path / "audio" / directory).mkdir(parents=True)
+            (tmp_path / "audio" / directory / "03 Lantern Over Water.flac").write_bytes(b"")
+
+        argv = ["manifest", str(tmp_path / "ann"), "--audio", str(tmp_path / "audio")]
+        assert cli.main([*argv, "--output", str(tmp_path / "m.json")]) == 0
+        out = capsys.readouterr().out
+        assert "ambiguous: 1" in out
+        assert cli.AMBIGUOUS_HINT in out
+        assert "chordlab/The Band/02_-_Paper_Harbour/03_-_Lantern_Over_Water" in out
+
     # The decoy shares everything before the first dot, so a fold that cut album
     # names at a dot left the title ambiguous, or paired it with the decoy.
     @pytest.mark.parametrize("album", ["Mr. Placeholder's Band", "Mr Placeholders Band"])

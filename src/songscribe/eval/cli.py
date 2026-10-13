@@ -34,6 +34,12 @@ _ID_WIDTH = 52
 #: files -- the fix for a miss -- would not help; the folders are what failed.
 UNPLACED_HINT = "point --audio at the artist folder or rename album folders"
 
+#: Printed under the ambiguous count: the title is in several folders and none
+#: names the album -- typically a compilation beside a folder that doesn't. A
+#: self-titled album can't be told from its artist folder, so only moving the
+#: other copies out of --audio settles it.
+AMBIGUOUS_HINT = "name the album folder after its album, or move compilations out of --audio"
+
 
 def _positive_int(text: str) -> int:
     """An argparse type for counts that must be at least 1.
@@ -252,7 +258,7 @@ def _manifest(args: argparse.Namespace) -> int:
     print(f"  paired with audio: {report.paired}")
     groups = (
         ("no audio found", report.unpaired, None),
-        ("ambiguous", report.ambiguous, None),
+        ("ambiguous", report.ambiguous, AMBIGUOUS_HINT),
         ("title found but no folder names the artist or album", report.unplaced, UNPLACED_HINT),
     )
     for label, tracks, hint in groups:

@@ -172,8 +172,13 @@ quietly pointing at the wrong recording would produce a plausible, wrong score.
 The report splits what did not pair. **No audio found** means no file carries the title:
 fix those filenames. **Title found but no folder names the artist or album** means the file
 is there but its folders don't say whose it is: point `--audio` at the artist's folder, or
-rename the album folders, rather than the files. `--list-unpaired` lists every track in
-each group.
+rename the album folders, rather than the files. **Ambiguous** means the title is in several
+folders and none of them names the annotation's album — read with the same word rule as
+above, so `The Beatles - Help!/`, `Help! [FLAC]/` or `Help! (Remastered)/` beside a
+`Greatest Hits/` copy pairs with the album, while `Help! Revisited/` does not count as
+it. Rename the album folder, or move compilations out of `--audio`; a self-titled album
+(*The Beatles*) can't be told from its artist folder, so for it only the latter works.
+`--list-unpaired` lists every track in each group.
 
 This manifest is yours alone: its audio paths follow your library's filenames, so it is
 not committed. The committed `eval/isophonics-beatles.json` is the Beatles chordlab set
