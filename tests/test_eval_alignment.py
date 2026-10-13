@@ -98,6 +98,25 @@ class TestIsSuspicious:
         alignment = metrics.Alignment(offset=-2.0, shifted=nan, measured=nan)
         assert not alignment.is_suspicious(min_gain=0.05, min_offset=0.15)
 
+    def test_the_cli_and_the_notebook_share_one_set_of_thresholds(self):
+        # The notebook titles its offset plot from metrics; `score` warns from
+        # cli. Separate copies would let the two verdicts drift apart.
+        from songscribe.eval import cli
+
+        assert cli.ALIGNMENT_WARN_GAIN is metrics.ALIGNMENT_WARN_GAIN
+        assert cli.ALIGNMENT_WARN_OFFSET is metrics.ALIGNMENT_WARN_OFFSET
+
+    def test_a_small_lag_on_long_chords_is_slack_not_misalignment(self, progression):
+        # A 0.25 s lag on 8 s chords is past the offset threshold but recovers
+        # only ~3 points: a rule on the offset alone would call it misaligned.
+        long_chords = [ChordEvent(e.start * 2, e.end * 2, e.label) for e in progression]
+        alignment = metrics.best_offset(long_chords, shift(long_chords, 0.25))
+        assert abs(alignment.offset) >= metrics.ALIGNMENT_WARN_OFFSET
+        assert alignment.gain < metrics.ALIGNMENT_WARN_GAIN
+        assert not alignment.is_suspicious(
+            metrics.ALIGNMENT_WARN_GAIN, metrics.ALIGNMENT_WARN_OFFSET
+        )
+
 
 class TestRunnerIntegration:
     @pytest.fixture

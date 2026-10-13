@@ -34,6 +34,13 @@ MIREX_MIN_SHARED = 3
 ALIGNMENT_SEARCH_SECONDS = 3.0
 ALIGNMENT_SEARCH_STEP = 0.05
 
+#: A best-fit time shift is only worth reporting when it beats the measured
+#: score by this much *and* is this far from zero. Below either threshold it is
+#: the ordinary slack of a model that places boundaries approximately, not a
+#: recording on the wrong timeline. Pass both to :meth:`Alignment.is_suspicious`.
+ALIGNMENT_WARN_GAIN = 0.05
+ALIGNMENT_WARN_OFFSET = 0.15
+
 VOCABULARIES: dict[str, str] = {
     "root": "root only; ignores quality entirely",
     "majmin": "major and minor triads; sevenths reduce to their triad",

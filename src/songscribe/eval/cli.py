@@ -18,19 +18,17 @@ from .dataset import (
     load_manifest,
     write_manifest,
 )
-from .metrics import DEFAULT_VOCABULARIES, VOCABULARIES
+from .metrics import (
+    ALIGNMENT_WARN_GAIN,
+    ALIGNMENT_WARN_OFFSET,
+    DEFAULT_VOCABULARIES,
+    VOCABULARIES,
+)
 from .survey import TOP_LABELS
 
 #: Width of the leading column in the per-track table. Long enough for an
 #: album/track path, short enough to leave room for four scores.
 _ID_WIDTH = 52
-
-#: A best-fit time shift is only worth reporting when it beats the measured
-#: score by this much *and* is this far from zero. Below either threshold it is
-#: the ordinary slack of a model that places boundaries approximately, not a
-#: recording on the wrong timeline.
-ALIGNMENT_WARN_GAIN = 0.05
-ALIGNMENT_WARN_OFFSET = 0.15
 
 
 def _positive_int(text: str) -> int:
