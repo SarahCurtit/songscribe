@@ -40,6 +40,17 @@ class TestChartSequence:
         events = timeline((0.0, 2.0, "N"), (2.0, 4.0, "C:maj"), (4.0, 6.0, "N"))
         assert metrics.chart_sequence(events) == ("C:maj",)
 
+    def test_a_chord_either_side_of_a_no_chord_gap_prints_once(self):
+        # The pipeline strips N before align.dedupe, so the repeat merges
+        # across the gap; collapsing first would leave a phantom insertion.
+        events = timeline(
+            (0.0, 4.0, "C:maj"),
+            (4.0, 6.0, "N"),
+            (6.0, 10.0, "C:maj"),
+            (10.0, 14.0, "G:maj"),
+        )
+        assert metrics.chart_sequence(events) == ("C:maj", "G:maj")
+
     def test_flicker_shorter_than_the_chart_threshold_is_dropped(self):
         # align.dedupe's threshold, reused: a chord too short to print is not
         # part of the chart, so it must not be part of the chart's score.

@@ -433,7 +433,9 @@ def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[C
         label = None if chord is None else project(chord, vocabulary)
         projected.append(ChordEvent(event.start, event.end, label or event.label))
 
-    return [e for e in dedupe(projected) if e.label != NO_CHORD_LABEL]
+    # `N` goes before collapsing, as the pipeline's strip_no_chord runs before
+    # align.dedupe: otherwise `C N C` keeps two Cs where the chart prints one.
+    return dedupe([e for e in projected if e.label != NO_CHORD_LABEL])
 
 
 def chart_sequence(
