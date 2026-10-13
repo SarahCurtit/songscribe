@@ -195,7 +195,7 @@ def _match_audio(
 
     # 2. The album directory matches but the filename differs in punctuation.
     folded = fold_title(relative.name)
-    candidates = index.get(folded, [])
+    candidates = _best_copies(index.get(folded, []))
     if len(candidates) > 1 and relative.parent != Path("."):
         album = fold_title(relative.parent.name)
         # Directories below the root only: a title track's own filename folds to
@@ -213,3 +213,22 @@ def _match_audio(
     #    ambiguous: two albums with the same track title would otherwise be
     #    scored against each other's recording.
     return candidates
+
+
+def _best_copies(paths: list[Path]) -> list[Path]:
+    """Keep one file per recording, the best-ranked by :data:`AUDIO_EXTENSIONS`.
+
+    Only a shared directory and stem make two files the same recording: the same
+    title in two directories may be two albums, and must stay ambiguous.
+    """
+    best: dict[tuple[Path, str], Path] = {}
+    for path in paths:
+        key = (path.parent, path.stem)
+        held = best.get(key)
+        if held is None or _rank(path) < _rank(held):
+            best[key] = path
+    return list(best.values())
+
+
+def _rank(path: Path) -> int:
+    return AUDIO_EXTENSIONS.index(path.suffix.lower())

@@ -238,6 +238,38 @@ class TestBuildManifest:
         assert "chordlab/The Band/01_-_First_Album/01_-_Lantern_Over_Water" in report.ambiguous
         assert report.paired == 0
 
+    # The second pair sorts its worse copy first and spells the better one in
+    # capitals, so neither listing order nor case can make it pass by accident.
+    @pytest.mark.parametrize(("better", "worse"), [(".flac", ".mp3"), (".FLAC", ".aac")])
+    def test_two_formats_of_one_file_pair_with_the_better_copy(
+        self, annotations, tmp_path, better, worse
+    ):
+        audio = tmp_path / "audio" / "First Album"
+        audio.mkdir(parents=True)
+        (audio / f"01 Lantern Over Water{better}").write_bytes(b"x")
+        (audio / f"01 Lantern Over Water{worse}").write_bytes(b"x")
+
+        report = isophonics.build_manifest(annotations, tmp_path / "audio")
+        paired = {t["id"]: t.get("audio") for t in report.manifest["tracks"]}
+        assert report.ambiguous == ()
+        assert paired["chordlab/The Band/01_-_First_Album/01_-_Lantern_Over_Water"] == (
+            f"First Album/01 Lantern Over Water{better}"
+        )
+
+    def test_one_title_in_two_albums_stays_ambiguous_whatever_the_formats(
+        self, annotations, tmp_path
+    ):
+        audio = tmp_path / "audio"
+        (audio / "Album One").mkdir(parents=True)
+        (audio / "Album One" / "Lantern Over Water.flac").write_bytes(b"x")
+        (audio / "Album One" / "Lantern Over Water.mp3").write_bytes(b"x")
+        (audio / "Album Two").mkdir(parents=True)
+        (audio / "Album Two" / "Lantern Over Water.mp3").write_bytes(b"x")
+
+        report = isophonics.build_manifest(annotations, tmp_path / "audio")
+        assert "chordlab/The Band/01_-_First_Album/01_-_Lantern_Over_Water" in report.ambiguous
+        assert report.paired == 0
+
     def test_the_album_directory_disambiguates_a_repeated_title(self, annotations, tmp_path):
         audio = tmp_path / "audio"
         (audio / "01_-_First_Album").mkdir(parents=True)
