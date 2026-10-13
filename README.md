@@ -127,13 +127,18 @@ measure — Weighted Chord Symbol Recall, the fraction of annotated *time* label
 
 ```bash
 songscribe-eval manifest data/isophonics --audio ~/music -o eval/isophonics.json
-songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
+songscribe-eval score eval/isophonics.json -a ~/music --annotations data/isophonics \
+    -c madmom --cache .eval-cache --per-track
 ```
+
+The manifest's paths are relative, so `score` needs the same two roots back. To stop
+repeating them, export `SONGSCRIBE_EVAL_ROOT=~/music` and
+`SONGSCRIBE_EVAL_ANNOTATIONS=data/isophonics` instead.
 
 No corpus to hand? The synthetic demo is a one-track corpus. Here it is with every chord a
 seventh, scored with the `template` baseline (no weights needed), all under the gitignored
-`audio/` directory. The explicit `-a`/`--annotations` roots override any
-`SONGSCRIBE_EVAL_ROOT`/`SONGSCRIBE_EVAL_ANNOTATIONS` you've exported for a real corpus:
+`audio/` directory. The explicit `-a`/`--annotations` roots win over those exports, so it
+scores the demo even with a real corpus configured:
 
 ```bash
 songscribe-demo -p Cmaj7 G7 Am7 Fmaj7 -o audio/demo7/demo.wav
