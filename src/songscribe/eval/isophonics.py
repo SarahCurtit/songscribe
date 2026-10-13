@@ -224,8 +224,13 @@ def _match_audio(
     # 2. The album directory matches but the filename differs in punctuation.
     folded = fold_title(relative.name)
     candidates = _best_copies(index.get(folded, []))
-    if len(candidates) > 1 and relative.parent != Path("."):
-        album = _fold_directory(relative.parent.name)
+    album = _fold_directory(relative.parent.name)
+    # A self-titled album folds to its artist's name, so in the library it would
+    # match the artist folder above every album, compilations included. Checked
+    # on the annotation side, whose artist/album layout is known; a library path
+    # can't say which of its directories is the artist.
+    self_titled = any(_fold_directory(part) == album for part in relative.parent.parent.parts)
+    if len(candidates) > 1 and relative.parent != Path(".") and not self_titled:
         # Directories below the root only: a title track's own filename folds to
         # the album name, and a directory above the root is shared by every
         # candidate, so either would let all of them through.

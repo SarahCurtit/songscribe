@@ -289,6 +289,46 @@ class TestBuildManifest:
         assert report.paired == 1
         assert report.manifest["tracks"][0]["audio"] == rip
 
+    # A self-titled album folds to the artist's name, so the artist folder above a
+    # compilation used to pass as the album and pair the track with the wrong copy.
+    @pytest.mark.parametrize(
+        "library",
+        [
+            [
+                "Fake Band/Greatest Hits/05 Paper Lantern.flac",
+                "Cover Band/Tribute/01 Paper Lantern.flac",
+            ],
+            [
+                "Albums/Fake Band White/1-01 Paper Lantern.flac",
+                "Fake Band/Greatest Hits/05 Paper Lantern.flac",
+            ],
+        ],
+    )
+    def test_a_self_titled_album_does_not_match_the_artist_folder(self, tmp_path, library):
+        chords = tmp_path / "ann" / "chordlab" / "Fake Band" / "07CD1_-_Fake_Band"
+        chords.mkdir(parents=True)
+        (chords / "CD1_-_01_-_Paper_Lantern.lab").write_text("0.0 1.0 C:maj\n", "utf-8")
+        for rip in library:
+            (tmp_path / "audio" / rip).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / "audio" / rip).write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.paired == 0
+        assert report.ambiguous == (
+            "chordlab/Fake Band/07CD1_-_Fake_Band/CD1_-_01_-_Paper_Lantern",
+        )
+
+    def test_a_self_titled_album_still_pairs_with_its_only_copy(self, tmp_path):
+        chords = tmp_path / "ann" / "chordlab" / "Fake Band" / "07CD1_-_Fake_Band"
+        chords.mkdir(parents=True)
+        (chords / "CD1_-_01_-_Paper_Lantern.lab").write_text("0.0 1.0 C:maj\n", "utf-8")
+        rip = "Fake Band/Fake Band/01 Paper Lantern.flac"
+        (tmp_path / "audio" / rip).parent.mkdir(parents=True)
+        (tmp_path / "audio" / rip).write_bytes(b"")
+
+        report = isophonics.build_manifest(tmp_path / "ann", tmp_path / "audio")
+        assert report.manifest["tracks"][0]["audio"] == rip
+
     def test_a_title_in_two_albums_is_left_ambiguous_rather_than_guessed(
         self, annotations, tmp_path
     ):
