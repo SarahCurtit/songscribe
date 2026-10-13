@@ -334,6 +334,43 @@ class TestBuildManifest:
         report = isophonics.build_manifest(tmp_path / "ann")
         assert report.total == 1
 
+    def test_a_flat_tree_beside_an_archive_is_still_read(self, tmp_path):
+        data = tmp_path / "data"
+        (data / "Other Band" / "Album").mkdir(parents=True)
+        (data / "Other Band" / "Album" / "Lantern_Over_Water.lab").touch()
+        for sub in ("chordlab", "keylab"):
+            (data / "The Band" / sub / "Album").mkdir(parents=True)
+            (data / "The Band" / sub / "Album" / "Counting_Windows.lab").touch()
+
+        report = isophonics.build_manifest(data)
+        assert [t["id"] for t in report.manifest["tracks"]] == [
+            "Other Band/Album/Lantern_Over_Water",
+            "The Band/chordlab/Album/Counting_Windows",
+        ]
+
+    def test_an_album_folder_named_chords_does_not_drop_its_siblings(self, tmp_path):
+        band = tmp_path / "ann" / "The Band"
+        for album in ("Album A", "Chords"):
+            (band / album).mkdir(parents=True)
+        (band / "Album A" / "01.lab").touch()
+        (band / "Chords" / "02.lab").touch()
+
+        report = isophonics.build_manifest(tmp_path / "ann")
+        assert [t["id"] for t in report.manifest["tracks"]] == [
+            "The Band/Album A/01",
+            "The Band/Chords/02",
+        ]
+
+    def test_a_stray_label_file_inside_an_archive_is_skipped(self, tmp_path):
+        archive = tmp_path / "ann"
+        for sub in ("chordlab", "seglab"):
+            (archive / sub).mkdir(parents=True)
+            (archive / sub / "Lantern_Over_Water.lab").touch()
+        (archive / "Lantern_Over_Water.lab").touch()
+
+        report = isophonics.build_manifest(archive)
+        assert [t["id"] for t in report.manifest["tracks"]] == ["chordlab/Lantern_Over_Water"]
+
     def test_a_missing_directory_raises(self, tmp_path):
         with pytest.raises(NotADirectoryError):
             isophonics.build_manifest(tmp_path / "nope")

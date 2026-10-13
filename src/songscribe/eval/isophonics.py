@@ -19,6 +19,22 @@ from .dataset import AUDIO_EXTENSIONS, build
 #: them are a different task and are skipped.
 CHORD_DIRECTORIES = ("chordlab", "chords", "chord")
 
+#: The non-chord annotation directories an Isophonics archive ships beside the
+#: chord one (``keylab``, ``seglab``, ``beat``), plus their obvious variants.
+#: A chord directory only marks an archive when one of these is its sibling: an
+#: ordinary album folder that happens to be called ``Chords`` has none.
+OTHER_ANNOTATION_DIRECTORIES = (
+    "keylab",
+    "key",
+    "keys",
+    "seglab",
+    "segments",
+    "segmentation",
+    "beat",
+    "beats",
+    "beatlab",
+)
+
 _TRACK_NUMBER = re.compile(r"^\d+")
 _NOT_ALNUM = re.compile(r"[^a-z0-9]+")
 
@@ -67,27 +83,38 @@ def fold_title(name: str) -> str:
 def find_annotations(annotation_root: Path) -> list[Path]:
     """Every chord ``.lab`` file under ``annotation_root``, sorted.
 
-    If a recognised chord directory exists at any depth, only those subtrees
-    are read -- Isophonics ships key and beat annotations in the same download,
-    and those are ``.lab`` files too but describe a different thing.
+    A directory holding both a chord directory and a key/segment/beat one is an
+    Isophonics archive: below it, only the chord directory is read. Everything
+    outside such an archive is read whole, so flat trees beside it survive.
     """
     if not annotation_root.is_dir():
         return []
 
-    candidates = [
-        path
-        for path in sorted(annotation_root.rglob("*"))
-        if path.is_dir() and path.name.lower() in CHORD_DIRECTORIES
-    ]
-    # A chord directory inside another is already covered by the outer one's
-    # rglob; searching it again would list its files twice.
-    chord_roots = [d for d in candidates if not any(o in d.parents for o in candidates)]
+    # Narrowed per archive, not tree-wide: one chord directory anywhere must not
+    # silence unrelated trees beside it. Requiring a non-chord sibling as well
+    # keeps an album folder named "Chords" from dropping the albums next to it.
+    archives = {
+        d for d in [annotation_root, *annotation_root.rglob("*")] if d.is_dir() and _is_archive(d)
+    }
 
-    search = chord_roots or [annotation_root]
-    found: list[Path] = []
-    for root in search:
-        found.extend(p for p in root.rglob("*.lab") if p.is_file())
-    return sorted(found)
+    found = []
+    for path in sorted(annotation_root.rglob("*.lab")):
+        parts = path.relative_to(annotation_root).parts
+        # At every archive the file sits in, the step taken below it must be into
+        # the chord directory; ancestors that aren't archives impose nothing.
+        if path.is_file() and all(
+            part.lower() in CHORD_DIRECTORIES
+            for depth, part in enumerate(parts)
+            if annotation_root.joinpath(*parts[:depth]) in archives
+        ):
+            found.append(path)
+    return found
+
+
+def _is_archive(directory: Path) -> bool:
+    """True if ``directory`` holds a chord directory beside another annotation one."""
+    names = {c.name.lower() for c in directory.iterdir() if c.is_dir()}
+    return bool(names & set(CHORD_DIRECTORIES)) and bool(names & set(OTHER_ANNOTATION_DIRECTORIES))
 
 
 def index_audio(audio_root: Path) -> dict[str, list[Path]]:
