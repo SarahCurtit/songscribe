@@ -71,10 +71,26 @@ class TestChartSequence:
         events = timeline((0.0, 2.0, "C:maj7"), (2.0, 4.0, "C:maj"))
         assert metrics.chart_sequence(events, "sevenths") == ("C:maj7", "C:maj")
 
-    def test_a_label_outside_the_vocabulary_keeps_its_spelling(self):
+    def test_a_chord_outside_the_vocabulary_is_kept_by_its_content(self):
         # Dropping it would shorten the sequence and let a wrong chord vanish.
         events = timeline((0.0, 2.0, "C:sus4"), (2.0, 4.0, "C:maj"))
-        assert metrics.chart_sequence(events, "majmin") == ("C:sus4", "C:maj")
+        assert metrics.chart_sequence(events, "majmin") == ("C:(1,4,5)", "C:maj")
+
+    def test_its_spelling_does_not_decide_a_match(self):
+        # References are Harte, backends emit compact; a correct diminished
+        # chord must match whichever way, and whichever enharmonic, it is spelled.
+        reference = timeline((0.0, 2.0, "B:dim"), (2.0, 4.0, "C:maj"))
+        estimate = timeline((0.0, 2.0, "Cbdim"), (2.0, 4.0, "C"))
+        assert metrics.chart_score(reference, estimate) == 1.0
+
+    def test_a_different_chord_outside_the_vocabulary_still_mismatches(self):
+        reference = timeline((0.0, 2.0, "B:dim"), (2.0, 4.0, "C:maj"))
+        estimate = timeline((0.0, 2.0, "B:aug"), (2.0, 4.0, "C:maj"))
+        assert metrics.chart_score(reference, estimate) == pytest.approx(0.5)
+
+    def test_unparseable_and_unknown_labels_keep_their_spelling(self):
+        events = timeline((0.0, 2.0, "H:weird"), (2.0, 4.0, "X"), (4.0, 6.0, "C:maj"))
+        assert metrics.chart_sequence(events, "majmin") == ("H:weird", "X", "C:maj")
 
     def test_enharmonic_spellings_collapse(self):
         events = timeline((0.0, 2.0, "Db:maj"), (2.0, 4.0, "C#:maj"))

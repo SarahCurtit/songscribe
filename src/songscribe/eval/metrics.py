@@ -415,6 +415,22 @@ def segmentation(
 # --------------------------------------------------------------------------- #
 
 
+#: Harte degree spelling of each semitone above the root, used to name a chord
+#: by its content when no vocabulary class fits it.
+_SEMITONE_DEGREES = ("1", "b2", "2", "b3", "3", "4", "b5", "5", "#5", "6", "b7", "7")
+
+
+def _content_label(chord: Chord) -> str:
+    """A canonical Harte degree-list label, e.g. ``B:(1,b3,b5)``.
+
+    Spelled as Harte so it parses back to the same root and intervals -- viz
+    colours chart spans by re-parsing their labels. The parenthesised form can
+    never equal a projected ``root:quality`` class, nor ``N``.
+    """
+    degrees = ",".join(_SEMITONE_DEGREES[i] for i in sorted(chord.intervals))
+    return f"{chord.root_name}:({degrees})"
+
+
 def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[ChordEvent]:
     """The chart's chord spans: projected into ``vocabulary``, collapsed, ``N`` gone.
 
@@ -427,11 +443,15 @@ def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[C
     projected: list[ChordEvent] = []
     for event in events:
         chord = parse(event.label)
-        # A label the vocabulary cannot express keeps its original spelling
-        # rather than being dropped: dropping it would quietly shorten the
-        # sequence and let a wrong chord disappear.
+        # A chord the vocabulary cannot express is kept rather than dropped:
+        # dropping it would quietly shorten the sequence and let a wrong chord
+        # disappear. It is keyed by its pitch content, not its spelling, so
+        # `B:dim` and `Bdim` still match; only an unparseable label (or `X`)
+        # falls back to its raw text.
         label = None if chord is None else project(chord, vocabulary)
-        projected.append(ChordEvent(event.start, event.end, label or event.label))
+        if label is None:
+            label = event.label if chord is None or chord.unknown else _content_label(chord)
+        projected.append(ChordEvent(event.start, event.end, label))
 
     # `N` goes before collapsing, as the pipeline's strip_no_chord runs before
     # align.dedupe: otherwise `C N C` keeps two Cs where the chart prints one.
