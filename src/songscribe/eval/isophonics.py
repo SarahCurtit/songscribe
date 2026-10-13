@@ -1,23 +1,9 @@
 """Build an evaluation manifest from an Isophonics annotation tree.
 
-Isophonics (``isophonics.net/content/reference-annotations``) publishes
-chord, key, beat and structure annotations for the Beatles, Queen, Carole King
-and Zweieck. The chord annotations are the de facto benchmark for this task,
-they are free to download, and crucially they ship *without* audio -- you
-supply your own copy of the recordings. That is exactly the split this
-project needs, and the reason Isophonics is the corpus wired up first.
-
-The annotation tree looks roughly like::
-
-    chordlab/The Beatles/01_-_Please_Please_Me/01_-_I_Saw_Her_Standing_There.lab
-
-but the layout has varied between releases, and nobody's music library is
-organised identically to it. So rather than hardcoding a structure, this
-walks the tree for ``.lab`` files and pairs each with audio by trying, in
-order: the same relative path, then the same filename under any album, then a
-punctuation- and track-number-insensitive match on the title. Anything still
-unpaired is reported rather than guessed at -- a manifest that quietly points
-at the wrong recording would produce a plausible, wrong score.
+Walks the tree for ``.lab`` files and pairs each with audio by trying, in order: the same
+relative path, the same filename under any album, then a punctuation- and track-number-
+insensitive title match. Unpaired files are reported, never guessed at -- a manifest that
+points at the wrong recording would produce a plausible, wrong score.
 """
 
 from __future__ import annotations
