@@ -166,9 +166,18 @@ def estimate(
     a label the reference also uses, and discarding it would turn a correct
     silence into a gap the scorer has to infer.
     """
-    from .. import lab
+    from .. import lab, separate
 
-    cached = cache_path(cache_dir, backend, track.id, use_separation) if cache_dir else None
+    # Resolved before the lookup, so a full-mix fallback reads the entry it
+    # writes; keyed on the request, every rerun without demucs would miss.
+    separated = use_separation and separate.available()
+    if use_separation and not separated:
+        # Loud, and on a cache hit too, because a run silently done on the
+        # full mix is not comparable with one done on the accompaniment stem,
+        # and the gap is the single largest accuracy factor in the pipeline.
+        log.warning("demucs not installed; scoring %s on the full mix", track.id)
+
+    cached = cache_path(cache_dir, backend, track.id, separated) if cache_dir else None
     if cached is not None and cached.exists() and not refresh:
         log.debug("cache hit %s", cached)
         return lab.read(cached)
@@ -178,7 +187,7 @@ def estimate(
     if not track.audio.exists():
         raise FileNotFoundError(f"{track.id}: no audio at {track.audio}")
 
-    events, separated = _recognise(track.audio, backend, use_separation=use_separation)
+    events, separated = _recognise(track.audio, backend, use_separation=separated)
     if cache_dir is not None:
         # Keyed on what actually ran, not what was asked for: a full-mix
         # fallback cached as separated would be served as such on every rerun.
@@ -192,7 +201,7 @@ def _recognise(
     """Run the chord branch of the pipeline on one file.
 
     Also returns whether separation actually ran, which differs from
-    ``use_separation`` when demucs is missing.
+    ``use_separation`` when demucs is missing. The caller warns about that.
     """
     import tempfile
 
@@ -200,12 +209,6 @@ def _recognise(
 
     source: str | Path = audio_path
     temporary: tempfile.TemporaryDirectory | None = None
-
-    if use_separation and not separate.available():
-        # Loud, because a run silently done on the full mix is not
-        # comparable with one done on the accompaniment stem, and the gap
-        # is the single largest accuracy factor in the pipeline.
-        log.warning("demucs not installed; scoring %s on the full mix", audio_path.name)
 
     try:
         if use_separation and separate.available():

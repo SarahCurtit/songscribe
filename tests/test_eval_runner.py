@@ -94,6 +94,7 @@ class TestEstimateCache:
             label = "G" if use_separation else "C"
             return [ChordEvent(0.0, 1.0, label)], use_separation
 
+        monkeypatch.setattr(separate, "available", lambda: True)
         monkeypatch.setattr(runner, "_recognise", fake_recognise)
         return calls
 
@@ -130,6 +131,33 @@ class TestEstimateCache:
 
         assert not runner.cache_path(cache, "madmom", "song", separated=True).exists()
         assert runner.cache_path(cache, "madmom", "song").exists()
+
+    def test_a_full_mix_fallback_hits_its_own_entry_on_rerun(
+        self, tmp_path, track, monkeypatch, caplog
+    ):
+        # Looking up the separated key while writing the full-mix one would
+        # miss forever and rerun the model in full on every invocation.
+        from songscribe import audio, chords
+
+        runs = []
+
+        def recognise(samples, rate, backend):
+            runs.append(backend)
+            return [ChordEvent(0.0, 1.0, "C")]
+
+        monkeypatch.setattr(separate, "available", lambda: False)
+        monkeypatch.setattr(audio, "load", lambda source, rate: ([], rate))
+        monkeypatch.setattr(chords, "recognise", recognise)
+
+        cache = tmp_path / "cache"
+        runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+        caplog.clear()
+        again = runner.estimate(track, "madmom", cache_dir=cache, use_separation=True)
+
+        assert [e.label for e in again] == ["C"]
+        assert len(runs) == 1, "the rerun must hit the full-mix entry"
+        # Still warned on the hit: the report would otherwise read as separated.
+        assert "demucs not installed" in caplog.text
 
 
 class TestReadEstimate:
