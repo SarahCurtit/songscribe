@@ -79,6 +79,10 @@ h1 {
 
 main {
   display: grid;
+  /* minmax(0, ...) rather than the implicit auto column: an auto column grows
+     to the timeline's full SVG width, so the scroller never overflows, the
+     page scrolls sideways instead, and follow-playhead has nothing to move. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 16px 20px 32px;
 }

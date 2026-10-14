@@ -11,6 +11,9 @@ annotated span gets one level:
 ``root``    same root only
 ``miss``    different root, or no chord predicted where one is sounding
 
+Roots compare as pitch classes, so ``A#`` and ``Bb`` are the same chord. On a
+bar with an alternate chord, the better of the two matches counts.
+
 Instants where the reference says ``N``, or that lie outside the annotated
 span, score nothing: what plays there was deliberately left unlabelled.
 This is a viewer's at-a-glance score, not the evaluation metric.
@@ -20,6 +23,7 @@ from __future__ import annotations
 
 import itertools
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from ..chords import NO_CHORD
@@ -83,19 +87,26 @@ def level(reference: str, estimate: str) -> str | None:
     return "root"
 
 
-def compare(reference: list[dict[str, Any]], estimate: list[dict[str, Any]]) -> dict[str, Any]:
+def compare(
+    reference: list[dict[str, Any]],
+    estimate: list[dict[str, Any]],
+    alternates: Sequence[dict[str, Any]] = (),
+) -> dict[str, Any]:
     """Segment-by-segment agreement and its time-weighted totals.
 
-    Events are dicts with ``start``, ``end`` and a ``short`` (reference) or
-    ``label`` (estimate) key. Returns ``segments`` -- ``{start, end, level}``
-    for drawing -- and ``totals``: for each level, the fraction of scored time
-    at *that level or better*, so ``totals["root"]`` reads as root accuracy.
+    Events are dicts with ``start``, ``end`` and a ``short`` (reference and
+    alternates) or ``label`` (estimate) key. Where a bar carries an alternate
+    chord, an estimate is scored against whichever of the two it matches
+    better: the alternate is a substitution a player may take, so hearing it
+    is not a mistake. Such segments carry ``"alternate": True``.
+
+    Returns ``segments`` -- ``{start, end, level, alternate}`` for drawing --
+    and ``totals``: for each level, the fraction of scored time at *that level
+    or better*, so ``totals["root"]`` reads as root accuracy.
     """
     boundaries = sorted(
-        {e["start"] for e in reference}
-        | {e["end"] for e in reference}
-        | {e["start"] for e in estimate}
-        | {e["end"] for e in estimate}
+        {e["start"] for e in [*reference, *alternates, *estimate]}
+        | {e["end"] for e in [*reference, *alternates, *estimate]}
     )
     span_start = min((e["start"] for e in reference), default=0.0)
     span_end = max((e["end"] for e in reference), default=0.0)
@@ -108,13 +119,28 @@ def compare(reference: list[dict[str, Any]], estimate: list[dict[str, Any]]) -> 
         ref = _label_at(reference, middle, "short")
         if ref is None:
             continue
-        found = level(ref, _label_at(estimate, middle, "label") or NO_CHORD)
+        guess = _label_at(estimate, middle, "label") or NO_CHORD
+        found = level(ref, guess)
         if found is None:
             continue
-        if segments and segments[-1]["level"] == found and segments[-1]["end"] == start:
-            segments[-1]["end"] = end
+        via_alternate = False
+        alt = _label_at(alternates, middle, "short")
+        if alt is not None:
+            alt_found = level(alt, guess)
+            if alt_found is not None and LEVELS.index(alt_found) < LEVELS.index(found):
+                found, via_alternate = alt_found, True
+        last = segments[-1] if segments else None
+        if (
+            last
+            and last["level"] == found
+            and last["alternate"] == via_alternate
+            and last["end"] == start
+        ):
+            last["end"] = end
         else:
-            segments.append({"start": start, "end": end, "level": found})
+            segments.append(
+                {"start": start, "end": end, "level": found, "alternate": via_alternate}
+            )
 
     scored = sum(s["end"] - s["start"] for s in segments)
     totals: dict[str, float | None] = {}
@@ -124,7 +150,27 @@ def compare(reference: list[dict[str, Any]], estimate: list[dict[str, Any]]) -> 
     return {"segments": segments, "totals": totals, "scored_seconds": scored}
 
 
-def _label_at(events: list[dict[str, Any]], time: float, key: str) -> str | None:
+def respell(estimate: list[dict[str, Any]], reference: list[dict[str, Any]]) -> list[str]:
+    """Each estimate label, its root spelled the way the reference spells it.
+
+    Models pick sharps or flats arbitrarily (madmom always says ``A#``); a
+    chart in F says ``Bb``. Same pitch class, so the score already treats
+    them as one chord -- this only stops the display looking like a mismatch.
+    The reference chord at each estimate's midpoint decides the spelling.
+    """
+    spelled: list[str] = []
+    for event in estimate:
+        label = event["label"]
+        ref = _label_at(reference, (event["start"] + event["end"]) / 2, "short")
+        ours, theirs = parse(label), parse(ref) if ref else None
+        if ours and theirs and ours[0] == theirs[0]:
+            root, accidental, _ = _CHORD.fullmatch(ref.strip()).groups()
+            label = root + accidental + _CHORD.fullmatch(label.strip()).group(3)
+        spelled.append(label)
+    return spelled
+
+
+def _label_at(events: Sequence[dict[str, Any]], time: float, key: str) -> str | None:
     for event in events:
         if event["start"] <= time < event["end"]:
             return event[key]

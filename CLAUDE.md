@@ -147,6 +147,7 @@ Corpus decisions (settled; don't re-open them):
 pip install -e '.[dev]'    # all models + pytest + ruff; compiles madmom, ~30s
 pytest                     # fast, no weights, no audio
 pytest -k align            # one stage
+pytest -m e2e              # viewer in headless Chromium, audio at 16x; run after ANY viewer change
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 songscribe-demo --melody -o /tmp/demo/demo.wav  # audio + .lab + .beats + .notes
@@ -217,6 +218,10 @@ backend. `MODELS.md` records why, and the dead ends, so they don't get retried.
 
 CI runs `ruff check`, `ruff format --check`, and `pytest` on 3.10–3.12, installing only the
 core deps — so **tests must not require model weights or network access**.
+
+The viewer's e2e tests (`tests/test_viewer_e2e.py`) skip themselves without Playwright, so CI
+never runs them — run them locally. Setup: `pip install playwright==1.48.0` then
+`playwright install chromium`. The pin is for Ubuntu 20.04, which newer Playwright refuses.
 
 ## Conventions
 

@@ -32,11 +32,13 @@ def write_silence(path: Path, seconds: float) -> None:
         handle.writeframes(b"\x00\x00" * int(seconds * SAMPLE_RATE))
 
 
-def write_grid(song_dir: Path, number: int, payload: dict, audio: bool = True) -> None:
+def write_grid(
+    song_dir: Path, number: int, payload: dict, audio: bool = True, seconds: float = 4.0
+) -> None:
     song_dir.mkdir(parents=True, exist_ok=True)
     (song_dir / f"grid{number}_chords.json").write_text(json.dumps(payload), encoding="utf-8")
     if audio:
-        write_silence(song_dir / f"grid{number}_audio.wav", 4.0)
+        write_silence(song_dir / f"grid{number}_audio.wav", seconds)
 
 
 ANNOTATED = {
@@ -141,15 +143,65 @@ def test_compare_weights_by_time_and_ignores_unscored_spans() -> None:
     ]
     result = agreement.compare(reference, estimate)
     assert result["segments"] == [
-        {"start": 1.0, "end": 2.0, "level": "exact"},
-        {"start": 2.0, "end": 3.0, "level": "miss"},
-        {"start": 4.0, "end": 4.5, "level": "miss"},
-        {"start": 4.5, "end": 5.0, "level": "majmin"},
+        {"start": 1.0, "end": 2.0, "level": "exact", "alternate": False},
+        {"start": 2.0, "end": 3.0, "level": "miss", "alternate": False},
+        {"start": 4.0, "end": 4.5, "level": "miss", "alternate": False},
+        {"start": 4.5, "end": 5.0, "level": "majmin", "alternate": False},
     ]
     assert result["scored_seconds"] == pytest.approx(3.0)
     assert result["totals"]["exact"] == pytest.approx(1 / 3)
     assert result["totals"]["majmin"] == pytest.approx(1.5 / 3)
     assert result["totals"]["root"] == pytest.approx(1.5 / 3)
+
+
+def test_compare_credits_the_alternate_chord() -> None:
+    reference = [{"start": 0.0, "end": 4.0, "short": "Dm"}]
+    alternates = [{"start": 2.0, "end": 4.0, "short": "D7"}]
+    estimate = [{"start": 0.0, "end": 4.0, "label": "D"}]
+    result = agreement.compare(reference, estimate, alternates)
+    assert result["segments"] == [
+        # D over Dm: same root only; the alternate does not apply yet.
+        {"start": 0.0, "end": 2.0, "level": "root", "alternate": False},
+        # D over Dm-or-D7: same triad as the alternate, so not a mistake.
+        {"start": 2.0, "end": 4.0, "level": "majmin", "alternate": True},
+    ]
+    assert result["totals"]["majmin"] == pytest.approx(0.5)
+
+
+def test_compare_prefers_the_main_chord_when_it_matches_better() -> None:
+    reference = [{"start": 0.0, "end": 2.0, "short": "Dm"}]
+    alternates = [{"start": 0.0, "end": 2.0, "short": "D7"}]
+    estimate = [{"start": 0.0, "end": 2.0, "label": "Dm"}]
+    (segment,) = agreement.compare(reference, estimate, alternates)["segments"]
+    assert segment["level"] == "exact"
+    assert segment["alternate"] is False
+
+
+@pytest.mark.parametrize(
+    ("reference", "estimate"),
+    [("Bb", "A#"), ("Bb7", "A#7"), ("Ebm", "D#m"), ("F#", "Gb"), ("Cb", "B")],
+)
+def test_compare_treats_enharmonics_as_the_same_chord(reference: str, estimate: str) -> None:
+    result = agreement.compare(
+        [{"start": 0.0, "end": 1.0, "short": reference}],
+        [{"start": 0.0, "end": 1.0, "label": estimate}],
+    )
+    assert result["totals"]["exact"] == 1.0
+
+
+def test_respell_follows_the_reference_spelling() -> None:
+    reference = [
+        {"start": 0.0, "end": 1.0, "short": "Bb7"},
+        {"start": 1.0, "end": 2.0, "short": "C#m"},
+        {"start": 2.0, "end": 3.0, "short": "N"},
+    ]
+    estimate = [
+        {"start": 0.0, "end": 1.0, "label": "A#"},  # same pitch: respelled
+        {"start": 1.0, "end": 2.0, "label": "Dbm"},  # same pitch: respelled
+        {"start": 1.2, "end": 1.8, "label": "Eb"},  # different root: untouched
+        {"start": 2.0, "end": 3.0, "label": "A#"},  # nothing to follow: untouched
+    ]
+    assert agreement.respell(estimate, reference) == ["Bb", "C#m", "Eb", "A#"]
 
 
 def test_compare_with_nothing_scored() -> None:

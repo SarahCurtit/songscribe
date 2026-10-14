@@ -12,6 +12,8 @@ const MIN_BAR_LABEL_PX = 22;
 // Follow mode keeps the playhead between these fractions of the visible width.
 const FOLLOW_LEFT = 0.15;
 const FOLLOW_RIGHT = 0.85;
+// Characters of a backend's error shown inline before it is cut short.
+const MAX_REASON = 60;
 const LEVEL_NAMES = {
   exact: "exact chord",
   majmin: "same triad",
@@ -187,10 +189,18 @@ function updateBackendStatus() {
     status.title = reply?.error || "";
     if (!state.selected.has(backend) || !reply) status.textContent = "";
     else if (reply.status === "running") status.textContent = `running ${reply.elapsed ?? 0}s…`;
-    else if (reply.status === "error") status.textContent = "failed (hover)";
+    else if (reply.status === "error") status.textContent = failureReason(reply.error);
     else if (reply.status === "done") status.textContent = `${reply.seconds}s`;
     else status.textContent = "";
   }
+}
+
+// The short form shown beside the checkbox; the full message stays in the title.
+function failureReason(error) {
+  if (!error) return "failed";
+  if (error.startsWith("NotImplementedError")) return "not implemented yet";
+  const message = error.replace(/^\w+Error: /, "");
+  return message.length > MAX_REASON ? `failed: ${message.slice(0, MAX_REASON)}…` : `failed: ${message}`;
 }
 
 $("zoom").addEventListener("input", (event) => {
@@ -293,13 +303,16 @@ function render() {
     } else if (lane.kind === "pred") {
       const reply = state.predictions[lane.backend];
       if (reply?.status === "done") {
-        drawBlocks(reply.events, y + 4, H.pred - 6, px, (e) => [e.label, null]);
+        // Shown in the chart's spelling (Bb, not A#); the model's own label in the tooltip.
+        drawBlocks(reply.events, y + 4, H.pred - 6, px, (e) => [e.display ?? e.label, e.label]);
         drawAgreement(reply.agreement.segments, y + H.pred, px);
         const score = document.createElement("span");
         score.className = "score";
         const totals = reply.agreement.totals;
         score.textContent = totals.root === null ? "" : pct(totals);
-        score.title = "Share of annotated time: exact chord / same triad / same root";
+        score.title =
+          "Share of annotated time: exact chord / same triad / same root" +
+          " (an alternate chord counts where the chart prints one)";
         div.append(score);
       }
     }
@@ -390,9 +403,14 @@ function drawAgreement(segments, y, px) {
     });
     hoverable(
       rect,
-      `${LEVEL_NAMES[segment.level]}<br><span class="muted">${fmt(segment.start)} – ${fmt(segment.end)}</span>`,
+      `${levelName(segment)}<br><span class="muted">${fmt(segment.start)} – ${fmt(segment.end)}</span>`,
     );
   }
+}
+
+function levelName(segment) {
+  const name = LEVEL_NAMES[segment.level];
+  return segment.alternate ? `${name} (alternate)` : name;
 }
 
 function escape(text) {
@@ -466,7 +484,7 @@ function updateNow(time) {
     const reply = state.predictions[backend];
     const event = reply?.status === "done" ? at(reply.events, time) : null;
     const level = reply?.status === "done" ? at(reply.agreement.segments, time) : null;
-    cards.push(card(backend, event?.label, level ? LEVEL_NAMES[level.level] : ""));
+    cards.push(card(backend, event?.display ?? event?.label, level ? levelName(level) : ""));
   }
   const html = cards.join("");
   if (html !== lastNow) {

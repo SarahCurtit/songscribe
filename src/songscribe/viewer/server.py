@@ -243,8 +243,14 @@ class Handler(BaseHTTPRequestHandler):
             return None
         reply = self.server.predictor.status(grid, backend)
         if reply["status"] == "done":
-            reference = examples.ground_truth(grid)["events"]
-            reply["agreement"] = agreement.compare(reference, reply["events"])
+            truth = examples.ground_truth(grid)
+            reply["agreement"] = agreement.compare(
+                truth["events"], reply["events"], truth["alternates"]
+            )
+            for event, shown in zip(
+                reply["events"], agreement.respell(reply["events"], truth["events"]), strict=True
+            ):
+                event["display"] = shown
         return reply
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
