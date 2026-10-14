@@ -44,11 +44,18 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
+    # For notebooks/annotations.ipynb only. `eval/viz.py` deliberately has no
+    # plotting dependency, so the shaping stays testable on the core deps CI
+    # installs -- these are just what opens and draws the notebook.
+    "matplotlib>=3.7",
+    "jupyterlab>=4.0",
+    "ipykernel>=6.0",
 ]
 
 [project.scripts]
 songscribe = "songscribe.cli:main"
 songscribe-demo = "songscribe.demo:main"
+songscribe-eval = "songscribe.eval.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SarahCurtit/songscribe"

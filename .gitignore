@@ -39,6 +39,26 @@ out/
 *.cho
 *.chopro
 
+# Evaluation: reference annotations and model estimates. The annotations are
+# other people's work under their own licences, and the estimates are derived
+# from audio -- neither belongs in the repo. Only references-only manifests
+# (relative paths, no content) are meant to be committed, so eval/*.json is not
+# ignored wholesale. eval/isophonics.json, the documented `--audio` build target,
+# carries paths into the user's own library, so it is ignored.
+eval/isophonics.json
+*.lab
+annotations/
+estimates/
+.eval-cache/
+# Word timelines for placement scoring hold lyric text, which hard constraint 5
+# keeps out of the repo. songscribe.eval.reference refuses to write any other
+# suffix, so this one rule covers them all.
+*.words.json
+# Corpora land here: downloaded annotation archives and their extracted trees.
+# Ignored wholesale rather than by extension, because Isophonics also ships
+# .ttl, .svl and .txt alongside the .lab files.
+data/
+
 .DS_Store
 .idea/
 .vscode/

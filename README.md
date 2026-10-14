@@ -120,6 +120,63 @@ chord branch only — Whisper will correctly find no words in it. For the lyric 
 real singing: your own recording is ideal, since you know both the chords you played and the
 words you sang. Otherwise use CC0 audio, and keep it in the gitignored `audio/` directory.
 
+## Measuring it
+
+`songscribe-eval` scores a chord backend against reference annotations, using the MIREX
+measure — Weighted Chord Symbol Recall, the fraction of annotated *time* labelled correctly.
+
+```bash
+songscribe-eval manifest data/isophonics --audio ~/music -o eval/isophonics.json
+songscribe-eval score eval/isophonics.json -a ~/music --annotations data/isophonics \
+    -c madmom --cache .eval-cache --per-track
+```
+
+The manifest's paths are relative, so `score` needs the same two roots back. To stop
+repeating them, export the roots once from the repo root, as in EVALUATION.md step 3:
+`SONGSCRIBE_EVAL_ROOT=~/music` and `SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"`.
+`$PWD` makes the annotation root absolute, so it still resolves from any other directory.
+
+No corpus to hand? The synthetic demo is a one-track corpus. Here it is with every chord a
+seventh, scored with the `template` baseline (no weights needed), all under the gitignored
+`audio/` directory. The explicit `-a`/`--annotations` roots win over those exports, so it
+scores the demo even with a real corpus configured:
+
+```bash
+songscribe-demo -p Cmaj7 G7 Am7 Fmaj7 -o audio/demo7/demo.wav
+songscribe-eval manifest audio/demo7 --audio audio/demo7 -o audio/demo7/demo.json
+songscribe-eval score audio/demo7/demo.json -a audio/demo7 --annotations audio/demo7 -c template
+```
+
+```
+dataset   demo7
+backend   template
+input     full mix
+tracks    1 scored
+duration  0.3 min of annotated audio
+
+vocabulary        mean  weighted   definition
+root            97.99%    97.99%   root only; ignores quality entirely
+majmin          97.99%    97.99%   major and minor triads; sevenths reduce to their triad
+sevenths         0.00%     0.00%   maj, min, 7, maj7, min7
+mirex           98.84%    98.84%   at least 3 pitch classes in common
+
+chart          100.00%             chord order as printed, timing ignored
+grid           100.00%             order + harmonic rhythm in bars, tempo-free
+segmentation    97.99%             boundary agreement, labels ignored
+
+mean = per-track average; weighted = by duration across the corpus.
+chart and grid are per-track and unweighted: a chart is a chart at any length.
+```
+
+Several vocabularies, because the gap between them is the diagnostic. A high `majmin` beside
+a near-zero `sevenths` is the vocabulary ceiling, not a broken backend — neither `template`
+nor the default madmom model can emit a seventh, so each guesses the triad every time, and
+`mirex` stays high because a triad shares three pitch classes with its parent seventh.
+
+Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
+the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
+setup, how the metrics work, and which corpora can and cannot legitimately be used.
+
 ## How it works
 
 ```
@@ -163,7 +220,7 @@ Treat the output as a first draft to correct, not a finished chart.
 - [ ] Wire up the BTC backend (sevenths, inversions, no-chord)
 - [ ] Beat and downbeat tracking, so chords snap to bars instead of raw frames
 - [ ] Phoneme-level forced alignment to fix held-note drift
-- [ ] Evaluation harness against reference annotations (McGill Billboard, Isophonics)
+- [x] Evaluation harness against reference annotations (Isophonics; McGill Billboard next)
 - [ ] Section detection (verse/chorus) from repetition structure
 - [ ] Forced alignment of known lyrics, for when you have the words but not the timings
 - [ ] Capo and transposition options
@@ -194,6 +251,11 @@ songscribe analyses audio you already have and produces your own transcription o
 progressions aren't copyrightable, but **lyrics are** — so transcripts of commercial songs
 are for your personal use. Don't commit song audio or generated lyric transcripts to this
 repo; `.gitignore` is set up to help you not do that by accident.
+
+The same applies to evaluation corpora, where the constraint is lawful access to the copy
+you analyse — your own rips, or a corpus licensed to you. `EVALUATION.md` has the detail,
+including why tabs scraped from tab sites and audio ripped from streaming services are not
+usable here.
 
 ## License
 
