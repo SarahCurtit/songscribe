@@ -176,6 +176,21 @@ nor the default madmom model can emit a seventh, so each guesses the triad every
 Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
 the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
 setup and how the metrics work.
+## Compare backends by ear and eye
+
+`songscribe-viewer` is a small local web app for annotated recordings: pick one, play it, and
+watch the reference chords, any alternate chords, and each backend's predictions scroll past
+on one timeline, with a strip under each prediction marking where it agrees.
+
+```bash
+songscribe-viewer --examples path/to/examples    # repeatable; serves http://127.0.0.1:8765
+```
+
+It reads a directory of `<song>/gridN_chords.json` + `gridN_audio.wav` (optionally
+`gridN_screenshot.png`), wherever it lives — the recordings never need to be copied into this
+repo. Ticking a model runs it on that recording the first time and caches the result in
+`~/.cache/songscribe/viewer/`. It binds to localhost only; on a remote machine, forward the
+port (`ssh -L 8765:localhost:8765 <host>`) and open `http://localhost:8765`.
 
 ## How it works
 

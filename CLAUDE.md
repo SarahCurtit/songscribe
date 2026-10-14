@@ -61,6 +61,8 @@ src/songscribe/
     viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
+  viewer/       local web app: play an annotated grid, compare backends to its ground truth
+                (stdlib http.server + vanilla JS; example dirs passed in with --examples)
 eval/           committed manifests: track ids + relative paths, no content
 notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
