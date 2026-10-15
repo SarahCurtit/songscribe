@@ -26,7 +26,7 @@ These are the project's identity, not preferences. Don't trade them away for acc
 
 ```
 src/songscribe/
-  types.py      ChordEvent, Word, LyricLine, Placement, Section, Song — all frozen
+  types.py      ChordEvent, BeatEvent, Word, LyricLine, Placement, Section, Song — all frozen
   audio.py      loading/resampling; caller asks for the rate its model wants
   separate.py   demucs wrapper (subprocess), optional
   chords.py     pluggable chord backends behind recognise()
