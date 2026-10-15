@@ -203,10 +203,15 @@ def grid(beats: Sequence[BeatEvent], beats_per_bar: int | None = None) -> BeatGr
 def _track_madmom(
     audio: np.ndarray,
     sample_rate: int,
-    candidates: Sequence[int] = METRE_CANDIDATES,
+    beats_per_bar: int | Sequence[int] = METRE_CANDIDATES,
     **kwargs,
 ) -> list[BeatEvent]:
-    """RNN downbeat activations + DBN bar tracking, via madmom's weights."""
+    """RNN downbeat activations + DBN bar tracking, via madmom's weights.
+
+    ``beats_per_bar`` is one metre or a list to choose between -- madmom's own
+    name, and the librosa backend's, so ``track(..., beats_per_bar=3)`` means
+    the same thing whichever backend runs.
+    """
     # Validated before the import, so a wrong rate costs nothing and is
     # catchable in CI, where the weights are not installed.
     if sample_rate != BEAT_SAMPLE_RATE:
@@ -220,7 +225,9 @@ def _track_madmom(
     # inherit whatever default it was configured with.
     signal = Signal(audio, sample_rate=sample_rate, num_channels=1)
     activations = RNNDownBeatProcessor()(signal)
-    tracker = DBNDownBeatTrackingProcessor(beats_per_bar=list(candidates), fps=MADMOM_FPS)
+    # Passed as given: the DBN reads it with np.array(ndmin=1), so an int and a
+    # list both work without converting here.
+    tracker = DBNDownBeatTrackingProcessor(beats_per_bar=beats_per_bar, fps=MADMOM_FPS)
     # Rows are (time, position in bar), position 1-based -- verified against
     # madmom 0.17.dev0.
     return [

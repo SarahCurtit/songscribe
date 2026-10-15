@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 from math import isnan
 
 import numpy as np
@@ -151,7 +153,7 @@ class TestPlausibility:
         assert BeatGrid(downbeats=(0.0, bar_length, 2 * bar_length)).is_plausible
 
     @pytest.mark.parametrize("bar_length", [0.4, 0.79, 8.5, 20.0])
-    def test_rejects_half_or_double_tracking_errors(self, bar_length):
+    def test_rejects_a_tempo_no_band_plays(self, bar_length):
         assert not BeatGrid(downbeats=(0.0, bar_length, 2 * bar_length)).is_plausible
 
     def test_an_unmeasurable_grid_is_not_plausible(self):
@@ -273,10 +275,37 @@ class TestRegistry:
 
         monkeypatch.setitem(beats.BACKENDS, "fake", fake)
         monkeypatch.setitem(beats.BACKEND_SAMPLE_RATES, "fake", 8_000)
-        beats.track(np.zeros(10, dtype=np.float32), 8_000, backend="fake", candidates=(4,))
-        assert seen == {"candidates": (4,)}
+        beats.track(np.zeros(10, dtype=np.float32), 8_000, backend="fake", beats_per_bar=3)
+        assert seen == {"beats_per_bar": 3}
 
     def test_madmom_refuses_the_wrong_sample_rate(self):
         # Checked before the model is imported, so this runs with no weights.
         with pytest.raises(ValueError, match="expects 44100 Hz"):
             beats.track(np.zeros(10, dtype=np.float32), 22_050, backend="madmom")
+
+    @pytest.mark.parametrize(("given", "expected"), [(3, 3), (None, beats.METRE_CANDIDATES)])
+    def test_madmom_honours_beats_per_bar(self, monkeypatch, given, expected):
+        # The backend swallows unknown kwargs, so a misnamed metre would be
+        # dropped without a word. Stubbed modules stand in for madmom, which CI
+        # does not install, and for its weights.
+        seen = {}
+
+        class Tracker:
+            def __init__(self, beats_per_bar, fps):
+                seen["beats_per_bar"] = beats_per_bar
+
+            def __call__(self, activations):
+                return [(0.5, 1), (1.0, 2)]
+
+        signal = types.ModuleType("madmom.audio.signal")
+        signal.Signal = lambda audio, **kwargs: audio
+        downbeats = types.ModuleType("madmom.features.downbeats")
+        downbeats.RNNDownBeatProcessor = lambda: lambda signal: signal
+        downbeats.DBNDownBeatTrackingProcessor = Tracker
+        monkeypatch.setitem(sys.modules, "madmom.audio.signal", signal)
+        monkeypatch.setitem(sys.modules, "madmom.features.downbeats", downbeats)
+
+        kwargs = {} if given is None else {"beats_per_bar": given}
+        tracked = beats.track(np.zeros(10, dtype=np.float32), 44_100, **kwargs)
+        assert seen == {"beats_per_bar": expected}
+        assert tracked == [BeatEvent(0.5, 1), BeatEvent(1.0, 2)]
