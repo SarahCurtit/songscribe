@@ -61,6 +61,14 @@ class TestParse:
         with pytest.raises(lab.LabFormatError, match="precedes start"):
             lab.parse("2.0 1.0 C")
 
+    @pytest.mark.parametrize("text", ["nan nan C:maj", "0.0 inf C:maj", "-inf 1.0 C"])
+    def test_rejects_a_non_finite_timestamp(self, text):
+        # float() accepts these and `end < start` is False for nan, so without
+        # this a nan boundary reaches the scorer and makes every metric over
+        # that track nan with nothing reporting a problem.
+        with pytest.raises(lab.LabFormatError, match="non-finite"):
+            lab.parse(text)
+
     def test_error_names_the_line_number(self):
         with pytest.raises(lab.LabFormatError, match="line 3"):
             lab.parse("0.0 1.0 C\n1.0 2.0 G\nbroken\n")

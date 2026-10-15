@@ -58,6 +58,12 @@ def parse(text: str, source: str | None = None) -> list[ChordEvent]:
         except ValueError as error:
             raise LabFormatError(f"{where}{number}: bad timestamp in {line!r}") from error
 
+        # Before the ordering test, which nan passes: every comparison against
+        # it is False. A nan boundary in a reference or a cached estimate makes
+        # every metric over that track nan without anything reporting a problem.
+        if not (isfinite(start) and isfinite(end)):
+            raise LabFormatError(f"{where}{number}: non-finite timestamp in {line!r}")
+
         if end < start:
             raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
 

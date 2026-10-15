@@ -53,10 +53,10 @@ DEFAULT_METRE = 4
 #: dropped bar, by contrast, is about 100% long, so there is a wide margin.
 #:
 #: Deciding *which* bars belong to the form is not this statistic's job. On the
-#: same take the out-of-tempo intro ran 4-13% long, a range that straddles this
-#: threshold: its first bars are flagged and its last are not, because they have
-#: already accelerated into the body tempo. Form membership needs the form's
-#: known bar count and an anchor, not a per-bar length test.
+#: same take the out-of-tempo intro ran 4-12% long against the body tempo, a
+#: range that straddles this threshold: its first bars are flagged and its last
+#: are not, having already accelerated into tempo. Form membership needs the
+#: form's known bar count and an anchor, not a per-bar length test.
 BAR_DRIFT_TOLERANCE = 0.10
 
 #: A grid implying a tempo outside this range is not a tempo, it is a tracking
