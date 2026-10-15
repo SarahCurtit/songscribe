@@ -3,13 +3,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from songscribe import chords
 from songscribe.chords import (
     NO_CHORD,
     PITCH_CLASSES,
     _smooth_labels,
+    backend_options,
     chord_templates,
     estimate_key,
     normalise_label,
+    recognise,
     sample_rate_for,
 )
 from songscribe.types import ChordEvent
@@ -123,6 +126,50 @@ class TestSampleRateFor:
     def test_rejects_an_unknown_backend(self):
         with pytest.raises(ValueError, match="unknown chord backend"):
             sample_rate_for("definitely-not-a-model")
+
+
+class TestBackendSettings:
+    def test_reports_what_each_backend_accepts(self):
+        assert backend_options("template") == {"hop_length", "smoothing"}
+        # The madmom chord processors are used as pretrained; nothing to tune.
+        assert backend_options("madmom") == set()
+
+    def test_no_registered_backend_keeps_a_catch_all(self):
+        # A `**kwargs` on a backend would silently switch this validation off
+        # for it, which is the bug the check exists to prevent.
+        for backend in chords.BACKENDS:
+            assert backend_options(backend) is not None
+
+    def test_recognise_rejects_an_unknown_setting(self):
+        with pytest.raises(ValueError) as excinfo:
+            recognise(np.zeros(10, dtype=np.float32), 22_050, backend="template", smoothng=9)
+        message = str(excinfo.value)
+        assert "'smoothng'" in message
+        assert "'template'" in message
+        # The accepted settings are listed, so the typo is obvious from the error.
+        assert "smoothing" in message
+
+    def test_rejects_a_setting_before_the_model_is_imported(self):
+        # Runs with no weights on disk: the setting is checked at the registry,
+        # so madmom is never reached.
+        with pytest.raises(ValueError, match="which takes no settings"):
+            recognise(np.zeros(10, dtype=np.float32), 44_100, backend="madmom", metre=4)
+
+    def test_names_every_unknown_setting(self):
+        with pytest.raises(ValueError, match="unknown settings 'hop', 'smooth'"):
+            recognise(np.zeros(10, dtype=np.float32), 22_050, backend="template", hop=1, smooth=2)
+
+    def test_accepted_settings_reach_the_backend(self, monkeypatch):
+        seen = {}
+
+        def fake(audio, sample_rate, smoothing=9):
+            seen["smoothing"] = smoothing
+            return []
+
+        monkeypatch.setitem(chords.BACKENDS, "fake", fake)
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake", smoothing=3) == []
+        assert seen == {"smoothing": 3}
 
 
 class TestEstimateKey:

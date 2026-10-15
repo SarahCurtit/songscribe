@@ -9,9 +9,10 @@ registered in :data:`BACKENDS` with its rate in :data:`BACKEND_SAMPLE_RATES`.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from bisect import bisect_right
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from math import isfinite, isnan, nan
 from statistics import median
@@ -204,7 +205,6 @@ def _track_madmom(
     audio: np.ndarray,
     sample_rate: int,
     beats_per_bar: int | Sequence[int] = METRE_CANDIDATES,
-    **kwargs,
 ) -> list[BeatEvent]:
     """RNN downbeat activations + DBN bar tracking, via madmom's weights.
 
@@ -241,7 +241,6 @@ def _track_librosa(
     sample_rate: int,
     beats_per_bar: int = DEFAULT_METRE,
     hop_length: int = 512,
-    **kwargs,
 ) -> list[BeatEvent]:
     """Non-DL baseline: onset-envelope beat tracking, metre assumed.
 
@@ -283,6 +282,44 @@ def _check_backend(backend: str) -> None:
         raise ValueError(f"unknown beat backend {backend!r}, expected one of {sorted(BACKENDS)}")
 
 
+def backend_options(backend: str) -> set[str] | None:
+    """The settings ``backend`` accepts, or ``None`` if it accepts anything.
+
+    Read off the backend function's own signature, so a backend declares its
+    settings once by taking them as parameters. The first two are the audio and
+    its sample rate, which :func:`track` passes positionally.
+    """
+    _check_backend(backend)
+    parameters = list(inspect.signature(BACKENDS[backend]).parameters.values())
+    # A backend keeping a catch-all genuinely does accept any setting, so there
+    # is nothing to check; none of the registered ones do, and a test holds
+    # that, since a catch-all would turn this validation off by accident.
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters):
+        return None
+    keyword_kinds = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    return {p.name for p in parameters[2:] if p.kind in keyword_kinds}
+
+
+def _check_options(backend: str, options: Iterable[str]) -> None:
+    """Reject settings ``backend`` has no parameter for.
+
+    The same rule as :func:`_check_backend`, one level down: a misspelled
+    setting that is quietly dropped is indistinguishable from a tracker that
+    ignored it, which is how a metre setting went unnoticed here. Raised in
+    :func:`track` rather than in each backend so there is one error path.
+    """
+    accepted = backend_options(backend)
+    if accepted is None:
+        return
+    unknown = sorted(set(options) - accepted)
+    if not unknown:
+        return
+    named = ", ".join(repr(name) for name in unknown)
+    noun = "setting" if len(unknown) == 1 else "settings"
+    detail = f"expected one of {sorted(accepted)}" if accepted else "which takes no settings"
+    raise ValueError(f"unknown {noun} {named} for beat backend {backend!r}, {detail}")
+
+
 def sample_rate_for(backend: str) -> int:
     """The sample rate ``backend`` needs its audio loaded at."""
     _check_backend(backend)
@@ -295,7 +332,12 @@ def track(
     backend: str = DEFAULT_BACKEND,
     **kwargs,
 ) -> list[BeatEvent]:
-    """Track beats and downbeats in ``audio`` (mono float32)."""
+    """Track beats and downbeats in ``audio`` (mono float32).
+
+    Extra keyword arguments are the chosen backend's settings; one it does not
+    accept raises rather than being dropped.
+    """
     _check_backend(backend)
+    _check_options(backend, kwargs)
     log.debug("beat backend=%s sample_rate=%d", backend, sample_rate)
     return BACKENDS[backend](audio, sample_rate, **kwargs)

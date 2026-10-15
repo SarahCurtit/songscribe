@@ -285,9 +285,9 @@ class TestRegistry:
 
     @pytest.mark.parametrize(("given", "expected"), [(3, 3), (None, beats.METRE_CANDIDATES)])
     def test_madmom_honours_beats_per_bar(self, monkeypatch, given, expected):
-        # The backend swallows unknown kwargs, so a misnamed metre would be
-        # dropped without a word. Stubbed modules stand in for madmom, which CI
-        # does not install, and for its weights.
+        # A metre named right has to reach the DBN, not just survive the
+        # registry's setting check. Stubbed modules stand in for madmom, which
+        # CI does not install, and for its weights.
         seen = {}
 
         class Tracker:
@@ -309,3 +309,55 @@ class TestRegistry:
         tracked = beats.track(np.zeros(10, dtype=np.float32), 44_100, **kwargs)
         assert seen == {"beats_per_bar": expected}
         assert tracked == [BeatEvent(0.5, 1), BeatEvent(1.0, 2)]
+
+
+class TestBackendSettings:
+    def test_reports_what_each_backend_accepts(self):
+        assert beats.backend_options("madmom") == {"beats_per_bar"}
+        assert beats.backend_options("librosa") == {"beats_per_bar", "hop_length"}
+
+    def test_the_metre_is_named_the_same_on_every_backend(self):
+        # Whichever backend runs, `beats_per_bar` is the metre; the check must
+        # not be what stops a caller setting it on the default one.
+        for backend in beats.BACKENDS:
+            assert "beats_per_bar" in beats.backend_options(backend)
+
+    def test_no_registered_backend_keeps_a_catch_all(self):
+        # A `**kwargs` on a backend would silently switch this validation off
+        # for it, which is the bug the check exists to prevent.
+        for backend in beats.BACKENDS:
+            assert beats.backend_options(backend) is not None
+
+    def test_track_rejects_an_unknown_setting(self):
+        # `candidates` was madmom's own name for the metre until it was renamed
+        # to match librosa's, so it is exactly the stale setting a config can
+        # still carry -- and the error has to point at the name that replaced it.
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(np.zeros(10, dtype=np.float32), 44_100, backend="madmom", candidates=(3,))
+        message = str(excinfo.value)
+        assert "'candidates'" in message
+        assert "'madmom'" in message
+        assert "beats_per_bar" in message
+
+    def test_rejects_a_setting_before_the_model_is_imported(self):
+        # Runs with no weights: the setting is checked at the registry, so the
+        # wrong-rate guard inside the backend is never reached either.
+        with pytest.raises(ValueError, match="unknown setting 'metre'"):
+            beats.track(np.zeros(10, dtype=np.float32), 22_050, backend="madmom", metre=4)
+
+    def test_names_every_unknown_setting(self):
+        with pytest.raises(ValueError, match="unknown settings 'hop', 'metre'"):
+            beats.track(np.zeros(10, dtype=np.float32), 22_050, backend="librosa", metre=3, hop=1)
+
+    def test_accepted_settings_reach_the_backend(self, monkeypatch):
+        seen = {}
+
+        def fake(audio, sample_rate, beats_per_bar=beats.DEFAULT_METRE):
+            seen["beats_per_bar"] = beats_per_bar
+            return []
+
+        monkeypatch.setitem(beats.BACKENDS, "fake", fake)
+        monkeypatch.setitem(beats.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        audio = np.zeros(10, dtype=np.float32)
+        assert beats.track(audio, 8_000, backend="fake", beats_per_bar=3) == []
+        assert seen == {"beats_per_bar": 3}
