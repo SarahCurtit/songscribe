@@ -1,14 +1,10 @@
 """Beat and downbeat tracking, via pluggable backends.
 
-Chord models emit boundaries at whatever resolution their frames allow; a
-musician reads bars. This module supplies the bar lines, so a chord timeline
-can be measured and printed against the grid the band actually played.
+Chord models emit boundaries wherever their frames fall; a musician reads
+bars. This module supplies the bar lines.
 
-Same registry contract as :mod:`songscribe.chords`: a backend is one function
-returning :class:`~songscribe.types.BeatEvent` list, registered in
-:data:`BACKENDS` with its required sample rate in :data:`BACKEND_SAMPLE_RATES`.
-:class:`BeatGrid` lives here rather than in :mod:`songscribe.types` because it
-is derived from an event stream rather than being one.
+Same registry contract as :mod:`songscribe.chords`: one function per backend,
+registered in :data:`BACKENDS` with its rate in :data:`BACKEND_SAMPLE_RATES`.
 """
 
 from __future__ import annotations
@@ -72,6 +68,8 @@ MAX_BAR_SECONDS = 8.0
 # --------------------------------------------------------------------------- #
 
 
+# Lives here rather than in types.py, which holds event streams: a grid is
+# derived from one.
 @dataclass(frozen=True, slots=True)
 class BeatGrid:
     """Bar lines in seconds from the start of the recording.

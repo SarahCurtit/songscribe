@@ -3,13 +3,8 @@
 The Isophonics/MIREX convention: one chord per line, ``start end label``,
 times in seconds from the start of the recording. It is the lingua franca for
 chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
-:mod:`songscribe.eval` reads.
-
-Beat timelines get the same treatment (``time position``, one beat per line)
-rather than their own module, because this one already owns "simple timed text
-file" -- and because a cached beat grid is what lets the evaluation harness be
-exercised without running a tracker, the way ``.lab`` fixtures already let it
-be exercised without running a chord model.
+:mod:`songscribe.eval` reads. Beat timelines get the same treatment
+(``time position``), since this module already owns "simple timed text file".
 """
 
 from __future__ import annotations
@@ -96,6 +91,8 @@ def write(path: str | Path, events: list[ChordEvent]) -> None:
     path.write_text(format_events(events), encoding="utf-8")
 
 
+# A cached grid is what lets the evaluation harness run without a tracker, the
+# way .lab fixtures already let it run without a chord model.
 def parse_beats(text: str, source: str | None = None) -> list[BeatEvent]:
     """Parse ``time position`` lines into beat events.
 
