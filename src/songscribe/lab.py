@@ -1,16 +1,23 @@
-"""Reading and writing ``.lab`` chord annotation files.
+"""Reading and writing ``.lab`` chord annotation files, and ``.beats`` grids.
 
 The Isophonics/MIREX convention: one chord per line, ``start end label``,
 times in seconds from the start of the recording. It is the lingua franca for
 chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 :mod:`songscribe.eval` reads.
+
+Beat timelines get the same treatment (``time position``, one beat per line)
+rather than their own module, because this one already owns "simple timed text
+file" -- and because a cached beat grid is what lets the evaluation harness be
+exercised without running a tracker, the way ``.lab`` fixtures already let it
+be exercised without running a chord model.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
-from .types import ChordEvent
+from .types import BeatEvent, ChordEvent
 
 #: Isophonics writes space-separated, madmom and :mod:`songscribe.demo` write
 #: tab-separated, and some published annotation sets mix both within one file.
@@ -87,3 +94,53 @@ def write(path: str | Path, events: list[ChordEvent]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(format_events(events), encoding="utf-8")
+
+
+def parse_beats(text: str, source: str | None = None) -> list[BeatEvent]:
+    """Parse ``time position`` lines into beat events.
+
+    ``position`` is 1-based, as :class:`~songscribe.types.BeatEvent` and
+    madmom both have it. A position of 0 is rejected rather than shifted: a
+    silently renumbered bar puts every downbeat on the wrong beat.
+    """
+    beats: list[BeatEvent] = []
+    where = f"{source}:" if source else "line "
+
+    for number, line in enumerate(text.splitlines(), start=1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        fields = line.split()
+        if len(fields) != 2:
+            raise LabFormatError(f"{where}{number}: expected 'time position', got {line!r}")
+
+        try:
+            time, position = float(fields[0]), int(fields[1])
+        except ValueError as error:
+            raise LabFormatError(f"{where}{number}: bad beat in {line!r}") from error
+
+        if position < 1:
+            raise LabFormatError(f"{where}{number}: position {position} is not 1-based")
+
+        beats.append(BeatEvent(time=time, position=position))
+
+    return beats
+
+
+def read_beats(path: str | Path) -> list[BeatEvent]:
+    """Read a ``.beats`` file into beat events."""
+    path = Path(path)
+    return parse_beats(path.read_text(encoding="utf-8-sig"), source=path.name)
+
+
+def format_beats(beats: Sequence[BeatEvent]) -> str:
+    """Render beat events as ``.beats`` text, including the trailing newline."""
+    return "".join(f"{b.time:.{TIME_PRECISION}f}{WRITE_SEPARATOR}{b.position}\n" for b in beats)
+
+
+def write_beats(path: str | Path, beats: Sequence[BeatEvent]) -> None:
+    """Write beat events to ``path`` as a ``.beats`` file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(format_beats(beats), encoding="utf-8")

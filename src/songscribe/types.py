@@ -27,6 +27,23 @@ class ChordEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class BeatEvent:
+    """One tracked beat, and where it falls in the bar.
+
+    ``position`` is 1-based, so a downbeat is ``position == 1``. Keeping the
+    position rather than a bare "is a downbeat" flag is what lets a grid be
+    rebuilt at beat resolution later without re-running the tracker.
+    """
+
+    time: float
+    position: int
+
+    @property
+    def is_downbeat(self) -> bool:
+        return self.position == 1
+
+
+@dataclass(frozen=True, slots=True)
 class Word:
     """A single transcribed word with its own timing."""
 

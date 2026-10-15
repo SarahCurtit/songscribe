@@ -30,6 +30,7 @@ src/songscribe/
   audio.py      loading/resampling; caller asks for the rate its model wants
   separate.py   demucs wrapper (subprocess), optional
   chords.py     pluggable chord backends behind recognise()
+  beats.py      pluggable beat/downbeat backends behind track(); BeatGrid
   lyrics.py     faster-whisper wrapper, word-level timestamps
   align.py      chord timeline + word timeline -> printable sections   (pure Python)
   render.py     Song -> text or ChordPro                               (pure Python)
