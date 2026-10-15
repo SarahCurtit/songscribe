@@ -10,6 +10,7 @@ chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 from __future__ import annotations
 
 from collections.abc import Sequence
+from math import isfinite
 from pathlib import Path
 
 from .types import BeatEvent, ChordEvent
@@ -116,6 +117,12 @@ def parse_beats(text: str, source: str | None = None) -> list[BeatEvent]:
             time, position = float(fields[0]), int(fields[1])
         except ValueError as error:
             raise LabFormatError(f"{where}{number}: bad beat in {line!r}") from error
+
+        # float() accepts "nan" and "inf". A nan time passes every ordering
+        # check downstream, since comparing against it is always False, so it
+        # would reach a grid that reports itself healthy and places nothing.
+        if not isfinite(time):
+            raise LabFormatError(f"{where}{number}: time {time} is not finite")
 
         if position < 1:
             raise LabFormatError(f"{where}{number}: position {position} is not 1-based")

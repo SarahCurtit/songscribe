@@ -39,7 +39,7 @@ training framework with it.
 | Separation | [Demucs v4](https://github.com/adefossez/demucs) (`htdemucs`) | PyTorch | MIT | Auto-downloaded on first use | not yet | Hybrid transformer; `--two-stems=vocals` is all we need |
 | Chords (default) | [madmom](https://github.com/CPJKU/madmom) CNN + CRF | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0, Py3.11 | Korzeniowski & Widmer; major/minor vocabulary |
 | Chords (planned) | [BTC](https://github.com/jayg996/BTC-ISMIR19) | PyTorch | MIT | Public checkpoint in the repo | n/a | Large vocabulary incl. sevenths/inversions; not wired up yet |
-| Downbeats (default) | [madmom](https://github.com/CPJKU/madmom) RNN + DBN | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | not yet | Böck et al.; same install as the chord model, so no new dependency. Trained mostly on pop/rock — on jazz, check it has not locked onto the backbeat |
+| Downbeats (default) | [madmom](https://github.com/CPJKU/madmom) RNN + DBN | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0 | Böck et al.; same install as the chord model, so no new dependency. Trained mostly on pop/rock — on jazz, check it has not locked onto the backbeat |
 | Lyrics | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (Whisper) | CTranslate2 | MIT (code), MIT (weights) | HuggingFace Hub, auto-downloaded | not yet | Word-level timestamps; see the note below |
 
 Two dependencies need a word of explanation against the PyTorch policy:
@@ -108,7 +108,8 @@ All PyTorch or framework-free, per the policy above.
   pip package. Any other candidate must be a PyTorch CRNN/transformer trained with a large
   vocabulary on McGill Billboard + Isophonics.
 - **Beat/downbeat tracking** — [BeatNet](https://github.com/mjhydri/BeatNet) (PyTorch, MIT),
-  or madmom's DBN tracker (framework-free), so chords snap to bars rather than raw frames.
+  as a second opinion where madmom's DBN tracker (now the default, in the inventory above)
+  mistakes the swung backbeat for the downbeat.
 - **Lyric alignment** — [WhisperX](https://github.com/m-bain/whisperX) (PyTorch/torchaudio,
   BSD-4) for phoneme-level forced alignment, which would fix the held-note timestamp drift.
   Check the BSD-4 advertising clause against our MIT licence before adopting.

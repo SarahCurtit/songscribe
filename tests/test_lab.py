@@ -126,6 +126,13 @@ class TestParseBeats:
         with pytest.raises(lab.LabFormatError):
             lab.parse_beats(text)
 
+    @pytest.mark.parametrize("time", ["nan", "inf", "-inf"])
+    def test_rejects_a_non_finite_time(self, time):
+        # float() accepts these, and a nan time survives every ordering check
+        # downstream, reaching a grid that reports itself healthy.
+        with pytest.raises(lab.LabFormatError, match="not finite"):
+            lab.parse_beats(f"{time} 1")
+
     @pytest.mark.parametrize("position", [0, -1])
     def test_rejects_a_position_that_is_not_one_based(self, position):
         # Renumbering it silently would put every downbeat on the wrong beat.
@@ -151,11 +158,16 @@ class TestWriteBeats:
 
     def test_round_trip_preserves_a_grid(self, tmp_path):
         # The point of the format: a tracked grid can be cached and re-read, so
-        # the harness runs without a tracker.
+        # the harness runs without a tracker. Compares the bar lines themselves,
+        # not just how many there are.
         tracked = [BeatEvent(14.0 + i * 0.4226, i % 4 + 1) for i in range(16)]
         path = tmp_path / "song.beats"
         lab.write_beats(path, tracked)
-        assert beats.grid(lab.read_beats(path)).bars == beats.grid(tracked).bars
+
+        reloaded = beats.grid(lab.read_beats(path))
+        original = beats.grid(tracked)
+        assert reloaded.downbeats == pytest.approx(original.downbeats)
+        assert reloaded.beats_per_bar == original.beats_per_bar
 
     def test_empty_timeline_writes_nothing(self):
         assert lab.format_beats([]) == ""

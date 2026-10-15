@@ -82,6 +82,25 @@ class TestBeatGrid:
         with pytest.raises(ValueError, match="beats_per_bar"):
             BeatGrid(downbeats=(0.0, 2.0), beats_per_bar=0)
 
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_rejects_a_non_finite_downbeat(self, bad):
+        # nan passes every ordering test, since comparing against it is always
+        # False, so without this check it reaches a grid whose bar lengths are
+        # all nan and whose unreliable_bars() reports nothing wrong.
+        with pytest.raises(ValueError, match="finite"):
+            BeatGrid(downbeats=(0.0, bad, 2.0))
+
+    def test_bar_start_rejects_an_index_outside_the_grid(self):
+        grid = BeatGrid(downbeats=(10.0, 12.0, 14.0))
+        with pytest.raises(IndexError, match="outside the grid"):
+            grid.bar_start(-1)
+        with pytest.raises(IndexError, match="outside the grid"):
+            grid.bar_start(3)
+
+    def test_bar_start_reaches_the_final_bar_line(self):
+        # It opens no complete bar, but it is where the form stops.
+        assert BeatGrid(downbeats=(10.0, 12.0, 14.0)).bar_start(2) == 14.0
+
 
 class TestDrift:
     def test_an_even_grid_does_not_drift(self):
@@ -96,7 +115,7 @@ class TestDrift:
         for length in lengths:
             downbeats.append(downbeats[-1] + length)
         grid = BeatGrid(downbeats=tuple(downbeats))
-        assert max(grid.drift()) < beats.BAR_DRIFT_TOLERANCE
+        assert max(grid.drift()) < 0.01
         assert grid.unreliable_bars() == ()
 
     def test_tracker_jitter_on_real_audio_is_not_called_unreliable(self):
@@ -116,6 +135,12 @@ class TestDrift:
         grid = BeatGrid(downbeats=(0.0, 2.0, 4.0, 8.0, 10.0))
         assert grid.unreliable_bars() == (2,)
 
+    def test_a_bar_a_long_way_out_of_tempo_is_flagged(self):
+        # Bounds the tolerance from above: the longest intro bar on the measured
+        # take was 12% over the body tempo, and must not read as healthy.
+        grid = BeatGrid(downbeats=(0.0, 1.9376, 3.6676, 5.3976, 7.1276))
+        assert grid.unreliable_bars() == (0,)
+
     def test_drift_is_empty_without_a_measurable_length(self):
         assert BeatGrid(downbeats=(1.0,)).drift() == ()
 
@@ -131,6 +156,23 @@ class TestPlausibility:
 
     def test_an_unmeasurable_grid_is_not_plausible(self):
         assert not BeatGrid(downbeats=()).is_plausible
+
+    def test_the_bound_is_on_tempo_not_bar_length(self):
+        # A 7.5s bar is 32 bpm in 4/4 and 24 bpm in 3/4. A bound written in bar
+        # length would accept both; only the slower one is outside 30-300 bpm.
+        in_four = BeatGrid(downbeats=(0.0, 7.5, 15.0), beats_per_bar=4)
+        in_three = BeatGrid(downbeats=(0.0, 7.5, 15.0), beats_per_bar=3)
+        assert in_four.tempo == pytest.approx(32.0)
+        assert in_three.tempo == pytest.approx(24.0)
+        assert in_four.is_plausible
+        assert not in_three.is_plausible
+
+    def test_tempo_reads_off_the_metre(self):
+        grid = BeatGrid(downbeats=(0.0, 1.7200, 3.4400), beats_per_bar=4)
+        assert grid.tempo == pytest.approx(139.53, abs=0.01)
+
+    def test_tempo_is_nan_without_a_measurable_bar(self):
+        assert isnan(BeatGrid(downbeats=(1.0,)).tempo)
 
 
 class TestGrid:
@@ -154,6 +196,27 @@ class TestGrid:
     def test_sorts_downbeats_it_is_handed_out_of_order(self):
         unsorted = [BeatEvent(4.0, 1), BeatEvent(0.0, 1), BeatEvent(2.0, 1)]
         assert beats.grid(unsorted).downbeats == (0.0, 2.0, 4.0)
+
+    def test_warns_when_no_beat_is_a_downbeat(self, caplog):
+        # A .beats cache trimmed mid-bar. The grid places nothing, which is
+        # otherwise indistinguishable from a file the tracker found no bars in.
+        tracked = [BeatEvent(0.5, 2), BeatEvent(1.0, 3), BeatEvent(1.5, 4)]
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(tracked)
+        assert built.downbeats == ()
+        assert "no downbeat" in caplog.text
+
+    def test_warns_when_the_inferred_metre_is_not_a_candidate(self, caplog):
+        tracked = [BeatEvent(0.0, 1), BeatEvent(0.5, 2)]
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(tracked)
+        assert built.beats_per_bar == 2
+        assert "inferred metre" in caplog.text
+
+    def test_does_not_warn_on_a_healthy_grid(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            beats.grid(metronome(3))
+        assert caplog.text == ""
 
     def test_a_grid_that_starts_late_keeps_its_offset(self):
         # Seven bars of intro before the form: the grid must not be rebased to

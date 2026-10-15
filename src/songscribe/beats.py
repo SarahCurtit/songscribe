@@ -10,9 +10,10 @@ registered in :data:`BACKENDS` with its rate in :data:`BACKEND_SAMPLE_RATES`.
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from math import isnan, nan
+from math import isfinite, isnan, nan
 from statistics import median
 
 import numpy as np
@@ -51,16 +52,20 @@ DEFAULT_METRE = 4
 #: Anything tighter than that therefore fires on a perfectly good grid. A
 #: dropped bar, by contrast, is about 100% long, so there is a wide margin.
 #:
-#: Deciding *which* bars belong to the form is not this statistic's job -- an
-#: out-of-tempo intro sits only 8-13% out, inside the same band as the jitter.
-#: That needs the form's known bar count and an anchor, not a per-bar test.
+#: Deciding *which* bars belong to the form is not this statistic's job. On the
+#: same take the out-of-tempo intro ran 4-13% long, a range that straddles this
+#: threshold: its first bars are flagged and its last are not, because they have
+#: already accelerated into the body tempo. Form membership needs the form's
+#: known bar count and an anchor, not a per-bar length test.
 BAR_DRIFT_TOLERANCE = 0.10
 
-#: Bar lengths outside this range are not a tempo, they are a tracking error:
-#: at four beats to the bar they bound 30-300 bpm. The band being half or
-#: double the detected tempo is the failure this catches.
-MIN_BAR_SECONDS = 0.8
-MAX_BAR_SECONDS = 8.0
+#: A grid implying a tempo outside this range is not a tempo, it is a tracking
+#: error -- the half- or double-tempo lock being the one worth catching. Bounded
+#: in beats per minute rather than in bar length so the metre is respected: at
+#: three beats to the bar, 0.85 s is 212 bpm, not the leisurely tempo a
+#: bar-length bound would have called it.
+MIN_TEMPO_BPM = 30.0
+MAX_TEMPO_BPM = 300.0
 
 
 # --------------------------------------------------------------------------- #
@@ -85,6 +90,11 @@ class BeatGrid:
     def __post_init__(self) -> None:
         if self.beats_per_bar < 1:
             raise ValueError(f"beats_per_bar must be at least 1, got {self.beats_per_bar}")
+        # Checked before the ordering test, which nan would pass silently: every
+        # comparison against nan is False, so a nan downbeat would survive into
+        # a grid whose bar lengths are all nan and whose health report is empty.
+        if not all(isfinite(b) for b in self.downbeats):
+            raise ValueError(f"downbeats must all be finite, got {self.downbeats}")
         if any(b <= a for a, b in zip(self.downbeats, self.downbeats[1:], strict=False)):
             raise ValueError("downbeats must be strictly ascending")
 
@@ -110,13 +120,26 @@ class BeatGrid:
         return tuple(b - a for a, b in zip(self.downbeats, self.downbeats[1:], strict=False))
 
     @property
-    def is_plausible(self) -> bool:
-        """Whether the median bar length is a tempo a band could be playing."""
+    def tempo(self) -> float:
+        """Implied beats per minute, or ``nan`` without a measurable bar."""
         length = self.bar_length
-        return not isnan(length) and MIN_BAR_SECONDS <= length <= MAX_BAR_SECONDS
+        return nan if isnan(length) or length <= 0 else self.beats_per_bar * 60.0 / length
+
+    @property
+    def is_plausible(self) -> bool:
+        """Whether the implied tempo is one a band could be playing."""
+        tempo = self.tempo
+        return not isnan(tempo) and MIN_TEMPO_BPM <= tempo <= MAX_TEMPO_BPM
 
     def bar_start(self, index: int) -> float:
-        """Start of bar ``index``, counting from 0."""
+        """Start of bar ``index``, counting from 0.
+
+        Bounded rather than relying on tuple indexing, which would answer a
+        negative index from the far end of the grid. The last downbeat is in
+        range though it opens no complete bar: it is where the form stops.
+        """
+        if not 0 <= index < len(self.downbeats):
+            raise IndexError(f"bar {index} outside the grid's {len(self.downbeats)} bar lines")
         return self.downbeats[index]
 
     def bar_span(self, index: int) -> tuple[float, float]:
@@ -133,7 +156,10 @@ class BeatGrid:
         """
         if not self.downbeats or time < self.downbeats[0]:
             return None
-        index = int(np.searchsorted(np.asarray(self.downbeats), time, side="right")) - 1
+        # bisect on the tuple rather than np.searchsorted on a fresh array:
+        # placing a whole chord timeline is one call per event, and this way
+        # that costs no allocation.
+        index = bisect_right(self.downbeats, time) - 1
         return index if index < self.bars else None
 
     def drift(self) -> tuple[float, ...]:
@@ -162,7 +188,15 @@ def grid(beats: Sequence[BeatEvent], beats_per_bar: int | None = None) -> BeatGr
     if beats_per_bar is None:
         positions = [b.position for b in beats]
         beats_per_bar = max(positions) if positions else DEFAULT_METRE
+        # An excerpt shorter than a bar infers its own length as the metre.
+        if positions and beats_per_bar not in METRE_CANDIDATES:
+            log.warning("inferred metre %d from %d beats", beats_per_bar, len(positions))
     downbeats = tuple(sorted(b.time for b in beats if b.is_downbeat))
+    # A timeline trimmed mid-bar carries no downbeat, and the resulting grid
+    # places nothing at all -- worth a word, since it is indistinguishable
+    # downstream from a recording the tracker simply found no bars in.
+    if beats and not downbeats:
+        log.warning("%d beats but no downbeat among them: the grid is empty", len(beats))
     return BeatGrid(downbeats=downbeats, beats_per_bar=beats_per_bar)
 
 
