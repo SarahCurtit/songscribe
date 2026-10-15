@@ -177,6 +177,260 @@ class TestPlausibility:
         assert isnan(BeatGrid(downbeats=(1.0,)).tempo)
 
 
+#: A jazz ballad below madmom's 55 bpm DBN floor: 48 bpm in 4/4 is a 5 s bar,
+#: and the tracker reports it at 96 instead.
+BALLAD_BPM = 48.0
+
+
+def click_track(tempo_bpm: float, bars: int, metre: int = 4, start: float = 0.0):
+    """``bars`` bars of an even click at ``tempo_bpm``, downbeats included."""
+    return metronome(bars, bar_length=metre * 60.0 / tempo_bpm, start=start, metre=metre)
+
+
+class TestTempoReference:
+    def test_reads_an_explicit_tempo(self):
+        assert beats.TempoReference(tempo=BALLAD_BPM).expected_tempo == pytest.approx(48.0)
+
+    def test_derives_a_tempo_from_bars_over_a_span(self):
+        # 32 bars of chorus across 160 s, four beats to the bar: the reference a
+        # chart with no tempo marking can still supply.
+        assert beats.TempoReference(bars=32, span=160.0).expected_tempo == pytest.approx(48.0)
+
+    def test_the_derived_tempo_reads_off_the_metre(self):
+        reference = beats.TempoReference(bars=32, span=160.0, beats_per_bar=3)
+        assert reference.expected_tempo == pytest.approx(36.0)
+
+    def test_an_explicit_tempo_wins_over_a_bar_count(self):
+        # The marking is stated; a span's ends were read off a waveform.
+        reference = beats.TempoReference(tempo=BALLAD_BPM, bars=32, span=80.0)
+        assert reference.expected_tempo == pytest.approx(48.0)
+
+    @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), float("inf")])
+    def test_rejects_a_tempo_that_is_not_a_tempo(self, bad):
+        # A reference that cannot be turned into a tempo would make every grid
+        # compared against it look like it agreed.
+        with pytest.raises(ValueError, match="tempo must be"):
+            beats.TempoReference(tempo=bad)
+
+    def test_rejects_bars_without_a_span(self):
+        with pytest.raises(ValueError, match="both bars and span"):
+            beats.TempoReference(bars=32)
+
+    def test_rejects_a_span_without_bars(self):
+        with pytest.raises(ValueError, match="both bars and span"):
+            beats.TempoReference(span=160.0)
+
+    def test_rejects_an_empty_reference(self):
+        with pytest.raises(ValueError, match="either a tempo"):
+            beats.TempoReference()
+
+    @pytest.mark.parametrize("bad", [0.0, -4.0, float("nan"), float("inf")])
+    def test_rejects_a_span_that_is_not_a_duration(self, bad):
+        with pytest.raises(ValueError, match="span must be"):
+            beats.TempoReference(bars=32, span=bad)
+
+    def test_rejects_a_bar_count_below_one(self):
+        with pytest.raises(ValueError, match="bars must be"):
+            beats.TempoReference(bars=0, span=10.0)
+
+    def test_rejects_a_metre_below_one(self):
+        with pytest.raises(ValueError, match="beats_per_bar"):
+            beats.TempoReference(tempo=BALLAD_BPM, beats_per_bar=0)
+
+
+class TestLoadingATempoReference:
+    def test_builds_from_a_mapping_either_way(self):
+        stated = beats.TempoReference.from_mapping({"tempo": 48})
+        counted = beats.TempoReference.from_mapping({"bars": 32, "span": 160})
+        assert stated.expected_tempo == pytest.approx(48.0)
+        assert counted.expected_tempo == pytest.approx(48.0)
+
+    def test_rejects_a_key_it_has_no_field_for(self):
+        # A misspelled tempo that was dropped would leave the check comparing
+        # against the bar count it was meant to override.
+        with pytest.raises(ValueError, match="unknown tempo reference key 'bpm'"):
+            beats.TempoReference.from_mapping({"bpm": 48})
+
+    def test_names_every_unknown_key(self):
+        with pytest.raises(ValueError, match="unknown tempo reference keys 'bpm', 'metre'"):
+            beats.TempoReference.from_mapping({"bpm": 48, "metre": 4})
+
+    def test_reads_a_json_sidecar(self, tmp_path):
+        path = tmp_path / "tempo.json"
+        path.write_text('{"bars": 32, "span": 160.0, "beats_per_bar": 4}', encoding="utf-8")
+        assert beats.load_tempo_reference(path).expected_tempo == pytest.approx(48.0)
+
+    def test_a_sidecar_tempo_survives_the_round_trip(self, tmp_path):
+        path = tmp_path / "tempo.json"
+        path.write_text('{"tempo": 48}', encoding="utf-8")
+        assert beats.load_tempo_reference(path) == beats.TempoReference(tempo=48.0)
+
+
+class TestCheckTempo:
+    def test_a_grid_on_the_reference_tempo_passes_clean(self, caplog):
+        tracked = beats.grid(click_track(BALLAD_BPM, bars=8))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.agrees
+        assert not check.is_octave_error
+        assert check.ratio == pytest.approx(1.0)
+        assert caplog.text == ""
+
+    def test_double_tempo_warns_and_names_both_tempos(self, caplog):
+        # The reported failure: madmom's DBN will not go below 55 bpm, so this
+        # ballad comes back at 96 with twice the bars it should have.
+        tracked = beats.grid(click_track(2 * BALLAD_BPM, bars=16))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.is_octave_error
+        assert check.octave_factor == 2.0
+        assert "96.0 bpm" in caplog.text
+        assert "48.0 bpm" in caplog.text
+        assert "is 2x" in caplog.text
+        assert "twice" in caplog.text
+
+    def test_half_tempo_warns_and_names_both_tempos(self, caplog):
+        tracked = beats.grid(click_track(BALLAD_BPM / 2, bars=4))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.octave_factor == 0.5
+        assert "24.0 bpm" in caplog.text
+        assert "48.0 bpm" in caplog.text
+        assert "is 0.5x" in caplog.text
+        assert "half" in caplog.text
+
+    def test_both_reference_forms_reach_the_same_verdict(self, caplog):
+        # 32 bars across 160 s is the same 48 bpm said the other way, and a
+        # chart with no tempo marking has to catch the same octave error.
+        tracked = beats.grid(click_track(2 * BALLAD_BPM, bars=16))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            stated = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+            counted = beats.check_tempo(tracked, beats.TempoReference(bars=32, span=160.0))
+        assert counted.octave_factor == stated.octave_factor == 2.0
+        assert counted.reference == pytest.approx(stated.reference)
+        assert counted.ratio == pytest.approx(stated.ratio)
+        assert caplog.text.count("96.0 bpm is 2x the reference 48.0 bpm") == 2
+
+    def test_the_grid_is_reported_on_not_corrected(self, caplog):
+        # Flag and report: a grid halved to match the reference it is supposed
+        # to be measured against has stopped being a measurement.
+        tracked = beats.grid(click_track(2 * BALLAD_BPM, bars=16))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert tracked.downbeats == tuple(2.5 * bar for bar in range(16))
+        assert tracked.tempo == pytest.approx(2 * BALLAD_BPM)
+        assert tracked.bars == 15
+
+    def test_the_range_check_cannot_see_the_octave_error(self):
+        # Why a reference is needed at all: 96 bpm is a tempo a band could be
+        # playing, so the 30-300 bpm window calls the doubled grid healthy.
+        tracked = beats.grid(click_track(2 * BALLAD_BPM, bars=16))
+        assert tracked.is_plausible
+        check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.is_octave_error
+
+    def test_a_band_drifting_off_the_marking_still_agrees(self, caplog):
+        # 3% over the chart's tempo is a band, not a tracking fault.
+        tracked = beats.grid(click_track(BALLAD_BPM * 1.03, bars=8))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.agrees
+        assert not check.is_octave_error
+        assert caplog.text == ""
+
+    def test_drift_into_the_doubled_tempo_is_still_the_doubled_tempo(self):
+        # Why the comparison is a window around 2 rather than equality.
+        tracked = beats.grid(click_track(2 * BALLAD_BPM * 1.05, bars=16))
+        check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert check.octave_factor == 2.0
+
+    def test_a_disagreement_that_is_not_an_octave_says_so(self, caplog):
+        tracked = beats.grid(click_track(BALLAD_BPM * 1.5, bars=8))
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(tracked, beats.TempoReference(tempo=BALLAD_BPM))
+        assert not check.agrees
+        assert not check.is_octave_error
+        assert "72.0 bpm" in caplog.text
+        assert "48.0 bpm" in caplog.text
+        assert "not a half- or double-tempo lock" in caplog.text
+
+    def test_an_unmeasurable_grid_claims_nothing(self, caplog):
+        # One downbeat has no tempo, and "not 2x the reference" would be a
+        # finding the grid cannot support.
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            check = beats.check_tempo(
+                BeatGrid(downbeats=(1.0,)), beats.TempoReference(tempo=BALLAD_BPM)
+            )
+        assert isnan(check.ratio)
+        assert not check.agrees
+        assert not check.is_octave_error
+        assert caplog.text == ""
+
+    def test_a_tighter_tolerance_can_be_asked_for(self):
+        tracked = beats.grid(click_track(2 * BALLAD_BPM * 1.05, bars=16))
+        reference = beats.TempoReference(tempo=BALLAD_BPM)
+        assert beats.check_tempo(tracked, reference, tolerance=0.01).octave_factor is None
+
+
+class TestGridAgainstAReference:
+    def test_the_verdict_travels_on_the_grid(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(
+                click_track(2 * BALLAD_BPM, bars=16),
+                reference=beats.TempoReference(tempo=BALLAD_BPM),
+            )
+        assert built.tempo_check is not None
+        assert built.tempo_check.is_octave_error
+        assert built.tempo_check.tracked == pytest.approx(96.0)
+        assert built.tempo_check.reference == pytest.approx(48.0)
+        assert "96.0 bpm" in caplog.text
+        assert "48.0 bpm" in caplog.text
+
+    def test_a_grid_built_without_a_reference_has_no_verdict(self, caplog):
+        # Not the same as agreement: nothing outside the audio was available.
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(click_track(2 * BALLAD_BPM, bars=16))
+        assert built.tempo_check is None
+        assert caplog.text == ""
+
+    def test_the_grid_keeps_its_own_bar_lines_whatever_the_reference_says(self):
+        tracked = click_track(2 * BALLAD_BPM, bars=16)
+        built = beats.grid(tracked, reference=beats.TempoReference(tempo=BALLAD_BPM))
+        assert built.downbeats == tuple(b.time for b in tracked if b.is_downbeat)
+        assert built.bars == 15
+
+    def test_an_agreeing_reference_leaves_the_grid_quiet(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(
+                click_track(BALLAD_BPM, bars=8), reference=beats.TempoReference(bars=32, span=160.0)
+            )
+        assert built.tempo_check.agrees
+        assert caplog.text == ""
+
+    def test_the_tempo_warning_fires_without_the_metre_warning(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            beats.grid(
+                click_track(2 * BALLAD_BPM, bars=16),
+                beats_per_bar=4,
+                reference=beats.TempoReference(tempo=BALLAD_BPM),
+            )
+        assert "octave error" in caplog.text
+        assert "metre" not in caplog.text
+
+    def test_the_metre_warning_fires_without_the_tempo_warning(self, caplog):
+        # A 3/4 click declared as 4/4: the metre is contradicted, while the
+        # tempo that follows from the caller's metre matches the reference.
+        # Two different faults, and neither may swallow the other.
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            beats.grid(
+                click_track(36.0, bars=8, metre=3),
+                beats_per_bar=4,
+                reference=beats.TempoReference(tempo=BALLAD_BPM),
+            )
+        assert "metre 4 given" in caplog.text
+        assert "octave error" not in caplog.text
+
+
 class TestGrid:
     def test_keeps_only_the_downbeats(self):
         grid = beats.grid(metronome(3, bar_length=2.0))
