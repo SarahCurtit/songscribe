@@ -393,6 +393,24 @@ length and does no search at all. Supplying real downbeats — the beat-tracking
 in `README.md` — is what turns `grid` from a heuristic into a measurement, and it is the
 strongest argument for doing that work next.
 
+### Beat-grid drift: what `BAR_DRIFT_TOLERANCE` does and does not catch
+
+`BeatGrid.unreliable_bars()` flags any tracked bar more than `BAR_DRIFT_TOLERANCE` (10%)
+away from the median bar length. It is meant to catch a *gross* grid fault — a dropped or
+added bar, or a stretch tracked at half tempo — and deliberately nothing finer.
+
+Measured on one real 236 s take: across the steady body of the performance, individual
+tracked bars still scatter up to 6.4% around the median. That figure is dominated by the
+tracker placing each beat, not by the band's tempo moving — the median itself drifts under
+1% over the same span — so anything tighter fires on a perfectly good grid. A dropped bar,
+by contrast, is about 100% long, so there is a wide margin.
+
+Deciding *which* bars belong to the form is not this statistic's job. On the same take the
+out-of-tempo intro ran 4–12% long against the body tempo, a range that straddles the
+threshold: its first bars are flagged and its last are not, having already accelerated into
+tempo. Form membership needs the form's known bar count and an anchor, not a per-bar length
+test.
+
 ### `placement`: lyric-chord synchronisation, for songs
 
 For a song rather than an instrumental, the thing that matters is whether each chord sits

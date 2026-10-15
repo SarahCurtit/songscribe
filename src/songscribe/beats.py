@@ -42,21 +42,8 @@ METRE_CANDIDATES = (3, 4)
 DEFAULT_METRE = 4
 
 #: How far one bar may differ from the median before it is called unreliable,
-#: as a fraction. This catches a *gross* grid fault -- a dropped or added bar,
-#: or a stretch tracked at half tempo -- and deliberately nothing finer.
-#:
-#: Measured on one real 236 s take: across the steady body of the performance
-#: individual tracked bars still scatter up to 6.4% around the median, because
-#: the figure is dominated by the tracker placing each beat rather than by the
-#: band's tempo moving (the median itself drifts under 1% over the same span).
-#: Anything tighter than that therefore fires on a perfectly good grid. A
-#: dropped bar, by contrast, is about 100% long, so there is a wide margin.
-#:
-#: Deciding *which* bars belong to the form is not this statistic's job. On the
-#: same take the out-of-tempo intro ran 4-12% long against the body tempo, a
-#: range that straddles this threshold: its first bars are flagged and its last
-#: are not, having already accelerated into tempo. Form membership needs the
-#: form's known bar count and an anchor, not a per-bar length test.
+#: as a fraction. Catches gross faults only (a dropped bar is ~100% long);
+#: good bars scatter up to 6.4%. EVALUATION.md has the measurement.
 BAR_DRIFT_TOLERANCE = 0.10
 
 #: A grid implying a tempo outside this range is not a tempo, it is a tracking
@@ -173,7 +160,7 @@ class BeatGrid:
         """Bars whose length is further than ``tolerance`` from the median.
 
         A gross-fault detector, not a "is this bar in the form" test -- see
-        :data:`BAR_DRIFT_TOLERANCE` for why the distinction matters.
+        "Beat-grid drift" in EVALUATION.md for why the distinction matters.
         """
         return tuple(i for i, d in enumerate(self.drift()) if d > tolerance)
 

@@ -145,7 +145,13 @@ def read_beats(path: str | Path) -> list[BeatEvent]:
 
 
 def format_beats(beats: Sequence[BeatEvent]) -> str:
-    """Render beat events as ``.beats`` text, including the trailing newline."""
+    """Render beat events as ``.beats`` text, including the trailing newline.
+
+    One beat per line: time, a tab, then the 1-based position in the bar::
+
+        0.520000    1
+        1.040000    2
+    """
     return "".join(f"{b.time:.{TIME_PRECISION}f}{WRITE_SEPARATOR}{b.position}\n" for b in beats)
 
 
