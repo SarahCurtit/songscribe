@@ -32,9 +32,8 @@ BEAT_SAMPLE_RATE = 44_100
 MADMOM_FPS = 100
 
 #: Metres the tracker is allowed to consider. The DBN takes a candidate list;
-#: jazz standards are in 4/4 or 3/4, and narrowing from madmom's wider default
-#: both halves the work and removes the 5/4 and 7/8 fits that would wreck a
-#: bar grid built on top of it.
+#: jazz standards are in 4/4 or 3/4, the same pair madmom's reference
+#: DBNDownBeatTracker program uses.
 METRE_CANDIDATES = (3, 4)
 
 #: Assumed when a backend tracks beats without identifying the downbeat, and
@@ -47,10 +46,13 @@ DEFAULT_METRE = 4
 BAR_DRIFT_TOLERANCE = 0.10
 
 #: A grid implying a tempo outside this range is not a tempo, it is a tracking
-#: error -- the half- or double-tempo lock being the one worth catching. Bounded
-#: in beats per minute rather than in bar length so the metre is respected: at
-#: three beats to the bar, 0.85 s is 212 bpm, not the leisurely tempo a
-#: bar-length bound would have called it.
+#: error: librosa output gone astray, or a corrupt or hand-edited ``.beats``
+#: file. Not a half- or double-tempo lock from madmom -- its DBN is held to its
+#: own 55-215 bpm, so an octave error there lands inside this range and needs
+#: an external tempo reference to catch. Bounded in beats per minute rather
+#: than in bar length so the metre is respected: at three beats to the bar,
+#: 0.85 s is 212 bpm, not the leisurely tempo a bar-length bound would have
+#: called it.
 MIN_TEMPO_BPM = 30.0
 MAX_TEMPO_BPM = 300.0
 
@@ -172,12 +174,18 @@ def grid(beats: Sequence[BeatEvent], beats_per_bar: int | None = None) -> BeatGr
     given -- the tracker already decided the metre, and re-deriving it from
     beat spacing would only disagree with it.
     """
+    positions = [b.position for b in beats]
     if beats_per_bar is None:
-        positions = [b.position for b in beats]
         beats_per_bar = max(positions) if positions else DEFAULT_METRE
         # An excerpt shorter than a bar infers its own length as the metre.
         if positions and beats_per_bar not in METRE_CANDIDATES:
             log.warning("inferred metre %d from %d beats", beats_per_bar, len(positions))
+    elif positions and max(positions) != beats_per_bar:
+        # The caller still wins, but every tempo figure scales with the metre:
+        # 4/4 beats read as 3/4 report 90 bpm for 120, and nothing else says so.
+        log.warning(
+            "metre %d given, but the tracked positions reach %d", beats_per_bar, max(positions)
+        )
     downbeats = tuple(sorted(b.time for b in beats if b.is_downbeat))
     # A timeline trimmed mid-bar carries no downbeat, and the resulting grid
     # places nothing at all -- worth a word, since it is indistinguishable

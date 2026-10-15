@@ -185,8 +185,16 @@ class TestGrid:
         assert beats.grid(metronome(2, metre=3)).beats_per_bar == 3
         assert beats.grid(metronome(2, metre=4)).beats_per_bar == 4
 
-    def test_an_explicit_metre_wins(self):
-        assert beats.grid(metronome(2, metre=4), beats_per_bar=3).beats_per_bar == 3
+    def test_an_explicit_metre_wins(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            built = beats.grid(metronome(2, metre=4), beats_per_bar=3)
+        assert built.beats_per_bar == 3
+        assert "metre 3 given" in caplog.text
+
+    def test_an_explicit_metre_that_agrees_does_not_warn(self, caplog):
+        with caplog.at_level("WARNING", logger="songscribe.beats"):
+            beats.grid(metronome(2, metre=3), beats_per_bar=3)
+        assert caplog.text == ""
 
     def test_empty_input_gives_an_empty_grid(self):
         grid = beats.grid([])
