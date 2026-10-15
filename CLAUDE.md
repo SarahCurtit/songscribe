@@ -85,7 +85,10 @@ and their terms forbid redistributing the audio.
   use the vocal onsets" shortcuts — they couple the branches and break testability.
 - **Models go behind a registry.** A chord backend is one function returning
   `list[ChordEvent]`, registered in `chords.BACKENDS` with its sample rate in
-  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name.
+  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name. Every
+  setting it accepts is a named parameter *with a default*, after the audio and
+  its rate — `recognise()` and `track()` reject a setting the chosen backend
+  doesn't declare, and a `**kwargs` on a backend turns that check off for it.
 - **One chord vocabulary downstream.** Models emit Harte notation (`C:maj`, `A:min`);
   everything after the backend expects compact shorthand (`C`, `Am`). Backends call
   `chords.normalise_label()` on the way out. An unrecognised quality passes through
