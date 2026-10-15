@@ -326,7 +326,36 @@ class TestBackendSettings:
         # A `**kwargs` on a backend would silently switch this validation off
         # for it, which is the bug the check exists to prevent.
         for backend in beats.BACKENDS:
-            assert beats.backend_options(backend) is not None
+            assert not beats.accepts_any_option(backend)
+
+    def test_a_catch_all_is_reported_apart_from_the_accepted_names(self, monkeypatch):
+        # "accepts anything" and "accepts nothing" must not both read as a
+        # falsy `backend_options`, or a caller testing the set skips the check.
+        monkeypatch.setitem(beats.BACKENDS, "fake", lambda audio, rate, hop_length=512, **kw: [])
+        monkeypatch.setitem(beats.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert beats.accepts_any_option("fake")
+        assert beats.backend_options("fake") == {"hop_length"}
+
+    def test_a_catch_all_backend_takes_any_setting(self, monkeypatch):
+        # The exemption is real, not just reported: nothing can be rejected on
+        # behalf of a backend that will accept it.
+        monkeypatch.setitem(beats.BACKENDS, "fake", lambda audio, rate, **kw: [])
+        monkeypatch.setitem(beats.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert beats.track(np.zeros(10, dtype=np.float32), 8_000, backend="fake", nonsense=1) == []
+
+    def test_a_setting_without_a_default_is_rejected(self, monkeypatch):
+        # Not reportable as an accepted setting: the backend could not be
+        # called without it, so `track` would raise TypeError from the call
+        # instead of naming the fault here. Caught on every dispatch, so it
+        # surfaces even when the caller names no settings at all.
+        monkeypatch.setitem(beats.BACKENDS, "fake", lambda audio, rate, beats_per_bar: [])
+        monkeypatch.setitem(beats.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        with pytest.raises(ValueError, match="'beats_per_bar' with no default"):
+            beats.track(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+
+    def test_every_registered_setting_has_a_default(self):
+        for backend in beats.BACKENDS:
+            assert isinstance(beats.backend_options(backend), set)
 
     def test_track_rejects_an_unknown_setting(self):
         # `candidates` was madmom's own name for the metre until it was renamed

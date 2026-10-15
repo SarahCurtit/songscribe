@@ -1,10 +1,10 @@
 """Chord recognition from audio, via pluggable deep-learning backends.
 
 Every production backend is a pretrained open-source model with openly
-published weights -- see ``MODELS.md`` for the inventory and the bar a new one
-has to clear. A backend is one function returning
-:class:`~songscribe.types.ChordEvent` list, registered in :data:`BACKENDS`
-with its required sample rate in :data:`BACKEND_SAMPLE_RATES`.
+published weights -- see ``MODELS.md`` for the bar a new one has to clear. A
+backend is one function returning :class:`~songscribe.types.ChordEvent` list,
+registered in :data:`BACKENDS` with its rate in :data:`BACKEND_SAMPLE_RATES`,
+taking each setting it accepts as a defaulted parameter, never ``**kwargs``.
 """
 
 from __future__ import annotations
@@ -170,22 +170,55 @@ def _check_backend(backend: str) -> None:
         raise ValueError(f"unknown chord backend {backend!r}, expected one of {sorted(BACKENDS)}")
 
 
-def backend_options(backend: str) -> set[str] | None:
-    """The settings ``backend`` accepts, or ``None`` if it accepts anything.
+#: Parameter kinds a setting can be passed as. A backend's own positional-only
+#: or ``*args`` parameters are unreachable through :func:`recognise`, which
+#: forwards settings by keyword.
+_KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+
+
+def backend_options(backend: str) -> set[str]:
+    """The settings ``backend`` accepts, by name.
 
     Read off the backend function's own signature, so a backend declares its
     settings once by taking them as parameters. The first two are the audio and
-    its sample rate, which :func:`recognise` passes positionally.
+    its sample rate, which :func:`recognise` passes positionally. An empty set
+    means the backend takes no settings; a backend that accepts *anything* is a
+    separate question, asked of :func:`accepts_any_option`.
     """
     _check_backend(backend)
     parameters = list(inspect.signature(BACKENDS[backend]).parameters.values())
-    # A backend keeping a catch-all genuinely does accept any setting, so there
-    # is nothing to check; none of the registered ones do, and a test holds
-    # that, since a catch-all would turn this validation off by accident.
-    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters):
-        return None
-    keyword_kinds = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    return {p.name for p in parameters[2:] if p.kind in keyword_kinds}
+    options = set()
+    for parameter in parameters[2:]:
+        if parameter.kind not in _KEYWORD_KINDS:
+            continue
+        # A setting without a default is not optional, so it cannot be reported
+        # as one: `recognise` calls a backend with the audio and its rate alone,
+        # and a caller who names nothing would get a TypeError from the call --
+        # the one error path this module promises, routed around. Rejecting the
+        # registration points the backend's author at the missing default.
+        if parameter.default is inspect.Parameter.empty:
+            raise ValueError(
+                f"chord backend {backend!r} declares setting {parameter.name!r} with no "
+                "default; a backend must be callable with the audio and its rate alone"
+            )
+        options.add(parameter.name)
+    return options
+
+
+def accepts_any_option(backend: str) -> bool:
+    """Whether ``backend`` keeps a catch-all, and so accepts every setting.
+
+    Such a backend cannot be checked -- it really does take anything -- so this
+    reports the exemption instead of folding it into :func:`backend_options`,
+    where "anything" and "nothing" would be two indistinguishable empty
+    answers. Nothing registered here is exempt, and a test holds that: a
+    ``**kwargs`` on a backend is how the silently-ignored setting comes back.
+    """
+    _check_backend(backend)
+    return any(
+        p.kind is inspect.Parameter.VAR_KEYWORD
+        for p in inspect.signature(BACKENDS[backend]).parameters.values()
+    )
 
 
 def _check_options(backend: str, options: Iterable[str]) -> None:
@@ -196,9 +229,9 @@ def _check_options(backend: str, options: Iterable[str]) -> None:
     ignored it, which is how a metre setting went unnoticed on the default beat
     backend. Raised here rather than in each backend so there is one error path.
     """
-    accepted = backend_options(backend)
-    if accepted is None:
+    if accepts_any_option(backend):
         return
+    accepted = backend_options(backend)
     unknown = sorted(set(options) - accepted)
     if not unknown:
         return

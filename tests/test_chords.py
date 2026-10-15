@@ -138,7 +138,41 @@ class TestBackendSettings:
         # A `**kwargs` on a backend would silently switch this validation off
         # for it, which is the bug the check exists to prevent.
         for backend in chords.BACKENDS:
-            assert backend_options(backend) is not None
+            assert not chords.accepts_any_option(backend)
+
+    def test_a_catch_all_is_reported_apart_from_the_accepted_names(self, monkeypatch):
+        # "accepts anything" and "accepts nothing" must not both read as a
+        # falsy `backend_options`: the madmom backend genuinely accepts
+        # nothing, and conflating the two is how a check gets skipped.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, smoothing=9, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert chords.accepts_any_option("fake")
+        assert backend_options("fake") == {"smoothing"}
+        assert not chords.accepts_any_option("madmom")
+        assert backend_options("madmom") == set()
+
+    def test_a_catch_all_backend_takes_any_setting(self, monkeypatch):
+        # The exemption is real, not just reported: nothing can be rejected on
+        # behalf of a backend that will accept it.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake", nonsense=1) == []
+
+    def test_a_setting_without_a_default_is_rejected(self, monkeypatch):
+        # Not reportable as an accepted setting: the backend could not be
+        # called without it, so `recognise` would raise TypeError from the call
+        # instead of naming the fault here. Caught on every dispatch, so it
+        # surfaces even when the caller names no settings at all.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, checkpoint: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        with pytest.raises(ValueError, match="'checkpoint' with no default"):
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+
+    def test_every_registered_setting_has_a_default(self):
+        # The same rule over the shipped backends, so `btc` growing a required
+        # `checkpoint` fails here rather than at the call.
+        for backend in chords.BACKENDS:
+            assert isinstance(backend_options(backend), set)
 
     def test_recognise_rejects_an_unknown_setting(self):
         with pytest.raises(ValueError) as excinfo:
