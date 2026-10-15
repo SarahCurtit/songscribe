@@ -175,6 +175,11 @@ def _check_backend(backend: str) -> None:
 #: forwards settings by keyword.
 _KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
 
+#: Variadic parameter kinds. They carry no default and need none -- an omitted
+#: ``*args``/``**kwargs`` is simply empty -- so the rule below that every
+#: declared setting be optional does not apply to them.
+_VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+
 
 def backend_options(backend: str) -> set[str]:
     """The settings ``backend`` accepts, by name.
@@ -183,24 +188,34 @@ def backend_options(backend: str) -> set[str]:
     settings once by taking them as parameters. The first two are the audio and
     its sample rate, which :func:`recognise` passes positionally. An empty set
     means the backend takes no settings; a backend that accepts *anything* is a
-    separate question, asked of :func:`accepts_any_option`.
+    separate question, asked of :func:`accepts_any_option`. Raises
+    :exc:`RuntimeError` for a backend that cannot be called with the audio and
+    its rate alone.
     """
     _check_backend(backend)
     parameters = list(inspect.signature(BACKENDS[backend]).parameters.values())
     options = set()
     for parameter in parameters[2:]:
-        if parameter.kind not in _KEYWORD_KINDS:
-            continue
         # A setting without a default is not optional, so it cannot be reported
         # as one: `recognise` calls a backend with the audio and its rate alone,
         # and a caller who names nothing would get a TypeError from the call --
-        # the one error path this module promises, routed around. Rejecting the
-        # registration points the backend's author at the missing default.
-        if parameter.default is inspect.Parameter.empty:
-            raise ValueError(
+        # the one error path this module promises, routed around. Checked before
+        # the keyword filter below, so a required positional-only parameter is
+        # named here too rather than slipping through as "no settings".
+        #
+        # A misdeclared backend is this package's own bug, not a caller's bad
+        # input, so it is not the ValueError the caller-facing checks raise: a
+        # CLI turning ValueError into a usage error must not blame the user for
+        # it. Nothing runs when a backend is added to BACKENDS -- a plain dict
+        # -- so the fault surfaces on the first dispatch to it, which is why
+        # this check is repeated on every call rather than done once.
+        if parameter.default is inspect.Parameter.empty and parameter.kind not in _VARIADIC_KINDS:
+            raise RuntimeError(
                 f"chord backend {backend!r} declares setting {parameter.name!r} with no "
                 "default; a backend must be callable with the audio and its rate alone"
             )
+        if parameter.kind not in _KEYWORD_KINDS:
+            continue
         options.add(parameter.name)
     return options
 
@@ -229,9 +244,14 @@ def _check_options(backend: str, options: Iterable[str]) -> None:
     ignored it, which is how a metre setting went unnoticed on the default beat
     backend. Raised here rather than in each backend so there is one error path.
     """
+    # Asked first, and of every backend: a catch-all is exempt from the list of
+    # accepted names, not from `backend_options`' own rule that each declared
+    # setting be optional. Returning early on the exemption would let a backend
+    # with both a catch-all and a required setting past this gate and straight
+    # into the bare TypeError from the call that this check replaces.
+    accepted = backend_options(backend)
     if accepts_any_option(backend):
         return
-    accepted = backend_options(backend)
     unknown = sorted(set(options) - accepted)
     if not unknown:
         return

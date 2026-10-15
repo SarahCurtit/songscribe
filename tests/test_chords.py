@@ -162,17 +162,48 @@ class TestBackendSettings:
         # Not reportable as an accepted setting: the backend could not be
         # called without it, so `recognise` would raise TypeError from the call
         # instead of naming the fault here. Caught on every dispatch, so it
-        # surfaces even when the caller names no settings at all.
+        # surfaces even when the caller names no settings at all. A misdeclared
+        # backend is this package's bug, so it is not the caller-facing
+        # ValueError -- a CLI mapping that to a usage error must not blame the
+        # user for it.
         monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, checkpoint: [])
         monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
-        with pytest.raises(ValueError, match="'checkpoint' with no default"):
+        with pytest.raises(RuntimeError, match="'checkpoint' with no default") as excinfo:
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+        assert not isinstance(excinfo.value, ValueError)
+
+    def test_a_catch_all_does_not_excuse_a_setting_without_a_default(self, monkeypatch):
+        # The exemption covers the list of accepted names only. A backend with
+        # both still cannot be called with the audio and its rate alone, so
+        # checking the catch-all first would hand the caller the bare TypeError
+        # this validation exists to replace.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, checkpoint, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert chords.accepts_any_option("fake")
+        with pytest.raises(RuntimeError, match="'checkpoint' with no default"):
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+
+    def test_a_required_positional_only_setting_is_rejected(self, monkeypatch):
+        # Unreachable by keyword *and* required: reporting it as "no settings"
+        # and then failing at the call is the worst of both. Being callable with
+        # the audio and its rate alone is checked before reachability.
+        def fake(audio, sample_rate, hop_length, /):
+            return []
+
+        monkeypatch.setitem(chords.BACKENDS, "fake", fake)
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        with pytest.raises(RuntimeError, match="'hop_length' with no default"):
+            backend_options("fake")
+        with pytest.raises(RuntimeError, match="'hop_length' with no default"):
             recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
 
     def test_every_registered_setting_has_a_default(self):
         # The same rule over the shipped backends, so `btc` growing a required
-        # `checkpoint` fails here rather than at the call.
+        # `checkpoint` fails here rather than at the call. The guard is that the
+        # call itself does not raise -- there is nothing to assert about the
+        # value, so don't add an assertion that hides which backend failed.
         for backend in chords.BACKENDS:
-            assert isinstance(backend_options(backend), set)
+            backend_options(backend)
 
     def test_recognise_rejects_an_unknown_setting(self):
         with pytest.raises(ValueError) as excinfo:
