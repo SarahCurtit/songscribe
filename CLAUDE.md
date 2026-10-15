@@ -88,7 +88,8 @@ and their terms forbid redistributing the audio.
   `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name. Every
   setting it accepts is a named parameter *with a default*, after the audio and
   its rate — `recognise()` and `track()` reject a setting the chosen backend
-  doesn't declare, and a `**kwargs` on a backend turns that check off for it.
+  doesn't declare. A `**kwargs` on a backend would turn that check off, so a
+  registered backend must not have one; a test enforces it.
 - **One chord vocabulary downstream.** Models emit Harte notation (`C:maj`, `A:min`);
   everything after the backend expects compact shorthand (`C`, `Am`). Backends call
   `chords.normalise_label()` on the way out. An unrecognised quality passes through
