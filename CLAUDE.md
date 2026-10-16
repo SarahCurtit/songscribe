@@ -31,6 +31,7 @@ src/songscribe/
   separate.py   demucs wrapper (subprocess), optional
   chords.py     pluggable chord backends behind recognise()
   beats.py      pluggable beat/downbeat backends behind track(); BeatGrid
+  tempo.py      BeatGrid vs a known tempo: octave-error check          (pure Python)
   registry.py   name/setting checks shared by chords and beats       (pure Python)
   lyrics.py     faster-whisper wrapper, word-level timestamps
   align.py      chord timeline + word timeline -> printable sections   (pure Python)
