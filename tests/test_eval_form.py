@@ -84,13 +84,20 @@ class TestChoruses:
         assert found[0].scale == pytest.approx(BAR / (REFERENCE_DURATION / BARS))
 
     def test_a_dropped_bar_makes_that_chorus_unaligned_and_names_it(self):
-        base = grid_of(intro=0, choruses=3, tail=0, lead=0.0)
-        # The tracker missed one downbeat inside the middle chorus.
+        base = grid_of(intro=0, choruses=2, tail=0, lead=0.0)
+        # The tracker missed one downbeat inside the second chorus.
         downbeats = tuple(d for i, d in enumerate(base.downbeats) if i != BARS + 10)
         found = split(BeatGrid(downbeats=downbeats), anchor=0)
-        assert found[1].kind == "unaligned"
+        assert [c.kind for c in found] == ["head", "unaligned"]
         assert isnan(found[1].scale)
         assert form.unscored_seconds(found) == pytest.approx(found[1].duration)
+
+    def test_the_count_is_lost_after_a_dropped_bar_so_later_choruses_are_refused(self):
+        base = grid_of(intro=0, choruses=4, tail=0, lead=0.0)
+        downbeats = tuple(d for i, d in enumerate(base.downbeats) if i != BARS + 10)
+        found = split(BeatGrid(downbeats=downbeats), anchor=0)
+        assert [c.kind for c in found][:2] == ["head", "unaligned"]
+        assert all(c.kind == "unaligned" for c in found[1:])
 
     def test_a_chorus_played_at_another_tempo_is_unaligned(self):
         downbeats = [0.0]
