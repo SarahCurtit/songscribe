@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from .tempo import is_count
 
 #: Parameter kinds a setting can be passed as. A backend's own positional-only
 #: or ``*args`` parameters are unreachable through a stage's dispatch function,
@@ -23,6 +25,42 @@ _VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWO
 #: A value rule: returns what is wrong with a setting's value, or None.
 #: The registry builds the ValueError.
 SettingRule = Callable[[object], str | None]
+
+_RULES_ATTR = "__setting_rules__"
+
+
+def whole_at_least(value: object, unit: str, floor: int = 1) -> str | None:
+    """Fault in ``value`` as a whole count of ``unit`` of at least ``floor``, or None."""
+    # A fractional count is refused, not rounded: either way would be a guess.
+    if not is_count(value):
+        return f"must be a whole number of {unit}, got {value!r}"
+    if value < floor:
+        return f"must be at least {floor}, got {value!r}"
+    return None
+
+
+def whole_number(unit: str, floor: int = 1) -> SettingRule:
+    """A rule accepting a whole count of ``unit`` of at least ``floor``."""
+    return lambda value: whole_at_least(value, unit, floor)
+
+
+def setting_rules(**rules: SettingRule):
+    """Declare value rules on the backend parameters they guard.
+
+    Rules travel with the function, so a stand-in registered under a real
+    backend's name does not inherit them, and a rule naming a parameter the
+    function lacks fails at definition rather than guarding nothing.
+    """
+
+    def attach(backend: Callable) -> Callable:
+        parameters = inspect.signature(backend).parameters
+        for name in rules:
+            if name not in parameters or parameters[name].kind not in _KEYWORD_KINDS:
+                raise TypeError(f"{backend.__name__} has no setting {name!r} to put a rule on")
+        setattr(backend, _RULES_ATTR, rules)
+        return backend
+
+    return attach
 
 
 # Holds the stage's dicts by reference rather than copying them: a backend added
@@ -39,9 +77,6 @@ class Registry:
     kind: str
     backends: dict[str, Callable]
     sample_rates: dict[str, int]
-    #: Rules for each backend's setting values, by backend and setting name. A
-    #: setting with no rule is passed through unchecked.
-    rules: dict[str, dict[str, SettingRule]] = field(default_factory=dict)
 
     def check_backend(self, backend: str) -> None:
         """Reject an unknown backend by name.
@@ -113,12 +148,18 @@ class Registry:
             for p in inspect.signature(self.backends[backend]).parameters.values()
         )
 
+    def rules(self, backend: str) -> dict[str, SettingRule]:
+        """The value rules declared on ``backend``; a setting with none is unchecked."""
+        self.check_backend(backend)
+        return getattr(self.backends[backend], _RULES_ATTR, {})
+
     def check_options(self, backend: str, options: Iterable[str] | Mapping[str, object]) -> None:
         """Reject settings ``backend`` has no parameter for, or a value it can't use.
 
         One error path, before dispatch: a misspelled setting that is quietly
         dropped looks like a model that ignored it. Values are checked against
-        :attr:`rules` when ``options`` is a mapping; faults are ValueError.
+        the backend's :func:`setting_rules` when ``options`` is a mapping; faults
+        are ValueError.
         """
         # Asked first, and of every backend: a catch-all is exempt from the list
         # of accepted names, not from `options`' own rule that each declared
@@ -130,7 +171,7 @@ class Registry:
         if not self.accepts_any_option(backend):
             self._reject_unknown(backend, options, accepted)
         if isinstance(options, Mapping):
-            rules = self.rules.get(backend, {})
+            rules = self.rules(backend)
             for name, value in options.items():
                 rule = rules.get(name)
                 problem = None if rule is None else rule(value)
