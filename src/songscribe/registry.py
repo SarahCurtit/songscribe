@@ -23,7 +23,8 @@ _VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWO
 
 # Holds the stage's dicts by reference rather than copying them: a backend added
 # to ``BACKENDS`` after import (a test's fake, a plugin) must be seen here too.
-@dataclass(frozen=True, slots=True)
+# ``eq=False``: the fields are dicts, so the generated ``__hash__`` would raise.
+@dataclass(frozen=True, slots=True, eq=False)
 class Registry:
     """One stage's backends, checked the same way as every other stage's.
 
@@ -54,13 +55,10 @@ class Registry:
     def options(self, backend: str) -> set[str]:
         """The settings ``backend`` accepts, by name.
 
-        Read off the backend function's own signature, so a backend declares
-        its settings once by taking them as parameters. The first two are the
-        audio and its sample rate, which the stage's dispatch function passes
-        positionally. An empty set means the backend takes no settings; a
-        backend that accepts *anything* is a separate question, asked of
-        :meth:`accepts_any_option`. Raises :exc:`RuntimeError` for a backend
-        that cannot be called with the audio and its rate alone.
+        Read off the function's signature, after the audio and its rate, which
+        dispatch passes positionally. An empty set means no settings; accepting
+        *anything* is asked of :meth:`accepts_any_option`. Raises
+        :exc:`RuntimeError` if the backend needs more than those two.
         """
         self.check_backend(backend)
         parameters = list(inspect.signature(self.backends[backend]).parameters.values())
