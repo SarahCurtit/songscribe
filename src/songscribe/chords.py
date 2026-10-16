@@ -9,12 +9,12 @@ taking each setting it accepts as a defaulted parameter, never ``**kwargs``.
 
 from __future__ import annotations
 
-import inspect
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 
 import numpy as np
 
+from .registry import Registry
 from .types import ChordEvent
 
 log = logging.getLogger(__name__)
@@ -160,111 +160,15 @@ def normalise_label(label: str) -> str:
     return label
 
 
-def _check_backend(backend: str) -> None:
-    """Reject an unknown backend by name.
+_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES)
 
-    Never falls back to another model: a typo in a config should fail loudly,
-    not quietly downgrade the output to something worse.
-    """
-    if backend not in BACKENDS:
-        raise ValueError(f"unknown chord backend {backend!r}, expected one of {sorted(BACKENDS)}")
-
-
-#: Parameter kinds a setting can be passed as. A backend's own positional-only
-#: or ``*args`` parameters are unreachable through :func:`recognise`, which
-#: forwards settings by keyword.
-_KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-
-#: Variadic parameter kinds. They carry no default and need none -- an omitted
-#: ``*args``/``**kwargs`` is simply empty -- so the rule below that every
-#: declared setting be optional does not apply to them.
-_VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-
-
-def backend_options(backend: str) -> set[str]:
-    """The settings ``backend`` accepts, by name.
-
-    Read off the backend function's own signature, so a backend declares its
-    settings once by taking them as parameters. The first two are the audio and
-    its sample rate, which :func:`recognise` passes positionally. An empty set
-    means the backend takes no settings; a backend that accepts *anything* is a
-    separate question, asked of :func:`accepts_any_option`. Raises
-    :exc:`RuntimeError` for a backend that cannot be called with the audio and
-    its rate alone.
-    """
-    _check_backend(backend)
-    parameters = list(inspect.signature(BACKENDS[backend]).parameters.values())
-    options = set()
-    for parameter in parameters[2:]:
-        # A setting without a default is not optional, so it cannot be reported
-        # as one: `recognise` calls a backend with the audio and its rate alone,
-        # and a caller who names nothing would get a TypeError from the call --
-        # the one error path this module promises, routed around. Checked before
-        # the keyword filter below, so a required positional-only parameter is
-        # named here too rather than slipping through as "no settings".
-        #
-        # A misdeclared backend is this package's own bug, not a caller's bad
-        # input, so it is not the ValueError the caller-facing checks raise: a
-        # CLI turning ValueError into a usage error must not blame the user for
-        # it. Nothing runs when a backend is added to BACKENDS -- a plain dict
-        # -- so the fault surfaces on the first dispatch to it, which is why
-        # this check is repeated on every call rather than done once.
-        if parameter.default is inspect.Parameter.empty and parameter.kind not in _VARIADIC_KINDS:
-            raise RuntimeError(
-                f"chord backend {backend!r} declares setting {parameter.name!r} with no "
-                "default; a backend must be callable with the audio and its rate alone"
-            )
-        if parameter.kind not in _KEYWORD_KINDS:
-            continue
-        options.add(parameter.name)
-    return options
-
-
-def accepts_any_option(backend: str) -> bool:
-    """Whether ``backend`` keeps a catch-all, and so accepts every setting.
-
-    Such a backend cannot be checked -- it really does take anything -- so this
-    reports the exemption instead of folding it into :func:`backend_options`,
-    where "anything" and "nothing" would be two indistinguishable empty
-    answers. Nothing registered here is exempt, and a test holds that: a
-    ``**kwargs`` on a backend is how the silently-ignored setting comes back.
-    """
-    _check_backend(backend)
-    return any(
-        p.kind is inspect.Parameter.VAR_KEYWORD
-        for p in inspect.signature(BACKENDS[backend]).parameters.values()
-    )
-
-
-def _check_options(backend: str, options: Iterable[str]) -> None:
-    """Reject settings ``backend`` has no parameter for.
-
-    The same rule as :func:`_check_backend`, one level down: a misspelled
-    setting that is quietly dropped is indistinguishable from a model that
-    ignored it, which is how a metre setting went unnoticed on the default beat
-    backend. Raised here rather than in each backend so there is one error path.
-    """
-    # Asked first, and of every backend: a catch-all is exempt from the list of
-    # accepted names, not from `backend_options`' own rule that each declared
-    # setting be optional. Returning early on the exemption would let a backend
-    # with both a catch-all and a required setting past this gate and straight
-    # into the bare TypeError from the call that this check replaces.
-    accepted = backend_options(backend)
-    if accepts_any_option(backend):
-        return
-    unknown = sorted(set(options) - accepted)
-    if not unknown:
-        return
-    named = ", ".join(repr(name) for name in unknown)
-    noun = "setting" if len(unknown) == 1 else "settings"
-    detail = f"expected one of {sorted(accepted)}" if accepted else "which takes no settings"
-    raise ValueError(f"unknown {noun} {named} for chord backend {backend!r}, {detail}")
-
-
-def sample_rate_for(backend: str) -> int:
-    """The sample rate ``backend`` needs its audio loaded at."""
-    _check_backend(backend)
-    return BACKEND_SAMPLE_RATES[backend]
+# The checks live in :mod:`songscribe.registry`, shared with the beat stage; these
+# are this module's public names for them.
+_check_backend = _REGISTRY.check_backend
+_check_options = _REGISTRY.check_options
+backend_options = _REGISTRY.options
+accepts_any_option = _REGISTRY.accepts_any_option
+sample_rate_for = _REGISTRY.sample_rate_for
 
 
 def recognise(
