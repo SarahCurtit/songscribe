@@ -18,8 +18,8 @@ from statistics import median
 
 import numpy as np
 
-from .registry import Registry, SettingRule
-from .tempo import TempoCheck, TempoReference, check_tempo, is_count
+from .registry import Registry, setting_rules, whole_at_least, whole_number
+from .tempo import TempoCheck, TempoReference, check_tempo
 from .types import DEFAULT_METRE, BeatEvent
 
 log = logging.getLogger(__name__)
@@ -232,6 +232,51 @@ def grid(
 # --------------------------------------------------------------------------- #
 
 
+#: Text is not a list of metres: "34" and b"34" would be read as two bad metres.
+_TEXT_TYPES = (str, bytes, bytearray, memoryview)
+
+
+def _is_candidate_list(value: object) -> bool:
+    """Whether ``value`` is shaped like a list of metres rather than one metre.
+
+    An ndarray is not a :class:`~collections.abc.Sequence`, but madmom's DBN
+    reads its metre setting with ``np.array(ndmin=1)``, so an array of metres is
+    as much its native form as a list. A 0-d array is one value, not a list.
+    """
+    if isinstance(value, np.ndarray):
+        return value.ndim >= 1
+    return isinstance(value, Sequence) and not isinstance(value, _TEXT_TYPES)
+
+
+def _one_metre(value: object) -> str | None:
+    if _is_candidate_list(value):
+        # A candidate list is madmom's form; this backend needs a single metre.
+        return (
+            f"must be one metre, got {value!r}: this backend assumes the metre rather "
+            "than detecting it, so it cannot choose between several"
+        )
+    return whole_at_least(value, "beats to the bar")
+
+
+def _metre_or_candidates(value: object) -> str | None:
+    if not _is_candidate_list(value):
+        return whole_at_least(value, "beats to the bar")
+    if isinstance(value, np.ndarray) and value.ndim > 1:
+        return f"must be a flat list of metres, got a {value.ndim}-D array"
+    if len(value) == 0:
+        kind = "array" if isinstance(value, np.ndarray) else type(value).__name__
+        return f"must name at least one metre to choose between, got an empty {kind}"
+    for position, metre in enumerate(value):
+        # Name the bad entry alone; reprinting a long list hides it.
+        if whole_at_least(metre, "beats to the bar") is not None:
+            return (
+                "must list metres that are each a whole number of at least 1, "
+                f"but candidate {metre!r} at position {position} is not"
+            )
+    return None
+
+
+@setting_rules(beats_per_bar=_metre_or_candidates)
 def _track_madmom(
     audio: np.ndarray,
     sample_rate: int,
@@ -267,6 +312,10 @@ def _track_madmom(
     ]
 
 
+@setting_rules(
+    beats_per_bar=_one_metre,
+    hop_length=whole_number("samples"),
+)
 def _track_librosa(
     audio: np.ndarray,
     sample_rate: int,
@@ -302,69 +351,7 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
-def _whole_positive(value: object, unit: str) -> str | None:
-    # A fractional count is refused, not rounded: either way would be a guess.
-    if not is_count(value):
-        return f"must be a whole number of {unit}, got {value!r}"
-    if value < 1:
-        return f"must be at least 1, got {value!r}"
-    return None
-
-
-#: Text is not a list of metres: "34" and b"34" would be read as two bad metres.
-_TEXT_TYPES = (str, bytes, bytearray, memoryview)
-
-
-def _is_candidate_list(value: object) -> bool:
-    """Whether ``value`` is shaped like a list of metres rather than one metre.
-
-    An ndarray is not a :class:`~collections.abc.Sequence`, but madmom's DBN
-    reads its metre setting with ``np.array(ndmin=1)``, so an array of metres is
-    as much its native form as a list. A 0-d array is one value, not a list.
-    """
-    if isinstance(value, np.ndarray):
-        return value.ndim >= 1
-    return isinstance(value, Sequence) and not isinstance(value, _TEXT_TYPES)
-
-
-def _one_metre(value: object) -> str | None:
-    if _is_candidate_list(value):
-        # A candidate list is madmom's form; this backend needs a single metre.
-        return (
-            f"must be one metre, got {value!r}: this backend assumes the metre rather "
-            "than detecting it, so it cannot choose between several"
-        )
-    return _whole_positive(value, "beats to the bar")
-
-
-def _metre_or_candidates(value: object) -> str | None:
-    if not _is_candidate_list(value):
-        return _whole_positive(value, "beats to the bar")
-    if isinstance(value, np.ndarray) and value.ndim > 1:
-        return f"must be a flat list of metres, got a {value.ndim}-D array"
-    if len(value) == 0:
-        kind = "array" if isinstance(value, np.ndarray) else type(value).__name__
-        return f"must name at least one metre to choose between, got an empty {kind}"
-    for position, metre in enumerate(value):
-        # Name the bad entry alone; reprinting a long list hides it.
-        if _whole_positive(metre, "beats to the bar") is not None:
-            return (
-                "must list metres that are each a whole number of at least 1, "
-                f"but candidate {metre!r} at position {position} is not"
-            )
-    return None
-
-
-# Checked in the registry so a bad value fails before dispatch and before any model import.
-SETTING_RULES: dict[str, dict[str, SettingRule]] = {
-    "madmom": {"beats_per_bar": _metre_or_candidates},
-    "librosa": {
-        "beats_per_bar": _one_metre,
-        "hop_length": lambda value: _whole_positive(value, "samples"),
-    },
-}
-
-_REGISTRY = Registry("beat", BACKENDS, BACKEND_SAMPLE_RATES, SETTING_RULES)
+_REGISTRY = Registry("beat", BACKENDS, BACKEND_SAMPLE_RATES)
 
 # The checks live in :mod:`songscribe.registry`, shared with the chord stage; these
 # are this module's public names for them.
