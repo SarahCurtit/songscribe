@@ -53,52 +53,31 @@ BAR_DRIFT_TOLERANCE = 0.10
 #: A grid implying a tempo outside this range is not a tempo, it is a tracking
 #: error: librosa output gone astray, or a corrupt or hand-edited ``.beats``
 #: file. Not a half- or double-tempo lock from madmom -- its DBN is held to its
-#: own 55-215 bpm, so an octave error there lands inside this range and needs
-#: an external tempo reference to catch -- :func:`check_tempo`, which is where
-#: that case is now reported. Bounded in beats per minute rather
-#: than in bar length so the metre is respected: at three beats to the bar,
-#: 0.85 s is 212 bpm, not the leisurely tempo a bar-length bound would have
-#: called it.
+#: own 55-215 bpm, so an octave error there lands inside this range; that is
+#: :func:`check_tempo`'s job. In bpm rather than bar length to respect the
+#: metre: at three beats to the bar, 0.85 s is 212 bpm, not a leisurely tempo.
 MIN_TEMPO_BPM = 30.0
 MAX_TEMPO_BPM = 300.0
 
-#: Ratios of tracked to reference tempo that are a tracking fault rather than a
-#: tempo. Only octaves are listed: a tracker that misses the pulse locks onto a
-#: multiple or fraction of it by twos, because every other (or every fourth)
-#: beat still falls on a real beat, and that is the error a reference is
-#: brought in to find. A ratio that is neither 1 nor one of these is a
-#: disagreement about which tune is playing, not a fault this check can name.
-#:
-#: Two octaves each way and no further, because that is what can happen: madmom
-#: reports 55-215 bpm and a plausible reference is 30-300, so the ratio is
-#: bounded to 55/300 = 0.18 .. 215/30 = 7.2. A ballad under 54 bpm can come
-#: back at 4x as readily as at 2x, but 8x and 1/8x are out of reach.
+#: Tracked/reference tempo ratios that mean a tracking fault: octaves, since a
+#: tracker that misses the pulse locks on every other (or fourth) beat. Two
+#: octaves each way is all that can occur: madmom's 55-215 bpm against a
+#: plausible 30-300 bounds the ratio to 0.18..7.2.
 TEMPO_OCTAVE_FACTORS = (2.0, 0.5, 4.0, 0.25)
 
 #: How each octave reads in a warning about the grid's bar count.
 _OCTAVE_WORDS = {4.0: "four times", 2.0: "twice", 0.5: "half", 0.25: "a quarter of"}
 
-#: How far the ratio of tracked to reference tempo may sit from 1 -- or from an
-#: octave of it -- and still count as that ratio, as a fraction of the ratio.
-#:
-#: Wide enough that an honest grid still matches: a reference tempo is rounded
-#: (a chart says 72 where the band settles at 74), a bar-count reference
-#: inherits the error in both ends of its span, and the band drifts under the
-#: whole thing. The same take that sets :data:`BAR_DRIFT_TOLERANCE` moves under
-#: 1% in its median bar, but the reference itself is the loose side here.
-#:
-#: Narrow enough to stay unambiguous: see :data:`MAX_TEMPO_RATIO_TOLERANCE`.
+#: How far the tempo ratio may sit from 1 or an octave and still match, as a
+#: fraction. Wide because references are loose (a chart says 72 where the band
+#: settles at 74); capped by :data:`MAX_TEMPO_RATIO_TOLERANCE`.
 TEMPO_RATIO_TOLERANCE = 0.10
 
 # 1 and every octave, in order: the ratios whose windows must stay apart.
 _VERDICT_RATIOS = sorted({1.0, *TEMPO_OCTAVE_FACTORS})
 
-#: The widest tolerance at which no ratio can match two verdicts at once. The
-#: window around ratio ``a`` reaches up to ``a(1 + t)`` and the one around the
-#: next ratio ``b`` down to ``b(1 - t)``; they meet at ``t = (b - a) / (b + a)``,
-#: which is 1/3 for any two ratios an octave apart. At or past it a grid could
-#: both agree with the reference and be an octave off it, so the bound is
-#: exclusive -- at equality the two windows share their edge.
+#: Exclusive bound on the tolerance: the windows around two ratios an octave
+#: apart touch at 1/3, past which a grid could match two verdicts at once.
 MAX_TEMPO_RATIO_TOLERANCE = min((b - a) / (b + a) for a, b in pairwise(_VERDICT_RATIOS))
 
 
@@ -135,23 +114,12 @@ def _is_count(value: object) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class TempoReference:
-    """The tempo a grid is expected to agree with, known from outside the audio.
+    """The tempo a grid should agree with, from outside the audio.
 
-    Two ways to say it, because that is how charts come: an explicit ``tempo``
-    in bpm, or a ``bars`` count spanning a known ``span`` of seconds -- 32 bars
-    of chorus across 96 s is 80 bpm in 4/4. Both are accepted so that a chart
-    with no tempo marking still gives the check something to work with.
-
-    An explicit tempo wins when both are given and agree to within
-    :data:`TEMPO_RATIO_TOLERANCE`: it is stated by whoever knows the tune,
-    where a bar count is divided by a span whose ends were read off a waveform.
-    When they disagree by more than that, construction raises -- see
-    ``__post_init__``.
-
-    ``beats_per_bar`` is ``None`` when the reference does not say. A bar count
-    then needs no metre to be compared, since it is already a rate of bars; an
-    explicit tempo is read in whatever metre the grid was tracked in, because a
-    bare bpm figure carries no grouping of its own to compare bar lines with.
+    Either ``tempo`` in bpm, or ``bars`` over a ``span`` of seconds (32 bars in
+    96 s is 80 bpm in 4/4). Both given: they must agree within
+    :data:`TEMPO_RATIO_TOLERANCE`, else it raises, and the tempo wins.
+    ``beats_per_bar`` unset means the grid's metre.
     """
 
     tempo: float | None = None
@@ -164,9 +132,8 @@ class TempoReference:
             raise ValueError(f"beats_per_bar must be a whole number, got {self.beats_per_bar!r}")
         if self.beats_per_bar is not None and self.beats_per_bar < 1:
             raise ValueError(f"beats_per_bar must be at least 1, got {self.beats_per_bar}")
-        # Validated here rather than left to surface as a nan ratio: a
-        # reference that cannot be turned into a tempo would make every grid
-        # it is compared against look like it agreed.
+        # Validated here: an unusable reference would otherwise yield a nan
+        # ratio and every grid would look like it agreed.
         if self.tempo is not None and not (isfinite(self.tempo) and self.tempo > 0):
             raise ValueError(f"tempo must be a positive number of bpm, got {self.tempo}")
         if (self.bars is None) != (self.span is None):
@@ -183,16 +150,9 @@ class TempoReference:
             self._check_consistent()
 
     def _check_consistent(self) -> None:
-        # Raises rather than warns. A reference whose two halves disagree has
-        # not said what tempo to expect, and the one fault this whole check
-        # exists for is a factor of two -- exactly what a half-time marking next
-        # to a full-time bar count looks like. Letting the tempo win with a
-        # warning would have the verdict decided by whichever half happened to
-        # be stated first, in the one class that already raises on an unknown
-        # key so that nothing in a sidecar is dropped without a word. The fix
-        # is one edit to a file the user wrote; a quiet wrong verdict is not.
-        # Within the tolerance the tempo still wins, since a span read off a
-        # waveform is the looser of the two.
+        # Raises, not warns: a half-time marking beside a full-time bar count is
+        # exactly the factor-of-two fault this check hunts, so no half may win
+        # silently. Within tolerance the tempo wins; a span is the looser half.
         metre = self.metre
         counted = self.bars * metre * 60.0 / self.span
         if abs(counted / self.tempo - 1.0) <= TEMPO_RATIO_TOLERANCE:
@@ -262,12 +222,8 @@ class TempoReference:
 def load_tempo_reference(path: str | Path) -> TempoReference:
     """Read a tempo reference from a JSON sidecar, e.g. ``{"tempo": 48}``.
 
-    A file beside the recording rather than anything read out of it: the whole
-    point of the comparison is that the expectation comes from outside the
-    audio, so a tracker's own output can never become its own reference.
-
-    Every way the file can be wrong raises :class:`ValueError` naming it, since
-    a sidecar is found by path and the path is what the user has to go and fix.
+    Kept beside the recording, not read from it, so a tracker's output can
+    never be its own reference. Any fault raises :class:`ValueError` naming the path.
     """
     path = Path(path)
     with path.open(encoding="utf-8") as handle:
@@ -293,14 +249,9 @@ TempoVerdict = Literal["agrees", "octave error", "disagrees", "unmeasurable"]
 class TempoCheck:
     """What comparing a tracked tempo against a reference found.
 
-    Carried on the grid so a caller or the eval harness reads the verdict
-    instead of re-deriving it, and so the tracked tempo stays visible next to
-    the tempo it disagreed with.
-
-    Both tempos are counted at ``beats_per_bar`` beats to the bar, so the
-    comparison is of bar lines: ``tracked`` is the grid's bar rate in that
-    metre, which is not :attr:`BeatGrid.tempo` when the grid was tracked in a
-    different one.
+    Both tempos are counted at ``beats_per_bar`` beats to the bar, so bar lines
+    are compared; ``tracked`` differs from :attr:`BeatGrid.tempo` when the grid
+    was tracked in another metre.
     """
 
     tracked: float
@@ -367,9 +318,8 @@ class TempoCheck:
 
     def _matches(self, factor: float) -> bool:
         ratio = self.ratio
-        # Relative to the factor, not an absolute window: a tempo ratio is
-        # multiplicative, so the same fractional slack has to be as wide at 2x
-        # as at 1/2x, or half-tempo locks would be held to a stricter test.
+        # Relative to the factor: ratios are multiplicative, so 1/2x must get
+        # the same slack as 2x.
         return not isnan(ratio) and abs(ratio / factor - 1.0) <= self.tolerance
 
 
@@ -391,17 +341,10 @@ class BeatGrid:
 
     downbeats: tuple[float, ...]
     beats_per_bar: int = DEFAULT_METRE
-    #: Verdict from :func:`check_tempo` when the grid was built against a
-    #: reference. ``None`` means nothing outside the audio was available to
-    #: compare with, which is not the same as having agreed with it.
-    #:
-    #: It describes the downbeats as they were when checked, and only their
-    #: tempo: construction refuses a verdict whose tracked tempo this grid's
-    #: own bar lines no longer give, so ``replace(grid, downbeats=...)`` either
-    #: keeps a verdict that is still true of it or raises until the verdict is
-    #: re-run or dropped with ``tempo_check=None``. Left out of equality and
-    #: hashing: two grids over the same bar lines are the same grid whether or
-    #: not anyone had a reference to hold one of them against.
+    #: Verdict from :func:`check_tempo`; ``None`` means no reference, not that
+    #: it agreed. A verdict that no longer matches the downbeats raises, so
+    #: ``replace(grid, downbeats=...)`` needs a re-check or ``tempo_check=None``.
+    #: Excluded from equality: same bar lines, same grid.
     tempo_check: TempoCheck | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
@@ -525,25 +468,10 @@ def check_tempo(
 ) -> TempoCheck:
     """Compare a grid against a reference tempo, warning on an octave error.
 
-    This is the half- and double-tempo lock that :attr:`BeatGrid.is_plausible`
-    cannot see: madmom's DBN will not report outside 55-215 bpm, so a ballad
-    under 55 comes back at double tempo with twice the bars, and double a slow
-    tempo is still a plausible tempo. Only a reference from outside the audio
-    separates the two.
-
-    Warns rather than raising, and never rewrites the grid. A 2x ratio is
-    strong evidence but not proof -- the reference can be noting the half-time
-    feel the chart is written in while the band counts the fast pulse -- and
-    raising would reject a legitimately fast take on one number. Correcting the
-    grid would be worse than either: a grid bent to match the reference it is
-    supposed to be measured against has stopped being a measurement.
-
-    Compares bar lines, not beats: both tempos are counted in the reference's
-    metre (the grid's, if the reference states none). madmom only chooses
-    between 3 and 4, so a 6/8 chart comes back in 3 on the very same bar lines
-    at half the beat rate -- a beat comparison would call that an octave error
-    on a grid that is exactly right. What the reference is brought in to catch
-    is an octave of the *bars*, and that is what this measures.
+    Catches the half- or double-tempo lock :attr:`BeatGrid.is_plausible` cannot
+    see (a ballad under 55 bpm comes back at 2x). Compares bar lines, not beats,
+    so 6/8 tracked in 3 is not flagged. Warns, never raises or corrects: a
+    grid bent to its reference has stopped being a measurement.
     """
     metre = grid.beats_per_bar if reference.beats_per_bar is None else reference.beats_per_bar
     check = TempoCheck(
@@ -601,9 +529,7 @@ def grid(
     given -- the tracker already decided the metre, and re-deriving it from
     beat spacing would only disagree with it.
 
-    A ``reference`` is compared against the finished grid by
-    :func:`check_tempo`, and its verdict travels on the grid's
-    :attr:`~BeatGrid.tempo_check`.
+    A ``reference`` is checked by :func:`check_tempo` into ``tempo_check``.
     """
     positions = [b.position for b in beats]
     if beats_per_bar is None:
@@ -626,9 +552,7 @@ def grid(
     built = BeatGrid(downbeats=downbeats, beats_per_bar=beats_per_bar)
     if reference is None:
         return built
-    # Checked here rather than left to the caller so that a grid built with a
-    # reference carries the verdict wherever it travels; the metre warning
-    # above is a separate fault and both have to be able to fire alone.
+    # Checked here so the verdict travels with the grid.
     return replace(built, tempo_check=check_tempo(built, reference))
 
 
