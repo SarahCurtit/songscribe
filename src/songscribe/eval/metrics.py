@@ -426,6 +426,24 @@ def _content_label(chord: Chord) -> str:
     return f"{chord.root_name}:({degrees})"
 
 
+def _class_label(label: str, vocabulary: str) -> str:
+    """A chord label as its class in ``vocabulary``, or something stable if it has none."""
+    chord = parse(label)
+    projected = None if chord is None else project(chord, vocabulary)
+    if projected is not None:
+        return projected
+    # A chord the vocabulary cannot express is kept rather than dropped:
+    # dropping it would quietly shorten the sequence and let a wrong chord
+    # disappear. It is keyed by its pitch content, not its spelling, so
+    # `B:dim` and `Bdim` still match; only an unparseable label (or `X`)
+    # falls back to its raw text. A reference `X` thus stays in the sequence
+    # as a token no backend emits, unlike WCSR, which skips it: dropping it
+    # would merge its neighbours. One that prints costs a backend something,
+    # depending on what the backend put there and on the chords around it,
+    # and can tip a close comparison; see EVALUATION.md, "What gets excluded".
+    return label if chord is None or chord.unknown else _content_label(chord)
+
+
 def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[ChordEvent]:
     """The chart's chord spans: projected into ``vocabulary``, collapsed, ``N`` gone.
 
@@ -435,22 +453,10 @@ def dedupe_chart(events: list[ChordEvent], vocabulary: str = "majmin") -> list[C
     """
     from ..align import dedupe
 
-    projected: list[ChordEvent] = []
-    for event in events:
-        chord = parse(event.label)
-        # A chord the vocabulary cannot express is kept rather than dropped:
-        # dropping it would quietly shorten the sequence and let a wrong chord
-        # disappear. It is keyed by its pitch content, not its spelling, so
-        # `B:dim` and `Bdim` still match; only an unparseable label (or `X`)
-        # falls back to its raw text. A reference `X` thus stays in the sequence
-        # as a token no backend emits, unlike WCSR, which skips it: dropping it
-        # would merge its neighbours. One that prints costs a backend something,
-        # depending on what the backend put there and on the chords around it,
-        # and can tip a close comparison; see EVALUATION.md, "What gets excluded".
-        label = None if chord is None else project(chord, vocabulary)
-        if label is None:
-            label = event.label if chord is None or chord.unknown else _content_label(chord)
-        projected.append(ChordEvent(event.start, event.end, label))
+    projected = [
+        ChordEvent(event.start, event.end, _class_label(event.label, vocabulary))
+        for event in events
+    ]
 
     # `N` goes before collapsing, as the pipeline's strip_no_chord runs before
     # align.dedupe: otherwise `C N C` keeps two Cs where the chart prints one.
@@ -660,6 +666,65 @@ def grid_score(
         grid_sequence(reference, vocabulary, unit=rhythm.unit),
         grid_sequence(estimate, vocabulary, unit=rhythm.unit),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Chord per bar
+# --------------------------------------------------------------------------- #
+
+
+def bar_sequence(
+    events: list[ChordEvent],
+    downbeats: Sequence[float],
+    vocabulary: str = "majmin",
+) -> tuple[tuple[int, str], ...]:
+    """One ``(bar, label)`` per complete bar: the label held longest inside it.
+
+    Time no event covers counts as ``N``, so a bar nothing was played in reads
+    ``N`` rather than vanishing from the sequence.
+    """
+    sequence: list[tuple[int, str]] = []
+    for bar, (low, high) in enumerate(pairwise(downbeats)):
+        held: dict[str, float] = {}
+        covered = 0.0
+        for event in events:
+            overlap = min(event.end, high) - max(event.start, low)
+            if overlap > MIN_SEGMENT:
+                label = _class_label(event.label, vocabulary)
+                held[label] = held.get(label, 0.0) + overlap
+                covered += overlap
+        if high - low - covered > MIN_SEGMENT:
+            held[NO_CHORD_LABEL] = held.get(NO_CHORD_LABEL, 0.0) + (high - low - covered)
+        # max() keeps the first of equal durations, so a tie goes to the earlier label.
+        sequence.append((bar, max(held, key=lambda label: held[label])))
+    return tuple(sequence)
+
+
+def bar_score(
+    reference: list[ChordEvent],
+    estimate: list[ChordEvent],
+    downbeats: Sequence[float],
+    vocabulary: str = "majmin",
+    estimate_downbeats: Sequence[float] | None = None,
+) -> float:
+    """Fraction of bars holding the right chord: right chord, right bar.
+
+    Offset, tempo and total length cannot move it, because bars are counted
+    rather than timed. The reference's bars are ``downbeats``; the estimate's
+    are ``estimate_downbeats`` when its clock differs, so each side is read
+    against its own bar lines. A reference bar marked ``X`` is skipped, as WCSR
+    skips it; ``nan`` when no bar can be scored.
+    """
+    mine = bar_sequence(reference, downbeats, vocabulary)
+    theirs = dict(bar_sequence(estimate, estimate_downbeats or downbeats, vocabulary))
+    correct = compared = 0
+    for bar, label in mine:
+        chord = parse(label)
+        if chord is not None and chord.unknown:
+            continue
+        compared += 1
+        correct += theirs.get(bar) == label
+    return correct / compared if compared else nan
 
 
 # --------------------------------------------------------------------------- #

@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
 
 from . import lab
 from .chords import PITCH_CLASSES
-from .types import ChordEvent
+from .types import BeatEvent, ChordEvent
 
 # Written with sharps, like PITCH_CLASSES; flats are accepted and mapped in.
 FLAT_TO_SHARP = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
@@ -51,6 +54,10 @@ ROOT_OCTAVE = 3
 # Harmonic amplitudes. A handful of partials keeps the chroma from looking
 # like a pure tone, which is unrealistically easy for a chord model.
 HARMONICS = (1.0, 0.5, 0.33, 0.25)
+
+#: Standard deviation of the noise before bar 1, against a chord's peak of 1:
+#: loud enough to be junk a tracker must see past, too flat to carry a chord.
+LEAD_IN_LEVEL = 0.3
 
 
 def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
@@ -102,6 +109,16 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
     )[:length]
 
 
+def _voices(label: str, t: np.ndarray) -> np.ndarray:
+    """One chord's additive tones over times ``t``, scaled to a peak of 1."""
+    voices = sum(
+        amplitude * np.sin(2 * np.pi * freq * harmonic * t)
+        for freq in chord_frequencies(label)
+        for harmonic, amplitude in enumerate(HARMONICS, start=1)
+    )
+    return voices / np.max(np.abs(voices))
+
+
 def synthesise(
     progression: list[str] | tuple[str, ...] = DEFAULT_PROGRESSION,
     bpm: float = DEFAULT_BPM,
@@ -138,12 +155,7 @@ def synthesise(
     events: list[ChordEvent] = []
 
     for index, label in enumerate(list(progression) * repeats):
-        voices = sum(
-            amplitude * np.sin(2 * np.pi * freq * harmonic * t)
-            for freq in chord_frequencies(label)
-            for harmonic, amplitude in enumerate(HARMONICS, start=1)
-        )
-        bars.append(voices / np.max(np.abs(voices)) * envelope)
+        bars.append(_voices(label, t) * envelope)
         start = index * samples_per_bar / sample_rate
         events.append(ChordEvent(start=start, end=start + bar_seconds, label=label))
 
@@ -154,6 +166,105 @@ def synthesise(
     # Leave headroom so writing to 16-bit PCM cannot clip.
     audio = audio / np.max(np.abs(audio)) * 0.89
     return audio.astype(np.float32), events
+
+
+@dataclass(frozen=True, slots=True)
+class Performance:
+    """A multi-chorus take: its audio, true chords, and true bar lines.
+
+    ``events`` is the whole take on the audio's clock; ``reference`` is the
+    chart alone -- one chorus from 0 at the nominal tempo -- as a lead sheet
+    would supply it. ``downbeats`` ends with the close of the last bar.
+    """
+
+    audio: np.ndarray
+    sample_rate: int
+    events: list[ChordEvent]
+    reference: list[ChordEvent]
+    downbeats: tuple[float, ...]
+    beats_per_bar: int
+    bars_per_chorus: int
+
+    def beat_events(self) -> list[BeatEvent]:
+        """The true beats, as a tracker would hand them over."""
+        beats = [
+            BeatEvent(time=a + (b - a) * k / self.beats_per_bar, position=k + 1)
+            for a, b in pairwise(self.downbeats)
+            for k in range(self.beats_per_bar)
+        ]
+        return [*beats, BeatEvent(time=self.downbeats[-1], position=1)]
+
+
+def synthesise_performance(
+    progression: list[str] | tuple[str, ...] = DEFAULT_PROGRESSION,
+    bpm: float = DEFAULT_BPM,
+    beats_per_bar: int = DEFAULT_BEATS_PER_BAR,
+    repeats: int = DEFAULT_REPEATS,
+    sample_rate: int = DEFAULT_SAMPLE_RATE,
+    noise: float = 0.0,
+    seed: int = 0,
+    lead_in_seconds: float = 0.0,
+    tempo_drift: float = 0.0,
+    substitutions: Mapping[int, Mapping[int, str]] | None = None,
+) -> Performance:
+    """Render ``repeats`` choruses the way a band plays them, not a loop.
+
+    ``lead_in_seconds`` of noise precede bar 1 (no chord there, no bar line);
+    ``tempo_drift`` is the fractional tempo change from first bar to last;
+    ``substitutions[repeat][bar]`` swaps one bar's chord in one chorus.
+    """
+    if not progression:
+        raise ValueError("progression is empty")
+    if bpm <= 0 or beats_per_bar < 1 or repeats < 1 or sample_rate < 1 or noise < 0:
+        raise ValueError("bpm, beats_per_bar, repeats, sample_rate must be positive; noise >= 0")
+    if lead_in_seconds < 0:
+        raise ValueError(f"lead_in_seconds must not be negative, got {lead_in_seconds}")
+    if tempo_drift <= -1:
+        raise ValueError(f"tempo_drift must exceed -1, got {tempo_drift}")
+
+    substitutions = substitutions or {}
+    for repeat, changes in substitutions.items():
+        if not 0 <= repeat < repeats or any(not 0 <= bar < len(progression) for bar in changes):
+            raise ValueError(f"substitution outside the {repeats} x {len(progression)} take")
+
+    rng = np.random.default_rng(seed)
+    total = len(progression) * repeats
+    lead = round(lead_in_seconds * sample_rate)
+    pieces: list[np.ndarray] = [rng.normal(0.0, LEAD_IN_LEVEL, lead)]
+    events: list[ChordEvent] = []
+    downbeats = [lead / sample_rate]
+    cursor = lead
+
+    for index in range(total):
+        repeat, bar = divmod(index, len(progression))
+        label = substitutions.get(repeat, {}).get(bar, progression[bar])
+        ramp = tempo_drift * index / (total - 1) if total > 1 else 0.0
+        length = round(beats_per_bar * 60.0 / (bpm * (1 + ramp)) * sample_rate)
+        t = np.arange(length) / sample_rate
+        pieces.append(_voices(label, t) * _envelope(length, sample_rate))
+        events.append(ChordEvent(cursor / sample_rate, (cursor + length) / sample_rate, label))
+        cursor += length
+        downbeats.append(cursor / sample_rate)
+
+    audio = np.concatenate(pieces)
+    if noise:
+        audio = audio + rng.normal(0.0, noise, audio.shape)
+    audio = audio / np.max(np.abs(audio)) * 0.89
+
+    bar_seconds = beats_per_bar * 60.0 / bpm
+    reference = [
+        ChordEvent(i * bar_seconds, (i + 1) * bar_seconds, label)
+        for i, label in enumerate(progression)
+    ]
+    return Performance(
+        audio=audio.astype(np.float32),
+        sample_rate=sample_rate,
+        events=events,
+        reference=reference,
+        downbeats=tuple(downbeats),
+        beats_per_bar=beats_per_bar,
+        bars_per_chorus=len(progression),
+    )
 
 
 def write_annotation(path: Path, events: list[ChordEvent]) -> None:
@@ -213,15 +324,80 @@ def build_parser() -> argparse.ArgumentParser:
         help="add white noise at this amplitude, e.g. 0.01, to make it less pristine",
     )
     parser.add_argument(
+        "--lead-in-seconds",
+        type=float,
+        default=0.0,
+        help="noise before bar 1, like a count-in or stage noise (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--tempo-drift",
+        type=float,
+        default=0.0,
+        help="fractional tempo change from first bar to last, e.g. 0.03",
+    )
+    parser.add_argument(
+        "--vary",
+        action="append",
+        default=[],
+        metavar="REPEAT:BAR=CHORD",
+        help="swap one bar's chord in one chorus, counting from 0; repeatable",
+    )
+    parser.add_argument(
         "--no-annotation", action="store_true", help="skip writing the .lab ground truth"
     )
     return parser
+
+
+def _parse_variation(texts: list[str]) -> dict[int, dict[int, str]]:
+    substitutions: dict[int, dict[int, str]] = {}
+    for text in texts:
+        try:
+            place, chord = text.split("=", 1)
+            repeat, bar = place.split(":", 1)
+            substitutions.setdefault(int(repeat), {})[int(bar)] = chord
+        except ValueError:
+            raise ValueError(f"--vary wants REPEAT:BAR=CHORD, got {text!r}") from None
+    return substitutions
+
+
+def _write_performance(args: argparse.Namespace) -> int:
+    """The multi-chorus take: audio, full timeline, chart, and true bar lines."""
+    import soundfile as sf
+
+    performance = synthesise_performance(
+        progression=args.progression,
+        bpm=args.bpm,
+        beats_per_bar=args.beats_per_bar,
+        repeats=args.repeats,
+        sample_rate=args.sample_rate,
+        noise=args.noise,
+        lead_in_seconds=args.lead_in_seconds,
+        tempo_drift=args.tempo_drift,
+        substitutions=_parse_variation(args.vary),
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(args.output, performance.audio, args.sample_rate)
+    print(f"wrote {args.output} ({len(performance.audio) / args.sample_rate:.1f}s)")
+    if args.no_annotation:
+        return 0
+    stem = args.output.with_suffix("")
+    for suffix, write, content in (
+        (".lab", write_annotation, performance.events),
+        (".reference.lab", write_annotation, performance.reference),
+        (".beats", lab.write_beats, performance.beat_events()),
+    ):
+        path = stem.with_name(stem.name + suffix)
+        write(path, content)
+        print(f"wrote {path}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
+        if args.lead_in_seconds or args.tempo_drift or args.vary:
+            return _write_performance(args)
         audio, events = synthesise(
             progression=args.progression,
             bpm=args.bpm,
