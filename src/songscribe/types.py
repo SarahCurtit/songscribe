@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+#: Beats to the bar when nothing says otherwise: a backend that tracks beats
+#: without the downbeat, a timeline with no positions, a tempo reference with
+#: no stated metre.
+DEFAULT_METRE = 4
+
 
 @dataclass(frozen=True, slots=True)
 class ChordEvent:
