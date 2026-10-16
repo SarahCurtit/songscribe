@@ -926,3 +926,95 @@ class TestBackendSettings:
         audio = np.zeros(10, dtype=np.float32)
         assert beats.track(audio, 8_000, backend="fake", beats_per_bar=3) == []
         assert seen == {"beats_per_bar": 3}
+
+
+def _capture(monkeypatch, backend):
+    """Swap ``backend`` for a fake that records its settings, keeping its rules."""
+    seen = {}
+
+    def fake(audio, sample_rate, beats_per_bar=beats.DEFAULT_METRE, hop_length=512):
+        seen.update(beats_per_bar=beats_per_bar, hop_length=hop_length)
+        return []
+
+    monkeypatch.setitem(beats.BACKENDS, backend, fake)
+    return seen
+
+
+class TestBackendSettingValues:
+    AUDIO = np.zeros(10, dtype=np.float32)
+
+    def test_a_metre_list_on_librosa_is_refused_as_a_caller_fault(self):
+        # madmom's candidate list carried over to the weightless backend: it
+        # clears the name check and used to die on a TypeError inside librosa,
+        # which a CLI catching ValueError would not have caught.
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=(3, 4))
+        message = str(excinfo.value)
+        assert "'beats_per_bar'" in message
+        assert "'librosa'" in message
+        assert "must be one metre, got (3, 4)" in message
+        assert not isinstance(excinfo.value, TypeError)
+
+    @pytest.mark.parametrize("backend", ["madmom", "librosa"])
+    @pytest.mark.parametrize(
+        ("metre", "fault"),
+        [
+            (0, "must be at least 1, got 0"),
+            (-4, "must be at least 1, got -4"),
+            (True, "must be a whole number of beats to the bar, got True"),
+            (3.5, "must be a whole number of beats to the bar, got 3.5"),
+            ("4", "must be a whole number of beats to the bar, got '4'"),
+        ],
+    )
+    def test_a_metre_that_is_not_a_positive_whole_number_is_refused(self, backend, metre, fault):
+        # Zero divided inside librosa; minus four raised nothing and produced
+        # negative positions the grid read as a one-beat bar. Checked at the
+        # registry, so the madmom case runs with no weights and the wrong rate.
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 8_000, backend=backend, beats_per_bar=metre)
+        assert str(excinfo.value) == (
+            f"setting 'beats_per_bar' for beat backend {backend!r} {fault}"
+        )
+
+    @pytest.mark.parametrize("candidates", [[3, 0], (4, -4), [True, 4], (3, 4.0)])
+    def test_every_madmom_candidate_must_be_a_metre(self, candidates):
+        with pytest.raises(ValueError, match="must list metres that are each a whole number"):
+            beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=candidates)
+
+    def test_madmom_needs_a_candidate_to_choose(self):
+        with pytest.raises(ValueError, match="at least one metre to choose between"):
+            beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=[])
+
+    @pytest.mark.parametrize("hop", [0, -512, 512.0, True])
+    def test_a_hop_that_is_not_a_positive_whole_number_is_refused(self, hop):
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 22_050, backend="librosa", hop_length=hop)
+        message = str(excinfo.value)
+        assert message.startswith("setting 'hop_length' for beat backend 'librosa' must be")
+        assert repr(hop) in message
+
+    @pytest.mark.parametrize("metre", [4, 3, (3, 4), [3, 4], [7]])
+    def test_madmom_still_takes_one_metre_or_a_list(self, monkeypatch, metre):
+        # The list form is madmom's own and must keep working; it reaches the
+        # backend exactly as given, not converted.
+        seen = _capture(monkeypatch, "madmom")
+        assert beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=metre) == []
+        assert seen["beats_per_bar"] is metre
+
+    def test_valid_librosa_settings_reach_the_backend(self, monkeypatch):
+        seen = _capture(monkeypatch, "librosa")
+        beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=3, hop_length=256)
+        assert seen == {"beats_per_bar": 3, "hop_length": 256}
+
+    def test_every_rule_guards_a_setting_its_backend_declares(self):
+        # A renamed parameter must not leave its rule guarding a name nothing
+        # can pass any more -- the name check would refuse it first, and the
+        # new name would go unchecked.
+        for backend, rules in beats.SETTING_RULES.items():
+            assert set(rules) <= beats.backend_options(backend), backend
+
+    def test_every_metre_setting_has_a_rule(self):
+        # The metre is the one setting every backend shares, so it is the one
+        # a caller moves between them; each backend has to vet it.
+        for backend in beats.BACKENDS:
+            assert "beats_per_bar" in beats.SETTING_RULES.get(backend, {}), backend

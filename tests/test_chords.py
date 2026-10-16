@@ -237,6 +237,52 @@ class TestBackendSettings:
         assert seen == {"smoothing": 3}
 
 
+class TestBackendSettingValues:
+    AUDIO = np.zeros(10, dtype=np.float32)
+
+    @pytest.mark.parametrize("setting", ["hop_length", "smoothing"])
+    @pytest.mark.parametrize(
+        ("value", "fault"),
+        [
+            (0, "must be at least 1, got 0"),
+            (-4, "must be at least 1, got -4"),
+            (True, "must be a whole number of {unit}, got True"),
+            (2.5, "must be a whole number of {unit}, got 2.5"),
+            ("9", "must be a whole number of {unit}, got '9'"),
+        ],
+    )
+    def test_a_template_setting_that_is_not_a_positive_whole_number_is_refused(
+        self, setting, value, fault
+    ):
+        # A caller fault, so ValueError, raised at the registry before librosa
+        # is imported, naming the setting, the backend and what was wrong.
+        unit = {"hop_length": "samples", "smoothing": "frames"}[setting]
+        with pytest.raises(ValueError) as excinfo:
+            recognise(self.AUDIO, 22_050, backend="template", **{setting: value})
+        assert str(excinfo.value) == (
+            f"setting {setting!r} for chord backend 'template' {fault.format(unit=unit)}"
+        )
+
+    def test_valid_template_settings_reach_the_backend(self, monkeypatch):
+        seen = {}
+
+        def fake(audio, sample_rate, hop_length=2048, smoothing=9):
+            seen.update(hop_length=hop_length, smoothing=smoothing)
+            return []
+
+        # Replacing the function keeps the template's rules, which are keyed by
+        # backend name, so this checks the rules let a good value through.
+        monkeypatch.setitem(chords.BACKENDS, "template", fake)
+        recognise(self.AUDIO, 22_050, backend="template", hop_length=1024, smoothing=1)
+        assert seen == {"hop_length": 1024, "smoothing": 1}
+
+    def test_every_rule_guards_a_setting_its_backend_declares(self):
+        # A renamed parameter must not leave its rule guarding a name nothing
+        # can pass any more, while the new name goes unchecked.
+        for backend, rules in chords.SETTING_RULES.items():
+            assert set(rules) <= backend_options(backend), backend
+
+
 class TestEstimateKey:
     def test_picks_the_longest_held_chord(self):
         chords = [

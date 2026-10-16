@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .registry import Registry
+from .registry import Registry, SettingRule
 from .types import ChordEvent
 
 log = logging.getLogger(__name__)
@@ -139,6 +139,38 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
+def _whole_positive(value: object, unit: str) -> str | None:
+    # bool is an int to Python, and a fractional frame count is refused rather
+    # than rounded, since either rounding would be a guess. The same test
+    # beats.TempoReference applies to its counts, written out again here so
+    # the chord branch does not import from the beat one.
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"must be a whole number of {unit}, got {value!r}"
+    if value < 1:
+        return f"must be at least 1, got {value!r}"
+    return None
+
+
+#: Rules for each backend's setting values, by backend and setting name. A
+#: setting with no rule here is passed through unchecked.
+#:
+#: Kept beside the registry rather than inside each backend, so a bad value is
+#: refused on the same path, at the same moment, as a bad name: before
+#: dispatch, before any model import, with one ValueError shape. Checking in
+#: the backend would put the rule next to the code that reads the value, but
+#: it would make two places a setting can be refused, and the second sits past
+#: the heavy import. The cost is that a rule and the parameter it guards are
+#: written apart; a test holds every rule to a setting its backend declares.
+SETTING_RULES: dict[str, dict[str, SettingRule]] = {
+    "template": {
+        "hop_length": lambda value: _whole_positive(value, "samples"),
+        # 1 is the floor and already means "no smoothing": a window of one
+        # frame votes only for itself.
+        "smoothing": lambda value: _whole_positive(value, "frames"),
+    },
+}
+
+
 def normalise_label(label: str) -> str:
     """Convert a Harte-notation chord label to compact chart shorthand.
 
@@ -160,7 +192,7 @@ def normalise_label(label: str) -> str:
     return label
 
 
-_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES)
+_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES, SETTING_RULES)
 
 # The checks live in :mod:`songscribe.registry`, shared with the beat stage; these
 # are this module's public names for them.

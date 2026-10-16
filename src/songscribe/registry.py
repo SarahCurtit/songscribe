@@ -7,8 +7,8 @@ A stage keeps its own ``BACKENDS`` and ``BACKEND_SAMPLE_RATES`` dicts and wraps 
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
 
 #: Parameter kinds a setting can be passed as. A backend's own positional-only
 #: or ``*args`` parameters are unreachable through a stage's dispatch function,
@@ -19,6 +19,12 @@ _KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEY
 #: ``*args``/``**kwargs`` is simply empty -- so the rule below that every
 #: declared setting be optional does not apply to them.
 _VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+
+#: A value rule: given a setting's value, what is wrong with it, or ``None``.
+#: It returns the fault rather than raising it, so the registry owns the
+#: message's shape -- which setting, which backend -- and its type: always
+#: ValueError, the caller-fault type, never a TypeError a CLI would miss.
+SettingRule = Callable[[object], str | None]
 
 
 # Holds the stage's dicts by reference rather than copying them: a backend added
@@ -35,6 +41,9 @@ class Registry:
     kind: str
     backends: dict[str, Callable]
     sample_rates: dict[str, int]
+    #: Rules for each backend's setting values, by backend and setting name. A
+    #: setting with no rule is passed through unchecked.
+    rules: dict[str, dict[str, SettingRule]] = field(default_factory=dict)
 
     def check_backend(self, backend: str) -> None:
         """Reject an unknown backend by name.
@@ -106,14 +115,16 @@ class Registry:
             for p in inspect.signature(self.backends[backend]).parameters.values()
         )
 
-    def check_options(self, backend: str, options: Iterable[str]) -> None:
-        """Reject settings ``backend`` has no parameter for.
+    def check_options(self, backend: str, options: Iterable[str] | Mapping[str, object]) -> None:
+        """Reject settings ``backend`` has no parameter for, or a value it can't use.
 
         The same rule as :meth:`check_backend`, one level down: a misspelled
         setting that is quietly dropped is indistinguishable from a model that
         ignored it, which is how a metre setting went unnoticed on the default
         beat backend. Raised here rather than in each backend so there is one
-        error path.
+        error path; the values, when given as a mapping, are checked against
+        :attr:`rules` on it for the same reason -- before dispatch, before any
+        model import, always a ValueError.
         """
         # Asked first, and of every backend: a catch-all is exempt from the list
         # of accepted names, not from `options`' own rule that each declared
@@ -122,8 +133,19 @@ class Registry:
         # and straight into the bare TypeError from the call that this check
         # replaces.
         accepted = self.options(backend)
-        if self.accepts_any_option(backend):
-            return
+        if not self.accepts_any_option(backend):
+            self._reject_unknown(backend, options, accepted)
+        if isinstance(options, Mapping):
+            rules = self.rules.get(backend, {})
+            for name, value in options.items():
+                rule = rules.get(name)
+                problem = None if rule is None else rule(value)
+                if problem is not None:
+                    raise ValueError(
+                        f"setting {name!r} for {self.kind} backend {backend!r} {problem}"
+                    )
+
+    def _reject_unknown(self, backend: str, options: Iterable[str], accepted: set[str]) -> None:
         unknown = sorted(set(options) - accepted)
         if not unknown:
             return

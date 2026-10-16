@@ -22,7 +22,7 @@ from typing import Literal
 
 import numpy as np
 
-from .registry import Registry
+from .registry import Registry, SettingRule
 from .types import BeatEvent
 
 log = logging.getLogger(__name__)
@@ -630,7 +630,58 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
-_REGISTRY = Registry("beat", BACKENDS, BACKEND_SAMPLE_RATES)
+def _whole_positive(value: object, unit: str) -> str | None:
+    # The same test TempoReference applies to its counts, `True` and 3.5
+    # included: bool is an int to Python, and a fractional metre or hop is not
+    # rounded here, because whichever way it went would be a guess.
+    if not _is_count(value):
+        return f"must be a whole number of {unit}, got {value!r}"
+    if value < 1:
+        return f"must be at least 1, got {value!r}"
+    return None
+
+
+def _one_metre(value: object) -> str | None:
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        # The swap a caller makes to run without weights: madmom's candidate
+        # list carried over to a backend that divides by the metre.
+        return (
+            f"must be one metre, got {value!r}: this backend assumes the metre rather "
+            "than detecting it, so it cannot choose between several"
+        )
+    return _whole_positive(value, "beats to the bar")
+
+
+def _metre_or_candidates(value: object) -> str | None:
+    # A str is a Sequence too, and "34" would read as the metres '3' and '4'.
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        return _whole_positive(value, "beats to the bar")
+    if not value:
+        return "must name at least one metre to choose between, got an empty list"
+    if any(_whole_positive(metre, "beats to the bar") for metre in value):
+        return f"must list metres that are each a whole number of at least 1, got {value!r}"
+    return None
+
+
+#: Rules for each backend's setting values, by backend and setting name. A
+#: setting with no rule here is passed through unchecked.
+#:
+#: Kept beside the registry rather than inside each backend, so a bad value is
+#: refused on the same path, at the same moment, as a bad name: before
+#: dispatch, before any model import, with one ValueError shape. Checking in
+#: the backend would put the rule next to the code that reads the value, but
+#: it would make two places a setting can be refused, and the second sits past
+#: the heavy import. The cost is that a rule and the parameter it guards are
+#: written apart; a test holds every rule to a setting its backend declares.
+SETTING_RULES: dict[str, dict[str, SettingRule]] = {
+    "madmom": {"beats_per_bar": _metre_or_candidates},
+    "librosa": {
+        "beats_per_bar": _one_metre,
+        "hop_length": lambda value: _whole_positive(value, "samples"),
+    },
+}
+
+_REGISTRY = Registry("beat", BACKENDS, BACKEND_SAMPLE_RATES, SETTING_RULES)
 
 # The checks live in :mod:`songscribe.registry`, shared with the chord stage; these
 # are this module's public names for them.
