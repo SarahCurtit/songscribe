@@ -67,9 +67,10 @@ def choruses(
 ) -> tuple[Chorus, ...]:
     """Tile the grid from ``anchor_bar`` in blocks of the chart's bar count.
 
-    Bars before the anchor are the intro. A block holding a bar far from the
-    grid's median length, or whose mean bar length is far from the other
-    choruses', is ``unaligned``: named and left out, not scored as wrong.
+    Bars before the anchor are the intro. A block holding a bar far from its
+    own median length (and every block after it, the count being lost), or
+    whose mean bar length is far from the other choruses', is ``unaligned``:
+    named and left out, not scored as wrong.
     """
     if bars_per_chorus < 1:
         raise ValueError(f"bars_per_chorus must be at least 1, got {bars_per_chorus}")
@@ -82,7 +83,6 @@ def choruses(
         return ()
 
     reference_bar = reference_duration / bars_per_chorus
-    faulty = set(grid.unreliable_bars(drift_tolerance))
 
     blocks: list[tuple[int, int]] = []
     first = anchor_bar
@@ -103,12 +103,15 @@ def choruses(
     if anchor_bar > 0 or downbeats[0] > MIN_SEGMENT:
         found.append(Chorus(0, 0.0, downbeats[anchor_bar], 0, anchor_bar, nan, "intro"))
 
+    lost = False
     for block in blocks:
         start, count = block
         scale = scale_of(block)
-        if faulty.intersection(range(start, start + count)) or (
-            isfinite(typical) and abs(scale / typical - 1) > drift_tolerance
-        ):
+        if _has_faulty_bar(grid.bar_lengths[start : start + count], drift_tolerance):
+            # A bar added or dropped loses the count, so every later block would
+            # be a bar out: refuse them too rather than score a shifted chart.
+            lost = True
+        if lost or (isfinite(typical) and abs(scale / typical - 1) > drift_tolerance):
             kind = "unaligned"
         elif count < bars_per_chorus:
             kind = "partial" if count >= CHORUS_MIN_BARS else "tail"
@@ -127,6 +130,15 @@ def choruses(
             )
         )
     return tuple(found)
+
+
+def _has_faulty_bar(lengths: Sequence[float], tolerance: float) -> bool:
+    """Whether a bar is far from its own block's median length.
+
+    Against the block, not the take: a whole chorus at another tempo is no fault.
+    """
+    typical = median(lengths)
+    return any(abs(length / typical - 1) > tolerance for length in lengths)
 
 
 def unscored_seconds(found: Sequence[Chorus]) -> float:

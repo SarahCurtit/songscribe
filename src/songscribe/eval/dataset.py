@@ -39,6 +39,10 @@ class Track:
     id: str
     reference: Path
     audio: Path | None = None
+    #: Bars in the reference, for a lead sheet played through several times: the
+    #: form length that splits the recording into choruses. ``None`` for a
+    #: reference that spans the whole recording.
+    bars: int | None = None
 
     @property
     def is_runnable(self) -> bool:
@@ -78,7 +82,7 @@ def resolve_root(explicit: str | Path | None, env_var: str, fallback: Path) -> P
 
 def build(
     name: str,
-    entries: list[dict[str, str]],
+    entries: list[dict[str, str | int]],
     notes: str = "",
 ) -> dict:
     """Assemble a manifest document ready to be written as JSON."""
@@ -146,11 +150,16 @@ def load_manifest(
         seen.add(track_id)
 
         audio = entry.get("audio")
+        bars = entry.get("bars")
+        # bool is an int to Python, and a form of "True" bars is a typo, not a form.
+        if bars is not None and (not isinstance(bars, int) or isinstance(bars, bool) or bars < 1):
+            raise ManifestError(f"{path}: track {track_id!r}: 'bars' must be a positive integer")
         tracks.append(
             Track(
                 id=track_id,
                 reference=_resolve(annotation_base, reference),
                 audio=_resolve(audio_base, audio) if audio else None,
+                bars=bars,
             )
         )
 
