@@ -550,10 +550,7 @@ def evaluate(
     ``estimates_dir`` reads ``.lab`` files somebody else produced. A track
     whose reference or estimate is missing is skipped and named in the report
     rather than scored as zero -- an absent measurement is not a wrong one.
-
-    A bar grid (``beats_dir`` of ``.beats`` files, or a ``beat_backend``) turns
-    on per-chorus scoring: tracks then need ``bars`` in the manifest and audio
-    to anchor the form on, and one whose form is not clear is skipped.
+    A bar grid (``beats_dir`` or ``beat_backend``) turns on per-chorus scoring.
     """
     import subprocess
 
