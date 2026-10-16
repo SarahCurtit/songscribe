@@ -10,6 +10,7 @@ from math import isnan
 from pathlib import Path
 
 from .. import __version__
+from ..beats import BACKENDS as BEAT_BACKENDS
 from ..chords import BACKENDS, DEFAULT_BACKEND
 from .dataset import (
     ANNOTATION_ROOT_ENV,
@@ -171,6 +172,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     score.add_argument("--limit", type=_positive_int, help="score only the first N tracks")
     score.add_argument("--per-track", action="store_true", help="print a row per track")
+    grid_source = score.add_mutually_exclusive_group()
+    grid_source.add_argument(
+        "--beats",
+        type=Path,
+        help=(
+            "directory of <track>.beats bar grids: scores a recording of the chart played "
+            "several times, per chorus (tracks need 'bars' in the manifest, and audio)"
+        ),
+    )
+    grid_source.add_argument(
+        "--beat-backend",
+        choices=sorted(BEAT_BACKENDS),
+        help="track the bar grid with this backend instead (cached under --cache)",
+    )
+    score.add_argument(
+        "--per-chorus",
+        action="store_true",
+        help="print a row per chorus; needs --beats or --beat-backend",
+    )
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
     score.add_argument(
         "--no-alignment-check",
@@ -210,6 +230,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="how many labels to list by time (default: %(default)s; 0 for none)",
     )
     survey.add_argument("--json", type=Path, help="also write the survey as JSON")
+
+    form = subparsers.add_parser(
+        "form",
+        parents=[common],
+        help="show the detected bar grid, anchor and choruses for one recording",
+        description=(
+            "Find where the chart's form starts in a recording and how it splits into "
+            "choruses, printing what was detected before any score is trusted. Exits 2 "
+            "when the start is not clear."
+        ),
+    )
+    form.add_argument("reference", type=Path, help="the chart as a .lab file, one chorus")
+    form.add_argument("--bars", type=_positive_int, required=True, help="bars in the chart")
+    form.add_argument("--audio", type=Path, help="the recording; its chroma is the evidence")
+    form.add_argument(
+        "--estimate",
+        type=Path,
+        help="a chord .lab to anchor on instead of audio: for looking at a form only, "
+        "since it fits the start to the estimate",
+    )
+    form_grid = form.add_mutually_exclusive_group(required=True)
+    form_grid.add_argument("--beats", type=Path, help="a .beats file for the recording")
+    form_grid.add_argument(
+        "--beat-backend", choices=sorted(BEAT_BACKENDS), help="track the bar grid in --audio"
+    )
     return parser
 
 
@@ -230,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
         return _manifest(args)
     if args.command == "survey":
         return _survey(args)
+    if args.command == "form":
+        return _form(args)
     return _score(args)
 
 
@@ -302,6 +349,99 @@ def _survey(args: argparse.Namespace) -> int:
     # An unparseable label is a gap in our own vocabulary, not bad data, so it
     # is worth a non-zero exit: this is the shape of thing CI should catch.
     return 2 if result.unparseable else 0
+
+
+def _form(args: argparse.Namespace) -> int:
+    from .. import beats, lab
+    from . import chroma, form, runner
+    from .dataset import Track
+    from .metrics import extent
+
+    if (args.audio is None) == (args.estimate is None):
+        print("songscribe-eval: pass exactly one of --audio or --estimate", file=sys.stderr)
+        return 1
+    if args.beat_backend is not None and args.audio is None:
+        print("songscribe-eval: --beat-backend tracks beats in --audio", file=sys.stderr)
+        return 1
+
+    track = Track(
+        id=args.reference.stem, reference=args.reference, audio=args.audio, bars=args.bars
+    )
+    try:
+        reference = lab.read(args.reference)
+        if args.beats is not None:
+            grid = beats.grid(lab.read_beats(args.beats))
+        else:
+            grid = runner.bar_grid(track, None, args.beat_backend, None)
+        evidence = (
+            runner.chroma_of(track)
+            if args.audio is not None
+            else chroma.chroma_from_events(lab.read(args.estimate))
+        )
+        found = chroma.anchor_bar(
+            evidence,
+            grid.downbeats,
+            chroma.bar_templates(reference, args.bars),
+            min_bars=form.CHORUS_MIN_BARS,
+        )
+        start, end = extent(reference)
+        blocks = (
+            ()
+            if found is None or found.refusal()
+            else form.choruses(grid, args.bars, found.bar_index, end - start)
+        )
+    except (OSError, ValueError, runner.AudioDecodeError) as error:
+        print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+
+    sys.stdout.write(format_form(grid, found, blocks, from_estimate=args.estimate is not None))
+    return 0 if blocks else 2
+
+
+def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
+    """Render what ``form`` detected: bar grid, anchor, and the chorus table."""
+    from . import form
+
+    tempo = f"{grid.tempo:.1f}" if not isnan(grid.tempo) else "--"
+    length = f"{grid.bar_length:.3f} s" if not isnan(grid.bar_length) else "--"
+    lines = [
+        "",
+        f"bar grid  {grid.bars} bars, median {length} ({tempo} bpm in {grid.beats_per_bar} beats)",
+        f"          {len(grid.unreliable_bars())} bars far from the median length",
+    ]
+    if anchor is None:
+        lines += ["anchor    none: the recording is too short to hold the form", ""]
+        return "\n".join(lines)
+    refusal = anchor.refusal()
+    lines.append(
+        f"anchor    bar {anchor.bar_index} at {anchor.start:.2f} s   "
+        f"agreement {anchor.mean_agreement:.2f}  runner-up {anchor.runner_up:.2f}  "
+        f"margin {anchor.margin:.2f}"
+    )
+    if from_estimate:
+        lines.append(
+            "          anchored on the estimate, not audio: for looking, never for scoring"
+        )
+    if refusal:
+        lines += [
+            f"          REFUSED: {refusal}",
+            "          no choruses are drawn from a guess",
+            "",
+        ]
+        return "\n".join(lines)
+    lines += [
+        "",
+        f"{'#':>3} {'kind':<10}{'first bar':>10}{'bars':>6}{'start':>10}{'end':>10}{'scale':>8}",
+    ]
+    for chorus in blocks:
+        scale = "--" if isnan(chorus.scale) else f"{chorus.scale:.3f}"
+        lines.append(
+            f"{chorus.index:>3} {chorus.kind:<10}{chorus.first_bar:>10}{chorus.bars:>6}"
+            f"{chorus.start:>9.2f}s{chorus.end:>9.2f}s{scale:>8}"
+        )
+    unscored = form.unscored_seconds(blocks)
+    lines += ["", f"{unscored:.1f} s in blocks no score covers (intro, ending, unaligned)", ""]
+    return "\n".join(lines)
 
 
 def format_survey(result, label_limit: int = TOP_LABELS) -> str:
@@ -421,7 +561,13 @@ def _score(args: argparse.Namespace) -> int:
         print("songscribe-eval: manifest lists no tracks", file=sys.stderr)
         return 1
 
-    printer = _per_track_printer(vocabularies) if args.per_track else None
+    if args.per_chorus and args.beats is None and args.beat_backend is None:
+        print("songscribe-eval: --per-chorus needs --beats or --beat-backend", file=sys.stderr)
+        return 1
+
+    printer = None
+    if args.per_track or args.per_chorus:
+        printer = _per_track_printer(vocabularies, args.per_chorus)
     try:
         report = evaluate(
             dataset,
@@ -434,6 +580,8 @@ def _score(args: argparse.Namespace) -> int:
             limit=args.limit,
             on_track=printer,
             check_alignment=not args.no_alignment_check,
+            beats_dir=args.beats,
+            beat_backend=args.beat_backend,
         )
     except (OSError, ValueError, ImportError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -454,23 +602,39 @@ def _score(args: argparse.Namespace) -> int:
     return 0
 
 
-def _per_track_printer(vocabularies: tuple[str, ...]):
-    """A callback printing one row per track as the run proceeds.
+def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
+    """A callback printing one row per track (or per chorus) as the run proceeds.
 
     Printed live rather than collected, because a full corpus run takes long
     enough that silence is indistinguishable from a hang.
     """
     header_written = False
 
-    def write(result) -> None:
+    def row(label: str, scores, segmentation, bar: float | None) -> None:
         nonlocal header_written
         if not header_written:
             columns = "".join(f"{name:>10}" for name in vocabularies)
-            print(f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}")
+            print(
+                f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}"
+                + (f"{'bar':>10}" if per_chorus else "")
+            )
             header_written = True
-        scores = "".join(f"{_percent(result.scores[v].wcsr):>10}" for v in vocabularies)
-        boundary = _percent(result.segmentation.score)
-        print(f"{_truncate(result.track_id):<{_ID_WIDTH}}{scores}{boundary:>10}")
+        cells = "".join(f"{_percent(scores[v].wcsr):>10}" for v in vocabularies)
+        line = f"{label:<{_ID_WIDTH}}{cells}{_percent(segmentation.score):>10}"
+        if per_chorus:
+            line += f"{'' if bar is None else _percent(bar):>10}"
+        print(line)
+
+    def write(result) -> None:
+        if not (per_chorus and result.choruses):
+            row(_truncate(result.track_id), result.scores, result.segmentation, None)
+            return
+        for part in result.choruses:
+            chorus = part.chorus
+            name = f"{_truncate(result.track_id)[: _ID_WIDTH - 22]} #{chorus.index} {chorus.kind}"
+            if chorus.kind == "partial":
+                name += f" ({chorus.bars} bars)"
+            row(name, part.scores, part.segmentation, part.bar)
 
     return write
 
@@ -506,11 +670,25 @@ def format_report(report) -> str:
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
+    ]
+    if report.chorus_count():
+        lines.append(
+            f"{'bar':<12}{_percent(report.mean_bar()):>10}"
+            f"{'':>10}   right chord in the right bar, tempo- and offset-free"
+        )
+    lines += [
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
         "chart and grid are per-track and unweighted: a chart is a chart at any length.",
         "",
     ]
+    if report.chorus_count():
+        lines += [
+            f"{report.chorus_count()} choruses in {len(report.results)} tracks, each scored on",
+            "its own; the track rows aggregate the full choruses. Intro, ending and unaligned",
+            f"choruses are left out ({sum(r.unscored_seconds for r in report.results):.0f} s).",
+            "",
+        ]
     if report.graded_grids() < len(report.results):
         lines += [
             "grid is skipped where the reference's own chords do not fall on a regular",
@@ -599,6 +777,7 @@ def report_to_dict(report) -> dict:
             "graded_tracks": report.graded_grids(),
         },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
+        "bar": {"mean": _jsonable(report.mean_bar()), "choruses": report.chorus_count()},
         "tracks": [
             {
                 "id": result.track_id,
@@ -643,9 +822,41 @@ def report_to_dict(report) -> dict:
                         ALIGNMENT_WARN_GAIN, ALIGNMENT_WARN_OFFSET
                     ),
                 },
+                "bar": _jsonable(result.bar),
+                "anchor": None if result.anchor is None else _anchor_to_dict(result.anchor),
+                "unscored_seconds": result.unscored_seconds,
+                "choruses": [_chorus_to_dict(part) for part in result.choruses],
             }
             for result in report.results
         ],
+    }
+
+
+def _anchor_to_dict(anchor) -> dict:
+    return {
+        "bar_index": anchor.bar_index,
+        "start": anchor.start,
+        "agreement": _jsonable(anchor.mean_agreement),
+        "runner_up": _jsonable(anchor.runner_up),
+        "margin": _jsonable(anchor.margin),
+    }
+
+
+def _chorus_to_dict(part) -> dict:
+    chorus = part.chorus
+    return {
+        "index": chorus.index,
+        "kind": chorus.kind,
+        "start": chorus.start,
+        "end": chorus.end,
+        "first_bar": chorus.first_bar,
+        "bars": chorus.bars,
+        "scale": _jsonable(chorus.scale),
+        "bar": _jsonable(part.bar),
+        "chart": _jsonable(part.chart),
+        "grid": _jsonable(part.grid),
+        "segmentation": _jsonable(part.segmentation.score),
+        "scores": {name: _jsonable(score.wcsr) for name, score in part.scores.items()},
     }
 
 

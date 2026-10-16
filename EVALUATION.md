@@ -411,6 +411,34 @@ threshold: its first bars are flagged and its last are not, having already accel
 tempo. Form membership needs the form's known bar count and an anchor, not a per-bar length
 test.
 
+### A chart played several times: `form`, `bar`, and `--beats`
+
+A real recording is an intro, the chart several times through, and an ending, none of it on
+the reference's clock. Give a manifest track `"bars"` (the chart's bar count) and score it
+with `--beats DIR` (or `--beat-backend`); `songscribe-eval form` shows what was detected
+first. The pieces, and what each refuses to do:
+
+- **Anchor** (`eval/chroma.py`): the chart's per-bar pitch classes are slid along the
+  recording's bars, scoring each candidate start on its own chorus. The evidence is the
+  *audio's* chroma, never the estimate: anchoring on the estimate would pick the start that
+  flatters it. The form length is the chart's bar count, not searched; self-similarity
+  returns the half-form. A start whose margin over the next phase is under
+  `ANCHOR_MIN_MARGIN`, or whose agreement is under `ANCHOR_MIN_AGREEMENT`, is **refused**: the
+  track is skipped and named, not scored against a guess. Both gates are provisional (a
+  cosine of standardised chroma, checked only on synthetic takes).
+- **Choruses** (`eval/form.py`): contiguous blocks of the chart's bar count from the anchor.
+  `intro`, `head` (first and last full chorus), `chorus`, `partial` (at least four bars),
+  `tail` (shorter: an ending), `unaligned`. A bar far from its own block's median length
+  loses the count, so that block and every later one is `unaligned`; so is a chorus at
+  another tempo than the rest. Unscored time is reported, never folded in.
+- **Mapping**: each chorus's estimate is moved onto the reference's clock by one affine map
+  (start, scale), so WCSR, `chart`, `grid` and `segmentation` apply unchanged per chorus.
+  The offset sweep per chorus is one bar wide, not three seconds.
+- **`bar`**: the fraction of bars holding the right chord, read against the recording's own
+  bar lines, so tempo, offset and length cannot move it. Lead with it on a real take.
+- **Aggregation**: the track row sums the full choruses. It is never the best chorus, and a
+  partial last pass is reported but left out.
+
 ### `placement`: lyric-chord synchronisation, for songs
 
 For a song rather than an instrumental, the thing that matters is whether each chord sits

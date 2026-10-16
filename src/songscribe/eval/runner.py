@@ -455,7 +455,7 @@ def score_performance(
     )
 
 
-def _chroma_of(track: Track) -> chroma.Chromagram:
+def chroma_of(track: Track) -> chroma.Chromagram:
     """The recording's chroma: the evidence the form is anchored on, never the estimate."""
     from .. import audio
 
@@ -468,7 +468,7 @@ def _chroma_of(track: Track) -> chroma.Chromagram:
     return chroma.chromagram(samples, rate)
 
 
-def _bar_grid(
+def bar_grid(
     track: Track, beats_dir: Path | None, beat_backend: str | None, cache_dir: Path | None
 ) -> BeatGrid:
     """The recording's bar lines, from ``.beats`` files or a tracker (cached)."""
@@ -509,9 +509,9 @@ def _score_form(
 ) -> TrackResult:
     if track.bars is None:
         raise ValueError(f"{track.id}: the manifest gives no 'bars' for this track")
-    grid = _bar_grid(track, beats_dir, beat_backend, cache_dir)
+    grid = bar_grid(track, beats_dir, beat_backend, cache_dir)
     found = chroma.anchor_bar(
-        _chroma_of(track),
+        chroma_of(track),
         grid.downbeats,
         chroma.bar_templates(reference, track.bars),
         min_bars=form.CHORUS_MIN_BARS,

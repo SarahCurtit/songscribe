@@ -42,7 +42,9 @@ src/songscribe/
   lab.py        .lab chord annotation read/write               (pure Python)
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
-    metrics.py    WCSR, vocabularies, segmentation             (pure Python)
+    metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
+    chroma.py     anchors the chart's first bar on the audio's chroma (numpy)
+    form.py       bar grid + anchor -> choruses, mapped onto the chart's clock (pure Python)
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
@@ -122,6 +124,10 @@ songscribe-eval survey eval/isophonics-beatles.json          # no audio, no mode
 songscribe-eval manifest data/isophonics -a ~/music -o eval/isophonics.json
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
+
+A recording of the chart played several times (manifest track with `"bars"`) is scored per
+chorus with `score --beats DIR --per-chorus`; `songscribe-eval form` prints the detected
+grid, anchor and choruses first and exits 2 if the start is not clear. See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in
