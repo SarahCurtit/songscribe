@@ -1,19 +1,21 @@
 """Chord recognition from audio, via pluggable deep-learning backends.
 
 Every production backend is a pretrained open-source model with openly
-published weights -- see ``MODELS.md`` for the inventory and the bar a new one
-has to clear. A backend is one function returning
-:class:`~songscribe.types.ChordEvent` list, registered in :data:`BACKENDS`
-with its required sample rate in :data:`BACKEND_SAMPLE_RATES`.
+published weights -- see ``MODELS.md`` for the bar a new one has to clear. A
+backend is one function returning :class:`~songscribe.types.ChordEvent` list,
+registered in :data:`BACKENDS` with its rate in :data:`BACKEND_SAMPLE_RATES`,
+taking each setting it accepts as a defaulted parameter, never ``**kwargs``.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from numbers import Integral
 
 import numpy as np
 
+from .registry import Registry, SettingRule
 from .types import ChordEvent
 
 log = logging.getLogger(__name__)
@@ -60,7 +62,7 @@ MODEL_SAMPLE_RATE = 44_100
 # --------------------------------------------------------------------------- #
 
 
-def _recognise_madmom(audio: np.ndarray, sample_rate: int, **kwargs) -> list[ChordEvent]:
+def _recognise_madmom(audio: np.ndarray, sample_rate: int) -> list[ChordEvent]:
     """CNN chord features + CRF decoding, via madmom's pretrained weights."""
     from madmom.audio.signal import Signal
     from madmom.features.chords import CNNChordFeatureProcessor, CRFChordRecognitionProcessor
@@ -87,7 +89,6 @@ def _recognise_btc(
     sample_rate: int,
     checkpoint: str | None = None,
     device: str = "auto",
-    **kwargs,
 ) -> list[ChordEvent]:
     """Bi-directional Transformer chord recognition (BTC, ISMIR'19).
 
@@ -106,7 +107,6 @@ def _recognise_template(
     sample_rate: int,
     hop_length: int = 2048,
     smoothing: int = 9,
-    **kwargs,
 ) -> list[ChordEvent]:
     """Non-DL baseline: chroma frames matched to triad templates.
 
@@ -140,6 +140,29 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
+def _whole_at_least(value: object, unit: str, floor: int) -> str | None:
+    # Integral so np.int64 passes. A fractional count is refused, not rounded.
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        return f"must be a whole number of {unit}, got {value!r}"
+    if value < floor:
+        return f"must be at least {floor}, got {value!r}"
+    return None
+
+
+def _whole_positive(value: object, unit: str) -> str | None:
+    return _whole_at_least(value, unit, 1)
+
+
+# Checked in the registry so a bad value fails before dispatch and before any model import.
+SETTING_RULES: dict[str, dict[str, SettingRule]] = {
+    "template": {
+        "hop_length": lambda value: _whole_positive(value, "samples"),
+        # 0 is allowed: _smooth_labels treats any width up to 1 as "off".
+        "smoothing": lambda value: _whole_at_least(value, "frames", 0),
+    },
+}
+
+
 def normalise_label(label: str) -> str:
     """Convert a Harte-notation chord label to compact chart shorthand.
 
@@ -161,20 +184,15 @@ def normalise_label(label: str) -> str:
     return label
 
 
-def _check_backend(backend: str) -> None:
-    """Reject an unknown backend by name.
+_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES, SETTING_RULES)
 
-    Never falls back to another model: a typo in a config should fail loudly,
-    not quietly downgrade the output to something worse.
-    """
-    if backend not in BACKENDS:
-        raise ValueError(f"unknown chord backend {backend!r}, expected one of {sorted(BACKENDS)}")
-
-
-def sample_rate_for(backend: str) -> int:
-    """The sample rate ``backend`` needs its audio loaded at."""
-    _check_backend(backend)
-    return BACKEND_SAMPLE_RATES[backend]
+# The checks live in :mod:`songscribe.registry`, shared with the beat stage; these
+# are this module's public names for them.
+_check_backend = _REGISTRY.check_backend
+_check_options = _REGISTRY.check_options
+backend_options = _REGISTRY.options
+accepts_any_option = _REGISTRY.accepts_any_option
+sample_rate_for = _REGISTRY.sample_rate_for
 
 
 def recognise(
@@ -183,8 +201,13 @@ def recognise(
     backend: str = DEFAULT_BACKEND,
     **kwargs,
 ) -> list[ChordEvent]:
-    """Estimate a chord timeline for ``audio`` (mono float32)."""
+    """Estimate a chord timeline for ``audio`` (mono float32).
+
+    Extra keyword arguments are the chosen backend's settings; one it does not
+    accept raises rather than being dropped.
+    """
     _check_backend(backend)
+    _check_options(backend, kwargs)
     log.debug("chord backend=%s sample_rate=%d", backend, sample_rate)
     return BACKENDS[backend](audio, sample_rate, **kwargs)
 

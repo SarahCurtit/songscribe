@@ -26,10 +26,13 @@ These are the project's identity, not preferences. Don't trade them away for acc
 
 ```
 src/songscribe/
-  types.py      ChordEvent, Word, LyricLine, Placement, Section, Song — all frozen
+  types.py      ChordEvent, BeatEvent, Word, LyricLine, Placement, Section, Song — all frozen
   audio.py      loading/resampling; caller asks for the rate its model wants
   separate.py   demucs wrapper (subprocess), optional
   chords.py     pluggable chord backends behind recognise()
+  beats.py      pluggable beat/downbeat backends behind track(); BeatGrid
+  tempo.py      BeatGrid vs a known tempo: octave-error check          (pure Python)
+  registry.py   name/setting checks shared by chords and beats       (pure Python)
   lyrics.py     faster-whisper wrapper, word-level timestamps
   align.py      chord timeline + word timeline -> printable sections   (pure Python)
   render.py     Song -> text or ChordPro                               (pure Python)
@@ -84,7 +87,11 @@ and their terms forbid redistributing the audio.
   use the vocal onsets" shortcuts — they couple the branches and break testability.
 - **Models go behind a registry.** A chord backend is one function returning
   `list[ChordEvent]`, registered in `chords.BACKENDS` with its sample rate in
-  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name.
+  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name. Every
+  setting it accepts is a named parameter *with a default*, after the audio and
+  its rate — `recognise()` and `track()` reject a setting the chosen backend
+  doesn't declare. A `**kwargs` on a backend would turn that check off, so a
+  registered backend must not have one; a test enforces it.
 - **One chord vocabulary downstream.** Models emit Harte notation (`C:maj`, `A:min`);
   everything after the backend expects compact shorthand (`C`, `Am`). Backends call
   `chords.normalise_label()` on the way out. An unrecognised quality passes through

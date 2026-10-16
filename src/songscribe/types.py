@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+#: Beats to the bar when nothing says otherwise: a backend that tracks beats
+#: without the downbeat, a timeline with no positions, a tempo reference with
+#: no stated metre.
+DEFAULT_METRE = 4
+
 
 @dataclass(frozen=True, slots=True)
 class ChordEvent:
@@ -24,6 +29,23 @@ class ChordEvent:
 
     def overlaps(self, start: float, end: float) -> bool:
         return self.start < end and start < self.end
+
+
+@dataclass(frozen=True, slots=True)
+class BeatEvent:
+    """One tracked beat, and where it falls in the bar.
+
+    ``position`` is 1-based, so a downbeat is ``position == 1``. Keeping the
+    position rather than a bare "is a downbeat" flag is what lets a grid be
+    rebuilt at beat resolution later without re-running the tracker.
+    """
+
+    time: float
+    position: int
+
+    @property
+    def is_downbeat(self) -> bool:
+        return self.position == 1
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,13 +3,16 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from songscribe import chords
 from songscribe.chords import (
     NO_CHORD,
     PITCH_CLASSES,
     _smooth_labels,
+    backend_options,
     chord_templates,
     estimate_key,
     normalise_label,
+    recognise,
     sample_rate_for,
 )
 from songscribe.types import ChordEvent
@@ -123,6 +126,184 @@ class TestSampleRateFor:
     def test_rejects_an_unknown_backend(self):
         with pytest.raises(ValueError, match="unknown chord backend"):
             sample_rate_for("definitely-not-a-model")
+
+
+class TestBackendSettings:
+    def test_reports_what_each_backend_accepts(self):
+        assert backend_options("template") == {"hop_length", "smoothing"}
+        # The madmom chord processors are used as pretrained; nothing to tune.
+        assert backend_options("madmom") == set()
+
+    def test_no_registered_backend_keeps_a_catch_all(self):
+        # A `**kwargs` on a backend would silently switch this validation off
+        # for it, which is the bug the check exists to prevent.
+        for backend in chords.BACKENDS:
+            assert not chords.accepts_any_option(backend)
+
+    def test_a_catch_all_is_reported_apart_from_the_accepted_names(self, monkeypatch):
+        # "accepts anything" and "accepts nothing" must not both read as a
+        # falsy `backend_options`: the madmom backend genuinely accepts
+        # nothing, and conflating the two is how a check gets skipped.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, smoothing=9, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert chords.accepts_any_option("fake")
+        assert backend_options("fake") == {"smoothing"}
+        assert not chords.accepts_any_option("madmom")
+        assert backend_options("madmom") == set()
+
+    def test_a_catch_all_backend_takes_any_setting(self, monkeypatch):
+        # The exemption is real, not just reported: nothing can be rejected on
+        # behalf of a backend that will accept it.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake", nonsense=1) == []
+
+    def test_a_setting_without_a_default_is_rejected(self, monkeypatch):
+        # Not reportable as an accepted setting: the backend could not be
+        # called without it, so `recognise` would raise TypeError from the call
+        # instead of naming the fault here. Caught on every dispatch, so it
+        # surfaces even when the caller names no settings at all. A misdeclared
+        # backend is this package's bug, so it is not the caller-facing
+        # ValueError -- a CLI mapping that to a usage error must not blame the
+        # user for it.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, checkpoint: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        with pytest.raises(RuntimeError, match="'checkpoint' with no default") as excinfo:
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+        assert not isinstance(excinfo.value, ValueError)
+
+    def test_a_catch_all_does_not_excuse_a_setting_without_a_default(self, monkeypatch):
+        # The exemption covers the list of accepted names only. A backend with
+        # both still cannot be called with the audio and its rate alone, so
+        # checking the catch-all first would hand the caller the bare TypeError
+        # this validation exists to replace.
+        monkeypatch.setitem(chords.BACKENDS, "fake", lambda audio, rate, checkpoint, **kw: [])
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert chords.accepts_any_option("fake")
+        with pytest.raises(RuntimeError, match="'checkpoint' with no default"):
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+
+    def test_a_required_positional_only_setting_is_rejected(self, monkeypatch):
+        # Unreachable by keyword *and* required: reporting it as "no settings"
+        # and then failing at the call is the worst of both. Being callable with
+        # the audio and its rate alone is checked before reachability.
+        def fake(audio, sample_rate, hop_length, /):
+            return []
+
+        monkeypatch.setitem(chords.BACKENDS, "fake", fake)
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        with pytest.raises(RuntimeError, match="'hop_length' with no default"):
+            backend_options("fake")
+        with pytest.raises(RuntimeError, match="'hop_length' with no default"):
+            recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake")
+
+    def test_every_registered_setting_has_a_default(self):
+        # The same rule over the shipped backends, so `btc` growing a required
+        # `checkpoint` fails here rather than at the call. The guard is that the
+        # call itself does not raise -- there is nothing to assert about the
+        # value, so don't add an assertion that hides which backend failed.
+        for backend in chords.BACKENDS:
+            backend_options(backend)
+
+    def test_recognise_rejects_an_unknown_setting(self):
+        with pytest.raises(ValueError) as excinfo:
+            recognise(np.zeros(10, dtype=np.float32), 22_050, backend="template", smoothng=9)
+        message = str(excinfo.value)
+        assert "'smoothng'" in message
+        assert "'template'" in message
+        # The accepted settings are listed, so the typo is obvious from the error.
+        assert "smoothing" in message
+
+    def test_rejects_a_setting_before_the_model_is_imported(self):
+        # Runs with no weights on disk: the setting is checked at the registry,
+        # so madmom is never reached.
+        with pytest.raises(ValueError, match="which takes no settings"):
+            recognise(np.zeros(10, dtype=np.float32), 44_100, backend="madmom", metre=4)
+
+    def test_names_every_unknown_setting(self):
+        with pytest.raises(ValueError, match="unknown settings 'hop', 'smooth'"):
+            recognise(np.zeros(10, dtype=np.float32), 22_050, backend="template", hop=1, smooth=2)
+
+    def test_accepted_settings_reach_the_backend(self, monkeypatch):
+        seen = {}
+
+        def fake(audio, sample_rate, smoothing=9):
+            seen["smoothing"] = smoothing
+            return []
+
+        monkeypatch.setitem(chords.BACKENDS, "fake", fake)
+        monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "fake", 8_000)
+        assert recognise(np.zeros(10, dtype=np.float32), 8_000, backend="fake", smoothing=3) == []
+        assert seen == {"smoothing": 3}
+
+
+class TestBackendSettingValues:
+    AUDIO = np.zeros(10, dtype=np.float32)
+
+    @pytest.mark.parametrize(
+        ("setting", "value", "fault"),
+        [
+            ("hop_length", 0, "must be at least 1, got 0"),
+            ("hop_length", -4, "must be at least 1, got -4"),
+            ("smoothing", -4, "must be at least 0, got -4"),
+            ("smoothing", np.int64(-1), "must be at least 0, got np.int64(-1)"),
+        ]
+        + [
+            (setting, value, f"must be a whole number of {unit}, got {value!r}")
+            for setting, unit in [("hop_length", "samples"), ("smoothing", "frames")]
+            for value in [True, False, 2.5, "9", np.float64(9.0), np.bool_(True)]
+        ],
+    )
+    def test_a_template_setting_that_is_not_a_whole_number_in_range_is_refused(
+        self, setting, value, fault
+    ):
+        # A caller fault, so ValueError, raised at the registry before librosa
+        # is imported, naming the setting, the backend and what was wrong.
+        with pytest.raises(ValueError) as excinfo:
+            recognise(self.AUDIO, 22_050, backend="template", **{setting: value})
+        assert str(excinfo.value) == f"setting {setting!r} for chord backend 'template' {fault}"
+
+    @staticmethod
+    def _capture(monkeypatch):
+        seen = {}
+
+        def fake(audio, sample_rate, hop_length=2048, smoothing=9):
+            seen.update(hop_length=hop_length, smoothing=smoothing)
+            return []
+
+        # Rules are keyed by backend name, so they still apply to the fake.
+        monkeypatch.setitem(chords.BACKENDS, "template", fake)
+        return seen
+
+    def test_valid_template_settings_reach_the_backend(self, monkeypatch):
+        seen = self._capture(monkeypatch)
+        recognise(self.AUDIO, 22_050, backend="template", hop_length=1024, smoothing=1)
+        assert seen == {"hop_length": 1024, "smoothing": 1}
+
+    def test_smoothing_zero_still_turns_smoothing_off(self, monkeypatch):
+        # 0 means "off" to _smooth_labels; only the hop has to be at least 1.
+        seen = self._capture(monkeypatch)
+        recognise(self.AUDIO, 22_050, backend="template", smoothing=0)
+        assert seen["smoothing"] == 0
+        flicker = np.array([0, 1, 0, 1, 0])
+        np.testing.assert_array_equal(_smooth_labels(flicker, 0), flicker)
+
+    def test_numpy_integers_reach_the_backend(self, monkeypatch):
+        # NumPy integers pass the rules and reach the backend as given, not converted.
+        seen = self._capture(monkeypatch)
+        hop, width = np.int64(2048), np.int32(9)
+        recognise(self.AUDIO, 22_050, backend="template", hop_length=hop, smoothing=width)
+        assert seen["hop_length"] is hop
+        assert seen["smoothing"] is width
+
+    def test_smooth_labels_takes_a_numpy_width(self):
+        flicker = np.array([0, 0, 0, 1, 0, 0, 0])
+        np.testing.assert_array_equal(_smooth_labels(flicker, np.int64(3)), np.zeros(7))
+
+    def test_every_rule_guards_a_setting_its_backend_declares(self):
+        # A renamed parameter must not leave its rule on a dead name.
+        for backend, rules in chords.SETTING_RULES.items():
+            assert set(rules) <= backend_options(backend), backend
 
 
 class TestEstimateKey:

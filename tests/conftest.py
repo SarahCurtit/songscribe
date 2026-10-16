@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from songscribe.types import ChordEvent, Word
+from songscribe.types import BeatEvent, ChordEvent, Word
 
 
 def words_from(spec: list[tuple[float, float, str]]) -> list[Word]:
@@ -40,3 +40,22 @@ def simple_chords() -> list[ChordEvent]:
         ChordEvent(3.0, 3.6, "Am"),
         ChordEvent(3.6, 5.0, "F"),
     ]
+
+
+def metronome(count: int, bar_length: float = 2.0, start: float = 0.0, metre: int = 4):
+    """``count`` bars of perfectly even beats, downbeats included."""
+    return [
+        BeatEvent(time=start + bar * bar_length + beat * bar_length / metre, position=beat + 1)
+        for bar in range(count)
+        for beat in range(metre)
+    ]
+
+
+#: A jazz ballad below madmom's 55 bpm DBN floor: 48 bpm in 4/4 is a 5 s bar,
+#: and the tracker reports it at 96 instead.
+BALLAD_BPM = 48.0
+
+
+def click_track(tempo_bpm: float, bars: int, metre: int = 4, start: float = 0.0):
+    """``bars`` bars of an even click at ``tempo_bpm``, downbeats included."""
+    return metronome(bars, bar_length=metre * 60.0 / tempo_bpm, start=start, metre=metre)
