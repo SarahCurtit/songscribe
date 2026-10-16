@@ -13,10 +13,12 @@ import json
 import logging
 from bisect import bisect_right
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
+from itertools import pairwise
 from math import isfinite, isnan, nan
 from pathlib import Path
 from statistics import median
+from typing import Literal
 
 import numpy as np
 
@@ -61,12 +63,20 @@ MIN_TEMPO_BPM = 30.0
 MAX_TEMPO_BPM = 300.0
 
 #: Ratios of tracked to reference tempo that are a tracking fault rather than a
-#: tempo. Only the octave is listed: a tracker that misses the pulse locks onto
-#: twice or half it, because every other beat still falls on a real beat, and
-#: that is the error a reference is brought in to find. A ratio that is neither
-#: 1 nor an octave is a disagreement about which tune is playing, not a fault
-#: this check can name.
-TEMPO_OCTAVE_FACTORS = (2.0, 0.5)
+#: tempo. Only octaves are listed: a tracker that misses the pulse locks onto a
+#: multiple or fraction of it by twos, because every other (or every fourth)
+#: beat still falls on a real beat, and that is the error a reference is
+#: brought in to find. A ratio that is neither 1 nor one of these is a
+#: disagreement about which tune is playing, not a fault this check can name.
+#:
+#: Two octaves each way and no further, because that is what can happen: madmom
+#: reports 55-215 bpm and a plausible reference is 30-300, so the ratio is
+#: bounded to 55/300 = 0.18 .. 215/30 = 7.2. A ballad under 54 bpm can come
+#: back at 4x as readily as at 2x, but 8x and 1/8x are out of reach.
+TEMPO_OCTAVE_FACTORS = (2.0, 0.5, 4.0, 0.25)
+
+#: How each octave reads in a warning about the grid's bar count.
+_OCTAVE_WORDS = {4.0: "four times", 2.0: "twice", 0.5: "half", 0.25: "a quarter of"}
 
 #: How far the ratio of tracked to reference tempo may sit from 1 -- or from an
 #: octave of it -- and still count as that ratio, as a fraction of the ratio.
@@ -77,9 +87,45 @@ TEMPO_OCTAVE_FACTORS = (2.0, 0.5)
 #: whole thing. The same take that sets :data:`BAR_DRIFT_TOLERANCE` moves under
 #: 1% in its median bar, but the reference itself is the loose side here.
 #:
-#: Narrow enough to stay unambiguous: 1 and 2 are 100% apart, so 10% windows
-#: around each cannot both match, and nothing lands in two verdicts at once.
+#: Narrow enough to stay unambiguous: see :data:`MAX_TEMPO_RATIO_TOLERANCE`.
 TEMPO_RATIO_TOLERANCE = 0.10
+
+# 1 and every octave, in order: the ratios whose windows must stay apart.
+_VERDICT_RATIOS = sorted({1.0, *TEMPO_OCTAVE_FACTORS})
+
+#: The widest tolerance at which no ratio can match two verdicts at once. The
+#: window around ratio ``a`` reaches up to ``a(1 + t)`` and the one around the
+#: next ratio ``b`` down to ``b(1 - t)``; they meet at ``t = (b - a) / (b + a)``,
+#: which is 1/3 for any two ratios an octave apart. At or past it a grid could
+#: both agree with the reference and be an octave off it, so the bound is
+#: exclusive -- at equality the two windows share their edge.
+MAX_TEMPO_RATIO_TOLERANCE = min((b - a) / (b + a) for a, b in pairwise(_VERDICT_RATIOS))
+
+
+def _coerce_number(key: str, value: object) -> float | None:
+    """A sidecar value as a float, ``None`` for absent or ``null``."""
+    if value is None:
+        return None
+    # bool is an int subclass, and JSON ``true`` is not 1 bpm.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"tempo reference {key!r} must be a number, got {value!r}")
+    return float(value)
+
+
+def _coerce_count(key: str, value: object) -> int | None:
+    """A sidecar value as a whole count: ``32.0`` is 32 bars, ``31.5`` is not a count."""
+    number = _coerce_number(key, value)
+    if number is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if not number.is_integer():
+        raise ValueError(f"tempo reference {key!r} must be a whole number, got {value!r}")
+    return int(number)
+
+
+def _is_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 # --------------------------------------------------------------------------- #
@@ -96,18 +142,27 @@ class TempoReference:
     of chorus across 96 s is 80 bpm in 4/4. Both are accepted so that a chart
     with no tempo marking still gives the check something to work with.
 
-    An explicit tempo wins when both are given: it is stated by whoever knows
-    the tune, where a bar count is divided by a span whose ends were read off a
-    waveform.
+    An explicit tempo wins when both are given and agree to within
+    :data:`TEMPO_RATIO_TOLERANCE`: it is stated by whoever knows the tune,
+    where a bar count is divided by a span whose ends were read off a waveform.
+    When they disagree by more than that, construction raises -- see
+    ``__post_init__``.
+
+    ``beats_per_bar`` is ``None`` when the reference does not say. A bar count
+    then needs no metre to be compared, since it is already a rate of bars; an
+    explicit tempo is read in whatever metre the grid was tracked in, because a
+    bare bpm figure carries no grouping of its own to compare bar lines with.
     """
 
     tempo: float | None = None
     bars: int | None = None
     span: float | None = None
-    beats_per_bar: int = DEFAULT_METRE
+    beats_per_bar: int | None = None
 
     def __post_init__(self) -> None:
-        if self.beats_per_bar < 1:
+        if self.beats_per_bar is not None and not _is_count(self.beats_per_bar):
+            raise ValueError(f"beats_per_bar must be a whole number, got {self.beats_per_bar!r}")
+        if self.beats_per_bar is not None and self.beats_per_bar < 1:
             raise ValueError(f"beats_per_bar must be at least 1, got {self.beats_per_bar}")
         # Validated here rather than left to surface as a nan ratio: a
         # reference that cannot be turned into a tempo would make every grid
@@ -116,21 +171,66 @@ class TempoReference:
             raise ValueError(f"tempo must be a positive number of bpm, got {self.tempo}")
         if (self.bars is None) != (self.span is None):
             raise ValueError("a bar-count reference needs both bars and span")
+        if self.bars is not None and not _is_count(self.bars):
+            raise ValueError(f"bars must be a whole number of bars, got {self.bars!r}")
         if self.bars is not None and self.bars < 1:
             raise ValueError(f"bars must be at least 1, got {self.bars}")
         if self.span is not None and not (isfinite(self.span) and self.span > 0):
             raise ValueError(f"span must be a positive number of seconds, got {self.span}")
         if self.tempo is None and self.bars is None:
             raise ValueError("a tempo reference needs either a tempo, or bars over a span")
+        if self.tempo is not None and self.bars is not None:
+            self._check_consistent()
+
+    def _check_consistent(self) -> None:
+        # Raises rather than warns. A reference whose two halves disagree has
+        # not said what tempo to expect, and the one fault this whole check
+        # exists for is a factor of two -- exactly what a half-time marking next
+        # to a full-time bar count looks like. Letting the tempo win with a
+        # warning would have the verdict decided by whichever half happened to
+        # be stated first, in the one class that already raises on an unknown
+        # key so that nothing in a sidecar is dropped without a word. The fix
+        # is one edit to a file the user wrote; a quiet wrong verdict is not.
+        # Within the tolerance the tempo still wins, since a span read off a
+        # waveform is the looser of the two.
+        metre = self.metre
+        counted = self.bars * metre * 60.0 / self.span
+        if abs(counted / self.tempo - 1.0) <= TEMPO_RATIO_TOLERANCE:
+            return
+        hint = (
+            ""
+            if self.beats_per_bar is not None
+            else f"; give beats_per_bar if the tune is not in {DEFAULT_METRE}"
+        )
+        raise ValueError(
+            f"tempo {self.tempo:g} bpm contradicts {self.bars} bars over {self.span:g} s, "
+            f"which is {counted:.1f} bpm at {metre} beats to the bar{hint}"
+        )
+
+    @property
+    def metre(self) -> int:
+        """The stated metre, or :data:`DEFAULT_METRE` when none was given."""
+        return DEFAULT_METRE if self.beats_per_bar is None else self.beats_per_bar
 
     @property
     def expected_tempo(self) -> float:
-        """The reference tempo in bpm, however it was supplied."""
+        """The reference tempo in bpm, in its own metre, however it was supplied."""
+        return self.tempo_in(self.metre)
+
+    def tempo_in(self, beats_per_bar: int) -> float:
+        """The reference tempo counted at ``beats_per_bar`` beats to its bars.
+
+        What a grid in that metre would have to read to share the reference's
+        bar lines. An explicit tempo with no stated metre is taken to be in the
+        metre asked for, having no bar lines of its own to keep.
+        """
         if self.tempo is not None:
-            return self.tempo
+            if self.beats_per_bar is None:
+                return self.tempo
+            return self.tempo * beats_per_bar / self.beats_per_bar
         # A mean over the span, which is all a form-level bar count can say: it
         # is deliberately not asked to follow the band within the span.
-        return self.bars * self.beats_per_bar * 60.0 / self.span
+        return self.bars * beats_per_bar * 60.0 / self.span
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, object]) -> TempoReference:
@@ -147,14 +247,15 @@ class TempoReference:
             named = ", ".join(repr(name) for name in unknown)
             noun = "key" if len(unknown) == 1 else "keys"
             raise ValueError(f"unknown tempo reference {noun} {named}, expected {sorted(known)}")
-        tempo = values.get("tempo")
-        bars = values.get("bars")
-        span = values.get("span")
+        # Each value coerced and checked here, so a wrong type is a ValueError
+        # naming its key rather than a TypeError from deep inside int(), and a
+        # fractional count is refused rather than truncated. ``null`` means
+        # absent for every key alike.
         return cls(
-            tempo=None if tempo is None else float(tempo),
-            bars=None if bars is None else int(bars),
-            span=None if span is None else float(span),
-            beats_per_bar=int(values.get("beats_per_bar", DEFAULT_METRE)),
+            tempo=_coerce_number("tempo", values.get("tempo")),
+            bars=_coerce_count("bars", values.get("bars")),
+            span=_coerce_number("span", values.get("span")),
+            beats_per_bar=_coerce_count("beats_per_bar", values.get("beats_per_bar")),
         )
 
 
@@ -164,9 +265,28 @@ def load_tempo_reference(path: str | Path) -> TempoReference:
     A file beside the recording rather than anything read out of it: the whole
     point of the comparison is that the expectation comes from outside the
     audio, so a tracker's own output can never become its own reference.
+
+    Every way the file can be wrong raises :class:`ValueError` naming it, since
+    a sidecar is found by path and the path is what the user has to go and fix.
     """
-    with Path(path).open(encoding="utf-8") as handle:
-        return TempoReference.from_mapping(json.load(handle))
+    path = Path(path)
+    with path.open(encoding="utf-8") as handle:
+        try:
+            values = json.load(handle)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{path}: not valid JSON: {error}") from error
+    if not isinstance(values, Mapping):
+        raise ValueError(
+            f"{path}: a tempo reference is a JSON object, got {type(values).__name__} {values!r}"
+        )
+    try:
+        return TempoReference.from_mapping(values)
+    except ValueError as error:
+        raise ValueError(f"{path}: {error}") from error
+
+
+#: What a :class:`TempoCheck` found, as one value a caller can switch on.
+TempoVerdict = Literal["agrees", "octave error", "disagrees", "unmeasurable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,11 +296,27 @@ class TempoCheck:
     Carried on the grid so a caller or the eval harness reads the verdict
     instead of re-deriving it, and so the tracked tempo stays visible next to
     the tempo it disagreed with.
+
+    Both tempos are counted at ``beats_per_bar`` beats to the bar, so the
+    comparison is of bar lines: ``tracked`` is the grid's bar rate in that
+    metre, which is not :attr:`BeatGrid.tempo` when the grid was tracked in a
+    different one.
     """
 
     tracked: float
     reference: float
     tolerance: float = TEMPO_RATIO_TOLERANCE
+    beats_per_bar: int = DEFAULT_METRE
+
+    def __post_init__(self) -> None:
+        # nan fails every comparison, so it would never match anything and
+        # report an exact agreement as a disagreement; past the maximum, the
+        # 1x and octave windows overlap and one grid gets two verdicts.
+        if not 0.0 <= self.tolerance < MAX_TEMPO_RATIO_TOLERANCE:
+            raise ValueError(
+                f"tolerance must be at least 0 and below {MAX_TEMPO_RATIO_TOLERANCE:.4g}, "
+                f"where the windows around 1x and an octave would overlap; got {self.tolerance}"
+            )
 
     @property
     def ratio(self) -> float:
@@ -190,8 +326,22 @@ class TempoCheck:
         return self.tracked / self.reference
 
     @property
+    def measurable(self) -> bool:
+        """Whether there was a tempo to compare at all.
+
+        ``False`` for a grid with under two downbeats. Then :attr:`agrees` and
+        :attr:`is_octave_error` are both ``False`` too, which says nothing
+        against the grid: read this, or :attr:`verdict`, before reading those.
+        """
+        return not isnan(self.ratio)
+
+    @property
     def agrees(self) -> bool:
-        """Whether the grid is on the reference tempo, within tolerance."""
+        """Whether the grid is on the reference tempo, within tolerance.
+
+        ``False`` both when it disagrees and when it could not be measured;
+        :attr:`verdict` tells the two apart.
+        """
         return self._matches(1.0)
 
     @property
@@ -201,8 +351,19 @@ class TempoCheck:
 
     @property
     def is_octave_error(self) -> bool:
-        """Whether the grid is at twice or half the reference tempo."""
+        """Whether the grid is one of :data:`TEMPO_OCTAVE_FACTORS` off the reference."""
         return self.octave_factor is not None
+
+    @property
+    def verdict(self) -> TempoVerdict:
+        """The finding as one value, keeping "no tempo" apart from "wrong tempo"."""
+        if not self.measurable:
+            return "unmeasurable"
+        if self.agrees:
+            return "agrees"
+        if self.is_octave_error:
+            return "octave error"
+        return "disagrees"
 
     def _matches(self, factor: float) -> bool:
         ratio = self.ratio
@@ -233,7 +394,15 @@ class BeatGrid:
     #: Verdict from :func:`check_tempo` when the grid was built against a
     #: reference. ``None`` means nothing outside the audio was available to
     #: compare with, which is not the same as having agreed with it.
-    tempo_check: TempoCheck | None = None
+    #:
+    #: It describes the downbeats as they were when checked, and only their
+    #: tempo: construction refuses a verdict whose tracked tempo this grid's
+    #: own bar lines no longer give, so ``replace(grid, downbeats=...)`` either
+    #: keeps a verdict that is still true of it or raises until the verdict is
+    #: re-run or dropped with ``tempo_check=None``. Left out of equality and
+    #: hashing: two grids over the same bar lines are the same grid whether or
+    #: not anyone had a reference to hold one of them against.
+    tempo_check: TempoCheck | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if self.beats_per_bar < 1:
@@ -245,6 +414,16 @@ class BeatGrid:
             raise ValueError(f"downbeats must all be finite, got {self.downbeats}")
         if any(b <= a for a, b in zip(self.downbeats, self.downbeats[1:], strict=False)):
             raise ValueError("downbeats must be strictly ascending")
+        check = self.tempo_check
+        if check is not None:
+            # Compared exactly: check_tempo computed ``tracked`` with this same
+            # method, so the same bar lines give the same float, bit for bit.
+            own = self.tempo_in(check.beats_per_bar)
+            if not (own == check.tracked or (isnan(own) and isnan(check.tracked))):
+                raise ValueError(
+                    f"tempo_check is stale: it was made at {check.tracked:.1f} bpm, and these "
+                    f"downbeats give {own:.1f}. Re-run check_tempo, or pass tempo_check=None"
+                )
 
     @property
     def bars(self) -> int:
@@ -270,8 +449,16 @@ class BeatGrid:
     @property
     def tempo(self) -> float:
         """Implied beats per minute, or ``nan`` without a measurable bar."""
+        return self.tempo_in(self.beats_per_bar)
+
+    def tempo_in(self, beats_per_bar: int) -> float:
+        """Beats per minute if each bar held ``beats_per_bar`` beats.
+
+        The bar rate in another metre's units: how :func:`check_tempo` lays
+        these bar lines against a reference counted differently.
+        """
         length = self.bar_length
-        return nan if isnan(length) or length <= 0 else self.beats_per_bar * 60.0 / length
+        return nan if isnan(length) or length <= 0 else beats_per_bar * 60.0 / length
 
     @property
     def is_plausible(self) -> bool:
@@ -350,10 +537,34 @@ def check_tempo(
     raising would reject a legitimately fast take on one number. Correcting the
     grid would be worse than either: a grid bent to match the reference it is
     supposed to be measured against has stopped being a measurement.
+
+    Compares bar lines, not beats: both tempos are counted in the reference's
+    metre (the grid's, if the reference states none). madmom only chooses
+    between 3 and 4, so a 6/8 chart comes back in 3 on the very same bar lines
+    at half the beat rate -- a beat comparison would call that an octave error
+    on a grid that is exactly right. What the reference is brought in to catch
+    is an octave of the *bars*, and that is what this measures.
     """
-    check = TempoCheck(tracked=grid.tempo, reference=reference.expected_tempo, tolerance=tolerance)
-    factor = check.octave_factor
-    if factor is not None:
+    metre = grid.beats_per_bar if reference.beats_per_bar is None else reference.beats_per_bar
+    check = TempoCheck(
+        tracked=grid.tempo_in(metre),
+        reference=reference.tempo_in(metre),
+        tolerance=tolerance,
+        beats_per_bar=metre,
+    )
+    verdict = check.verdict
+    if verdict != "unmeasurable" and metre != grid.beats_per_bar:
+        log.info(
+            "grid tracked in %d, reference in %d: comparing bar lines, which reads the "
+            "grid's %.1f bpm as %.1f bpm in %d",
+            grid.beats_per_bar,
+            metre,
+            grid.tempo,
+            check.tracked,
+            metre,
+        )
+    if verdict == "octave error":
+        factor = check.octave_factor
         log.warning(
             "tracked tempo %.1f bpm is %.3gx the reference %.1f bpm: a tempo octave error, "
             "so the grid's %d bars are %s the form's. Reported, not corrected",
@@ -361,17 +572,20 @@ def check_tempo(
             factor,
             check.reference,
             grid.bars,
-            "twice" if factor > 1.0 else "half",
+            _OCTAVE_WORDS[factor],
         )
-    elif isnan(check.ratio):
+    elif verdict == "unmeasurable":
         log.debug("no measurable tempo to compare against the %.1f bpm reference", check.reference)
-    elif not check.agrees:
+    elif verdict == "disagrees":
+        # Names what was ruled out rather than "not an octave error": only the
+        # listed octaves are tested, and a ratio past them is not cleared.
         log.warning(
             "tracked tempo %.1f bpm disagrees with the reference %.1f bpm (%.2fx), "
-            "which is not a half- or double-tempo lock",
+            "which is none of the octave locks checked for (%s)",
             check.tracked,
             check.reference,
             check.ratio,
+            ", ".join(f"{f:g}x" for f in sorted(TEMPO_OCTAVE_FACTORS)),
         )
     return check
 
