@@ -526,8 +526,7 @@ def grid(
     """Collapse a tracked beat timeline to its bar lines.
 
     ``beats_per_bar`` is inferred from the highest position seen when not
-    given -- the tracker already decided the metre, and re-deriving it from
-    beat spacing would only disagree with it.
+    given: the tracker already decided the metre.
 
     A ``reference`` is checked by :func:`check_tempo` into ``tempo_check``.
     """
