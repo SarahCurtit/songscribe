@@ -118,13 +118,9 @@ class Registry:
     def check_options(self, backend: str, options: Iterable[str] | Mapping[str, object]) -> None:
         """Reject settings ``backend`` has no parameter for, or a value it can't use.
 
-        The same rule as :meth:`check_backend`, one level down: a misspelled
-        setting that is quietly dropped is indistinguishable from a model that
-        ignored it, which is how a metre setting went unnoticed on the default
-        beat backend. Raised here rather than in each backend so there is one
-        error path; the values, when given as a mapping, are checked against
-        :attr:`rules` on it for the same reason -- before dispatch, before any
-        model import, always a ValueError.
+        One error path, before dispatch: a misspelled setting that is quietly
+        dropped looks like a model that ignored it. Values are checked against
+        :attr:`rules` when ``options`` is a mapping; faults are ValueError.
         """
         # Asked first, and of every backend: a catch-all is exempt from the list
         # of accepted names, not from `options`' own rule that each declared

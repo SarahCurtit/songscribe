@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from numbers import Integral
 
 import numpy as np
 
@@ -139,16 +140,22 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
-def _whole_positive(value: object, unit: str) -> str | None:
+def _whole_at_least(value: object, unit: str, floor: int) -> str | None:
     # bool is an int to Python, and a fractional frame count is refused rather
-    # than rounded, since either rounding would be a guess. The same test
-    # beats.TempoReference applies to its counts, written out again here so
-    # the chord branch does not import from the beat one.
-    if isinstance(value, bool) or not isinstance(value, int):
+    # than rounded, since either rounding would be a guess. Integral rather
+    # than int, so np.int64 passes: librosa and _smooth_labels both take it,
+    # and refusing it would break a call that worked before these rules. The
+    # same test beats.TempoReference applies to its counts, written out again
+    # here so the chord branch does not import from the beat one.
+    if isinstance(value, bool) or not isinstance(value, Integral):
         return f"must be a whole number of {unit}, got {value!r}"
-    if value < 1:
-        return f"must be at least 1, got {value!r}"
+    if value < floor:
+        return f"must be at least {floor}, got {value!r}"
     return None
+
+
+def _whole_positive(value: object, unit: str) -> str | None:
+    return _whole_at_least(value, unit, 1)
 
 
 #: Rules for each backend's setting values, by backend and setting name. A
@@ -164,9 +171,10 @@ def _whole_positive(value: object, unit: str) -> str | None:
 SETTING_RULES: dict[str, dict[str, SettingRule]] = {
     "template": {
         "hop_length": lambda value: _whole_positive(value, "samples"),
-        # 1 is the floor and already means "no smoothing": a window of one
-        # frame votes only for itself.
-        "smoothing": lambda value: _whole_positive(value, "frames"),
+        # 0 is allowed, unlike the hop: _smooth_labels treats any width up to 1
+        # as "off" (a one-frame window votes only for itself), and 0 was the
+        # way to say off before these rules existed. Below 0 means nothing.
+        "smoothing": lambda value: _whole_at_least(value, "frames", 0),
     },
 }
 

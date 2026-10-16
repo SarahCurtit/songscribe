@@ -265,6 +265,18 @@ class TestTempoReference:
         with pytest.raises(ValueError, match="beats_per_bar"):
             beats.TempoReference(tempo=BALLAD_BPM, beats_per_bar=0)
 
+    def test_numpy_counts_are_counts(self):
+        # A bar count read off an array is as whole as a Python int.
+        reference = beats.TempoReference(bars=np.int64(32), span=160.0, beats_per_bar=np.int32(4))
+        assert reference.expected_tempo == pytest.approx(48.0)
+
+    @pytest.mark.parametrize("flag", [True, np.bool_(True)], ids=repr)
+    def test_a_bool_is_not_a_count(self, flag):
+        with pytest.raises(ValueError, match="bars must be a whole number"):
+            beats.TempoReference(bars=flag, span=160.0)
+        with pytest.raises(ValueError, match="beats_per_bar must be a whole number"):
+            beats.TempoReference(tempo=BALLAD_BPM, beats_per_bar=flag)
+
 
 class TestLoadingATempoReference:
     def test_builds_from_a_mapping_either_way(self):
@@ -976,16 +988,61 @@ class TestBackendSettingValues:
             f"setting 'beats_per_bar' for beat backend {backend!r} {fault}"
         )
 
-    @pytest.mark.parametrize("candidates", [[3, 0], (4, -4), [True, 4], (3, 4.0)])
-    def test_every_madmom_candidate_must_be_a_metre(self, candidates):
-        with pytest.raises(ValueError, match="must list metres that are each a whole number"):
+    @pytest.mark.parametrize(
+        ("candidates", "named"),
+        [
+            ([3, 0], "candidate 0 at position 1"),
+            ((4, -4), "candidate -4 at position 1"),
+            ([True, 4], "candidate True at position 0"),
+            ((3, 4.0), "candidate 4.0 at position 1"),
+            (np.array([3.0, 4.0]), "candidate np.float64(3.0) at position 0"),
+            (np.array([4, 0]), "candidate np.int64(0) at position 1"),
+            (np.array([True, False]), "candidate np.True_ at position 0"),
+        ],
+    )
+    def test_every_madmom_candidate_must_be_a_metre(self, candidates, named):
+        # The bad entry is named on its own rather than the list reprinted, so
+        # a long candidate list does not leave the caller hunting for it.
+        with pytest.raises(ValueError) as excinfo:
             beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=candidates)
+        assert str(excinfo.value) == (
+            "setting 'beats_per_bar' for beat backend 'madmom' must list metres that are "
+            f"each a whole number of at least 1, but {named} is not"
+        )
 
-    def test_madmom_needs_a_candidate_to_choose(self):
-        with pytest.raises(ValueError, match="at least one metre to choose between"):
-            beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=[])
+    @pytest.mark.parametrize(
+        ("empty", "kind"),
+        [([], "list"), ((), "tuple"), (np.array([], dtype=int), "array")],
+    )
+    def test_madmom_needs_a_candidate_to_choose(self, empty, kind):
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=empty)
+        assert str(excinfo.value).endswith(
+            f"must name at least one metre to choose between, got an empty {kind}"
+        )
 
-    @pytest.mark.parametrize("hop", [0, -512, 512.0, True])
+    def test_madmom_refuses_a_table_of_metres(self):
+        with pytest.raises(ValueError, match="must be a flat list of metres, got a 2-D array"):
+            beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=np.array([[3, 4]]))
+
+    @pytest.mark.parametrize("backend", ["madmom", "librosa"])
+    @pytest.mark.parametrize("metre", [b"34", bytearray(b"34"), memoryview(b"34")])
+    def test_bytes_are_not_a_list_of_metres(self, backend, metre):
+        # b"34" iterates to 51 and 52, which madmom would have tracked as two
+        # metres; refused as one bad value, the same way "34" is.
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 44_100, backend=backend, beats_per_bar=metre)
+        assert str(excinfo.value) == (
+            f"setting 'beats_per_bar' for beat backend {backend!r} must be a whole number "
+            f"of beats to the bar, got {metre!r}"
+        )
+
+    def test_a_metre_array_on_librosa_is_told_it_must_be_one_metre(self):
+        with pytest.raises(ValueError) as excinfo:
+            beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=np.array([3, 4]))
+        assert "must be one metre, got array([3, 4]): this backend assumes" in str(excinfo.value)
+
+    @pytest.mark.parametrize("hop", [0, -512, 512.0, True, np.float64(512.0)])
     def test_a_hop_that_is_not_a_positive_whole_number_is_refused(self, hop):
         with pytest.raises(ValueError) as excinfo:
             beats.track(self.AUDIO, 22_050, backend="librosa", hop_length=hop)
@@ -1001,10 +1058,40 @@ class TestBackendSettingValues:
         assert beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=metre) == []
         assert seen["beats_per_bar"] is metre
 
+    @pytest.mark.parametrize(
+        "metre",
+        [
+            np.int64(3),
+            np.array([3, 4]),
+            np.array([7], dtype=np.int32),
+            [np.int64(3), np.int64(4)],
+        ],
+        ids=repr,
+    )
+    def test_madmom_takes_numpy_metres(self, monkeypatch, metre):
+        # The DBN reads its metre with np.array(ndmin=1), so an array is as
+        # native to it as a list; NumPy integers worked before the value rules.
+        seen = _capture(monkeypatch, "madmom")
+        assert beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=metre) == []
+        assert seen["beats_per_bar"] is metre
+
     def test_valid_librosa_settings_reach_the_backend(self, monkeypatch):
         seen = _capture(monkeypatch, "librosa")
         beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=3, hop_length=256)
         assert seen == {"beats_per_bar": 3, "hop_length": 256}
+
+    def test_numpy_integers_reach_librosa(self, monkeypatch):
+        seen = _capture(monkeypatch, "librosa")
+        metre, hop = np.int64(3), np.int32(256)
+        beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=metre, hop_length=hop)
+        assert seen["beats_per_bar"] is metre
+        assert seen["hop_length"] is hop
+
+    @pytest.mark.parametrize("backend", ["madmom", "librosa"])
+    @pytest.mark.parametrize("flag", [True, np.bool_(True)], ids=repr)
+    def test_a_bool_is_still_not_a_metre(self, backend, flag):
+        with pytest.raises(ValueError, match="must be a whole number of beats to the bar"):
+            beats.track(self.AUDIO, 44_100, backend=backend, beats_per_bar=flag)
 
     def test_every_rule_guards_a_setting_its_backend_declares(self):
         # A renamed parameter must not leave its rule guarding a name nothing

@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
 from itertools import pairwise
 from math import isfinite, isnan, nan
+from numbers import Integral
 from pathlib import Path
 from statistics import median
 from typing import Literal
@@ -104,7 +105,10 @@ def _coerce_count(key: str, value: object) -> int | None:
 
 
 def _is_count(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+    # Integral rather than int, so a metre read off a NumPy array (np.int64(3))
+    # counts: it is exactly as whole as a Python 3, and every consumer here does
+    # plain arithmetic with it. bool is Integral too, and `True` is not a count.
+    return isinstance(value, Integral) and not isinstance(value, bool)
 
 
 # --------------------------------------------------------------------------- #
@@ -633,7 +637,8 @@ BACKEND_SAMPLE_RATES = {
 def _whole_positive(value: object, unit: str) -> str | None:
     # The same test TempoReference applies to its counts, `True` and 3.5
     # included: bool is an int to Python, and a fractional metre or hop is not
-    # rounded here, because whichever way it went would be a guess.
+    # rounded here, because whichever way it went would be a guess. NumPy
+    # integers pass, as they did before these rules existed.
     if not _is_count(value):
         return f"must be a whole number of {unit}, got {value!r}"
     if value < 1:
@@ -641,8 +646,26 @@ def _whole_positive(value: object, unit: str) -> str | None:
     return None
 
 
+#: Sequences of characters or bytes, never of metres. "34" would read as the
+#: metres '3' and '4', and b"34" iterates to the ints 51 and 52 -- which
+#: madmom would accept and track as two absurd metres.
+_TEXT_TYPES = (str, bytes, bytearray, memoryview)
+
+
+def _is_candidate_list(value: object) -> bool:
+    """Whether ``value`` is shaped like a list of metres rather than one metre.
+
+    An ndarray is not a :class:`~collections.abc.Sequence`, but madmom's DBN
+    reads its metre setting with ``np.array(ndmin=1)``, so an array of metres is
+    as much its native form as a list. A 0-d array is one value, not a list.
+    """
+    if isinstance(value, np.ndarray):
+        return value.ndim >= 1
+    return isinstance(value, Sequence) and not isinstance(value, _TEXT_TYPES)
+
+
 def _one_metre(value: object) -> str | None:
-    if isinstance(value, Sequence) and not isinstance(value, str):
+    if _is_candidate_list(value):
         # The swap a caller makes to run without weights: madmom's candidate
         # list carried over to a backend that divides by the metre.
         return (
@@ -653,13 +676,21 @@ def _one_metre(value: object) -> str | None:
 
 
 def _metre_or_candidates(value: object) -> str | None:
-    # A str is a Sequence too, and "34" would read as the metres '3' and '4'.
-    if not isinstance(value, Sequence) or isinstance(value, str):
+    if not _is_candidate_list(value):
         return _whole_positive(value, "beats to the bar")
-    if not value:
-        return "must name at least one metre to choose between, got an empty list"
-    if any(_whole_positive(metre, "beats to the bar") for metre in value):
-        return f"must list metres that are each a whole number of at least 1, got {value!r}"
+    if isinstance(value, np.ndarray) and value.ndim > 1:
+        return f"must be a flat list of metres, got a {value.ndim}-D array"
+    if len(value) == 0:
+        kind = "array" if isinstance(value, np.ndarray) else type(value).__name__
+        return f"must name at least one metre to choose between, got an empty {kind}"
+    for position, metre in enumerate(value):
+        # Named singly: in a long candidate list, reprinting the whole of it
+        # leaves the caller to find the bad entry themselves.
+        if _whole_positive(metre, "beats to the bar") is not None:
+            return (
+                "must list metres that are each a whole number of at least 1, "
+                f"but candidate {metre!r} at position {position} is not"
+            )
     return None
 
 

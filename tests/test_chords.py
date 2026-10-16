@@ -240,30 +240,31 @@ class TestBackendSettings:
 class TestBackendSettingValues:
     AUDIO = np.zeros(10, dtype=np.float32)
 
-    @pytest.mark.parametrize("setting", ["hop_length", "smoothing"])
     @pytest.mark.parametrize(
-        ("value", "fault"),
+        ("setting", "value", "fault"),
         [
-            (0, "must be at least 1, got 0"),
-            (-4, "must be at least 1, got -4"),
-            (True, "must be a whole number of {unit}, got True"),
-            (2.5, "must be a whole number of {unit}, got 2.5"),
-            ("9", "must be a whole number of {unit}, got '9'"),
+            ("hop_length", 0, "must be at least 1, got 0"),
+            ("hop_length", -4, "must be at least 1, got -4"),
+            ("smoothing", -4, "must be at least 0, got -4"),
+            ("smoothing", np.int64(-1), "must be at least 0, got np.int64(-1)"),
+        ]
+        + [
+            (setting, value, f"must be a whole number of {unit}, got {value!r}")
+            for setting, unit in [("hop_length", "samples"), ("smoothing", "frames")]
+            for value in [True, False, 2.5, "9", np.float64(9.0), np.bool_(True)]
         ],
     )
-    def test_a_template_setting_that_is_not_a_positive_whole_number_is_refused(
+    def test_a_template_setting_that_is_not_a_whole_number_in_range_is_refused(
         self, setting, value, fault
     ):
         # A caller fault, so ValueError, raised at the registry before librosa
         # is imported, naming the setting, the backend and what was wrong.
-        unit = {"hop_length": "samples", "smoothing": "frames"}[setting]
         with pytest.raises(ValueError) as excinfo:
             recognise(self.AUDIO, 22_050, backend="template", **{setting: value})
-        assert str(excinfo.value) == (
-            f"setting {setting!r} for chord backend 'template' {fault.format(unit=unit)}"
-        )
+        assert str(excinfo.value) == f"setting {setting!r} for chord backend 'template' {fault}"
 
-    def test_valid_template_settings_reach_the_backend(self, monkeypatch):
+    @staticmethod
+    def _capture(monkeypatch):
         seen = {}
 
         def fake(audio, sample_rate, hop_length=2048, smoothing=9):
@@ -273,8 +274,34 @@ class TestBackendSettingValues:
         # Replacing the function keeps the template's rules, which are keyed by
         # backend name, so this checks the rules let a good value through.
         monkeypatch.setitem(chords.BACKENDS, "template", fake)
+        return seen
+
+    def test_valid_template_settings_reach_the_backend(self, monkeypatch):
+        seen = self._capture(monkeypatch)
         recognise(self.AUDIO, 22_050, backend="template", hop_length=1024, smoothing=1)
         assert seen == {"hop_length": 1024, "smoothing": 1}
+
+    def test_smoothing_zero_still_turns_smoothing_off(self, monkeypatch):
+        # 0 meant "off" to _smooth_labels before the value rules existed, and
+        # still must: only the hop has to be at least 1.
+        seen = self._capture(monkeypatch)
+        recognise(self.AUDIO, 22_050, backend="template", smoothing=0)
+        assert seen["smoothing"] == 0
+        flicker = np.array([0, 1, 0, 1, 0])
+        np.testing.assert_array_equal(_smooth_labels(flicker, 0), flicker)
+
+    def test_numpy_integers_reach_the_backend(self, monkeypatch):
+        # Accepted before the value rules existed, and by librosa and
+        # _smooth_labels alike; passed through as given, not converted.
+        seen = self._capture(monkeypatch)
+        hop, width = np.int64(2048), np.int32(9)
+        recognise(self.AUDIO, 22_050, backend="template", hop_length=hop, smoothing=width)
+        assert seen["hop_length"] is hop
+        assert seen["smoothing"] is width
+
+    def test_smooth_labels_takes_a_numpy_width(self):
+        flicker = np.array([0, 0, 0, 1, 0, 0, 0])
+        np.testing.assert_array_equal(_smooth_labels(flicker, np.int64(3)), np.zeros(7))
 
     def test_every_rule_guards_a_setting_its_backend_declares(self):
         # A renamed parameter must not leave its rule guarding a name nothing
