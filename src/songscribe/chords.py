@@ -141,12 +141,7 @@ BACKEND_SAMPLE_RATES = {
 
 
 def _whole_at_least(value: object, unit: str, floor: int) -> str | None:
-    # bool is an int to Python, and a fractional frame count is refused rather
-    # than rounded, since either rounding would be a guess. Integral rather
-    # than int, so np.int64 passes: librosa and _smooth_labels both take it,
-    # and refusing it would break a call that worked before these rules. The
-    # same test beats.TempoReference applies to its counts, written out again
-    # here so the chord branch does not import from the beat one.
+    # Integral so np.int64 passes. A fractional count is refused, not rounded.
     if isinstance(value, bool) or not isinstance(value, Integral):
         return f"must be a whole number of {unit}, got {value!r}"
     if value < floor:
@@ -158,22 +153,11 @@ def _whole_positive(value: object, unit: str) -> str | None:
     return _whole_at_least(value, unit, 1)
 
 
-#: Rules for each backend's setting values, by backend and setting name. A
-#: setting with no rule here is passed through unchecked.
-#:
-#: Kept beside the registry rather than inside each backend, so a bad value is
-#: refused on the same path, at the same moment, as a bad name: before
-#: dispatch, before any model import, with one ValueError shape. Checking in
-#: the backend would put the rule next to the code that reads the value, but
-#: it would make two places a setting can be refused, and the second sits past
-#: the heavy import. The cost is that a rule and the parameter it guards are
-#: written apart; a test holds every rule to a setting its backend declares.
+# Checked in the registry so a bad value fails before dispatch and before any model import.
 SETTING_RULES: dict[str, dict[str, SettingRule]] = {
     "template": {
         "hop_length": lambda value: _whole_positive(value, "samples"),
-        # 0 is allowed, unlike the hop: _smooth_labels treats any width up to 1
-        # as "off" (a one-frame window votes only for itself), and 0 was the
-        # way to say off before these rules existed. Below 0 means nothing.
+        # 0 is allowed: _smooth_labels treats any width up to 1 as "off".
         "smoothing": lambda value: _whole_at_least(value, "frames", 0),
     },
 }

@@ -20,10 +20,8 @@ _KEYWORD_KINDS = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEY
 #: declared setting be optional does not apply to them.
 _VARIADIC_KINDS = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
 
-#: A value rule: given a setting's value, what is wrong with it, or ``None``.
-#: It returns the fault rather than raising it, so the registry owns the
-#: message's shape -- which setting, which backend -- and its type: always
-#: ValueError, the caller-fault type, never a TypeError a CLI would miss.
+#: A value rule: returns what is wrong with a setting's value, or None.
+#: The registry builds the ValueError.
 SettingRule = Callable[[object], str | None]
 
 

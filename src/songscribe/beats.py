@@ -105,9 +105,7 @@ def _coerce_count(key: str, value: object) -> int | None:
 
 
 def _is_count(value: object) -> bool:
-    # Integral rather than int, so a metre read off a NumPy array (np.int64(3))
-    # counts: it is exactly as whole as a Python 3, and every consumer here does
-    # plain arithmetic with it. bool is Integral too, and `True` is not a count.
+    # Integral, not int, so np.int64(3) counts; bool is Integral too and is not a count.
     return isinstance(value, Integral) and not isinstance(value, bool)
 
 
@@ -635,10 +633,7 @@ BACKEND_SAMPLE_RATES = {
 
 
 def _whole_positive(value: object, unit: str) -> str | None:
-    # The same test TempoReference applies to its counts, `True` and 3.5
-    # included: bool is an int to Python, and a fractional metre or hop is not
-    # rounded here, because whichever way it went would be a guess. NumPy
-    # integers pass, as they did before these rules existed.
+    # A fractional count is refused, not rounded: either way would be a guess.
     if not _is_count(value):
         return f"must be a whole number of {unit}, got {value!r}"
     if value < 1:
@@ -646,9 +641,7 @@ def _whole_positive(value: object, unit: str) -> str | None:
     return None
 
 
-#: Sequences of characters or bytes, never of metres. "34" would read as the
-#: metres '3' and '4', and b"34" iterates to the ints 51 and 52 -- which
-#: madmom would accept and track as two absurd metres.
+#: Text is not a list of metres: "34" and b"34" would be read as two bad metres.
 _TEXT_TYPES = (str, bytes, bytearray, memoryview)
 
 
@@ -666,8 +659,7 @@ def _is_candidate_list(value: object) -> bool:
 
 def _one_metre(value: object) -> str | None:
     if _is_candidate_list(value):
-        # The swap a caller makes to run without weights: madmom's candidate
-        # list carried over to a backend that divides by the metre.
+        # A candidate list is madmom's form; this backend needs a single metre.
         return (
             f"must be one metre, got {value!r}: this backend assumes the metre rather "
             "than detecting it, so it cannot choose between several"
@@ -684,8 +676,7 @@ def _metre_or_candidates(value: object) -> str | None:
         kind = "array" if isinstance(value, np.ndarray) else type(value).__name__
         return f"must name at least one metre to choose between, got an empty {kind}"
     for position, metre in enumerate(value):
-        # Named singly: in a long candidate list, reprinting the whole of it
-        # leaves the caller to find the bad entry themselves.
+        # Name the bad entry alone; reprinting a long list hides it.
         if _whole_positive(metre, "beats to the bar") is not None:
             return (
                 "must list metres that are each a whole number of at least 1, "
@@ -694,16 +685,7 @@ def _metre_or_candidates(value: object) -> str | None:
     return None
 
 
-#: Rules for each backend's setting values, by backend and setting name. A
-#: setting with no rule here is passed through unchecked.
-#:
-#: Kept beside the registry rather than inside each backend, so a bad value is
-#: refused on the same path, at the same moment, as a bad name: before
-#: dispatch, before any model import, with one ValueError shape. Checking in
-#: the backend would put the rule next to the code that reads the value, but
-#: it would make two places a setting can be refused, and the second sits past
-#: the heavy import. The cost is that a rule and the parameter it guards are
-#: written apart; a test holds every rule to a setting its backend declares.
+# Checked in the registry so a bad value fails before dispatch and before any model import.
 SETTING_RULES: dict[str, dict[str, SettingRule]] = {
     "madmom": {"beats_per_bar": _metre_or_candidates},
     "librosa": {

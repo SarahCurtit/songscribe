@@ -271,8 +271,7 @@ class TestBackendSettingValues:
             seen.update(hop_length=hop_length, smoothing=smoothing)
             return []
 
-        # Replacing the function keeps the template's rules, which are keyed by
-        # backend name, so this checks the rules let a good value through.
+        # Rules are keyed by backend name, so they still apply to the fake.
         monkeypatch.setitem(chords.BACKENDS, "template", fake)
         return seen
 
@@ -282,8 +281,7 @@ class TestBackendSettingValues:
         assert seen == {"hop_length": 1024, "smoothing": 1}
 
     def test_smoothing_zero_still_turns_smoothing_off(self, monkeypatch):
-        # 0 meant "off" to _smooth_labels before the value rules existed, and
-        # still must: only the hop has to be at least 1.
+        # 0 means "off" to _smooth_labels; only the hop has to be at least 1.
         seen = self._capture(monkeypatch)
         recognise(self.AUDIO, 22_050, backend="template", smoothing=0)
         assert seen["smoothing"] == 0
@@ -291,8 +289,7 @@ class TestBackendSettingValues:
         np.testing.assert_array_equal(_smooth_labels(flicker, 0), flicker)
 
     def test_numpy_integers_reach_the_backend(self, monkeypatch):
-        # Accepted before the value rules existed, and by librosa and
-        # _smooth_labels alike; passed through as given, not converted.
+        # NumPy integers pass the rules and reach the backend as given, not converted.
         seen = self._capture(monkeypatch)
         hop, width = np.int64(2048), np.int32(9)
         recognise(self.AUDIO, 22_050, backend="template", hop_length=hop, smoothing=width)
@@ -304,8 +301,7 @@ class TestBackendSettingValues:
         np.testing.assert_array_equal(_smooth_labels(flicker, np.int64(3)), np.zeros(7))
 
     def test_every_rule_guards_a_setting_its_backend_declares(self):
-        # A renamed parameter must not leave its rule guarding a name nothing
-        # can pass any more, while the new name goes unchecked.
+        # A renamed parameter must not leave its rule on a dead name.
         for backend, rules in chords.SETTING_RULES.items():
             assert set(rules) <= backend_options(backend), backend
 

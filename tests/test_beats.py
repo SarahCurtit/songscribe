@@ -906,9 +906,7 @@ class TestBackendSettings:
             beats.backend_options(backend)
 
     def test_track_rejects_an_unknown_setting(self):
-        # `candidates` was madmom's own name for the metre until it was renamed
-        # to match librosa's, so it is exactly the stale setting a config can
-        # still carry -- and the error has to point at the name that replaced it.
+        # The error for a stale name (`candidates`) must point at `beats_per_bar`.
         with pytest.raises(ValueError) as excinfo:
             beats.track(np.zeros(10, dtype=np.float32), 44_100, backend="madmom", candidates=(3,))
         message = str(excinfo.value)
@@ -956,9 +954,7 @@ class TestBackendSettingValues:
     AUDIO = np.zeros(10, dtype=np.float32)
 
     def test_a_metre_list_on_librosa_is_refused_as_a_caller_fault(self):
-        # madmom's candidate list carried over to the weightless backend: it
-        # clears the name check and used to die on a TypeError inside librosa,
-        # which a CLI catching ValueError would not have caught.
+        # A candidate list is refused as a ValueError, which a CLI catches, not a TypeError.
         with pytest.raises(ValueError) as excinfo:
             beats.track(self.AUDIO, 22_050, backend="librosa", beats_per_bar=(3, 4))
         message = str(excinfo.value)
@@ -979,9 +975,7 @@ class TestBackendSettingValues:
         ],
     )
     def test_a_metre_that_is_not_a_positive_whole_number_is_refused(self, backend, metre, fault):
-        # Zero divided inside librosa; minus four raised nothing and produced
-        # negative positions the grid read as a one-beat bar. Checked at the
-        # registry, so the madmom case runs with no weights and the wrong rate.
+        # Checked at the registry, so the madmom case runs with no weights.
         with pytest.raises(ValueError) as excinfo:
             beats.track(self.AUDIO, 8_000, backend=backend, beats_per_bar=metre)
         assert str(excinfo.value) == (
@@ -1070,7 +1064,7 @@ class TestBackendSettingValues:
     )
     def test_madmom_takes_numpy_metres(self, monkeypatch, metre):
         # The DBN reads its metre with np.array(ndmin=1), so an array is as
-        # native to it as a list; NumPy integers worked before the value rules.
+        # native to it as a list; NumPy integers are accepted too.
         seen = _capture(monkeypatch, "madmom")
         assert beats.track(self.AUDIO, 44_100, backend="madmom", beats_per_bar=metre) == []
         assert seen["beats_per_bar"] is metre
@@ -1094,9 +1088,7 @@ class TestBackendSettingValues:
             beats.track(self.AUDIO, 44_100, backend=backend, beats_per_bar=flag)
 
     def test_every_rule_guards_a_setting_its_backend_declares(self):
-        # A renamed parameter must not leave its rule guarding a name nothing
-        # can pass any more -- the name check would refuse it first, and the
-        # new name would go unchecked.
+        # A renamed parameter must not leave its rule on a dead name.
         for backend, rules in beats.SETTING_RULES.items():
             assert set(rules) <= beats.backend_options(backend), backend
 
