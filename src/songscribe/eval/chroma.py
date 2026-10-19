@@ -2,9 +2,9 @@
 
 Self-similarity finds the harmonic period but never the phase, and a widened
 offset sweep finds spurious fits in repetitive changes. This slides the chart's
-per-bar pitch classes along the recording's bars instead, and says so when the
-fit is not clear. The audio is the evidence, never the estimate under test:
-anchoring on it would pick the start that flatters the model.
+per-bar pitch classes along the recording's bars instead, in each of the twelve
+keys, and says so when the fit is not clear. The audio is the evidence, never
+the estimate under test: anchoring on it would pick the start that flatters the model.
 """
 
 from __future__ import annotations
@@ -35,6 +35,14 @@ CHROMA_HOP_SECONDS = 0.023
 #: until measured on real recordings.
 ANCHOR_MIN_AGREEMENT = 0.50
 ANCHOR_MIN_MARGIN = 0.08
+#: Twelve keys are twelve chances to fit by luck: random 8-bar charts cleared 0.50
+#: 1.4% of the time against 0.2% in one key, and never cleared 0.65 (n=1500).
+ANCHOR_MIN_AGREEMENT_ANY_KEY = 0.65
+
+#: Keys a take may be in, as semitones up from the chart's: ``AS_WRITTEN`` is the
+#: strict search, ``ANY_KEY`` the twelve. Reported in -5..+6, a tone down being -2.
+AS_WRITTEN = (0,)
+ANY_KEY = tuple(range(-5, 7))
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -140,13 +148,35 @@ def bar_agreement(
     return np.divide(profiles @ wanted.T, norms, out=np.zeros_like(norms), where=norms > 1e-9)
 
 
+def keyed_agreement(
+    chroma: Chromagram,
+    downbeats: Sequence[float],
+    templates: Sequence[np.ndarray],
+    shifts: Sequence[int] = AS_WRITTEN,
+) -> dict[int, np.ndarray]:
+    """:func:`bar_agreement` with the chart moved up each of ``shifts`` semitones.
+
+    Moving the chart up is a circular rotation of its pitch classes; the
+    recording is untouched, so one standardisation serves every key.
+    """
+    rotated = [np.roll(np.asarray(t, dtype=float), shift) for shift in shifts for t in templates]
+    every = bar_agreement(chroma, downbeats, rotated)
+    size = len(templates)
+    return {shift: every[:, k * size : (k + 1) * size] for k, shift in enumerate(shifts)}
+
+
+def _agreement_gate(keys: int) -> float:
+    return ANCHOR_MIN_AGREEMENT if keys == 1 else ANCHOR_MIN_AGREEMENT_ANY_KEY
+
+
 @dataclass(frozen=True, slots=True)
 class Anchor:
     """The downbeat the chart's first bar sits on, and how clearly it was found.
 
-    ``mean_agreement`` is the fit of the one chorus starting at ``bar_index``,
-    ``runner_up`` the best fit of any chorus starting on a different phase of
-    the form, and ``margin`` the gap between them.
+    ``mean_agreement`` is the fit of the one chorus starting at ``bar_index``
+    with the chart ``shift`` semitones up, ``runner_up`` the best fit of any
+    rival (another phase of the form in any key, or this start in another key),
+    and ``margin`` the gap between them.
     """
 
     bar_index: int
@@ -154,17 +184,25 @@ class Anchor:
     mean_agreement: float
     runner_up: float
     margin: float
+    shift: int = 0
+    #: How many keys were searched; more than one raises the agreement gate.
+    keys: int = 1
 
     def refusal(
-        self, min_agreement: float = ANCHOR_MIN_AGREEMENT, min_margin: float = ANCHOR_MIN_MARGIN
+        self, min_agreement: float | None = None, min_margin: float = ANCHOR_MIN_MARGIN
     ) -> str | None:
         """Why this start should not be trusted, or ``None`` if it can be."""
+        if min_agreement is None:
+            min_agreement = _agreement_gate(self.keys)
         if isnan(self.margin):
             return "only one candidate phase, so there is nothing to tell it from"
         if self.mean_agreement < min_agreement:
             return f"agreement {self.mean_agreement:.2f} under {min_agreement:.2f}"
         if self.margin < min_margin:
-            return f"margin {self.margin:.2f} under {min_margin:.2f}: another bar fits as well"
+            return (
+                f"margin {self.margin:.2f} under {min_margin:.2f}: "
+                "another start or key fits as well"
+            )
         return None
 
     @property
@@ -178,44 +216,89 @@ def anchor_bar(
     templates: Sequence[np.ndarray],
     *,
     min_bars: int,
+    shifts: Sequence[int] = AS_WRITTEN,
 ) -> Anchor | None:
-    """Find which downbeat opens the chart, or ``None`` with nothing to fit.
+    """Find which downbeat opens the chart, and in which key, or ``None``.
 
-    Each candidate start is scored on its own chorus, so an intro of any length
-    or a soloist's different chorus costs nothing. The anchor is the first
-    start on the best phase whose chorus fits; a later repeat of that phase is
-    the same answer one chorus on. The form length is the chart's, never searched.
+    Each start is scored on its own chorus in each of ``shifts``, so an intro
+    or a soloist's different chorus costs nothing. The anchor is the first start
+    on the best phase that fits in some key. Rivals are every other phase in
+    every key and the chosen start in every other key, so more keys never make
+    a wrong chart look right. The form length is the chart's, never searched.
     """
     size = len(templates)
-    agreement = bar_agreement(chroma, downbeats, templates)
-    bars = agreement.shape[0]
+    by_shift = keyed_agreement(chroma, downbeats, templates, shifts)
+    bars = len(downbeats) - 1
     # A whole chorus is the evidence; a short block only when no whole one fits.
     need = size if bars >= size else min(min_bars, size)
     if size < 1 or bars < need:
         return None
 
-    def fit(first: int) -> float:
+    def fit(first: int, shift: int) -> float:
         rows = np.arange(first, min(first + size, bars))
-        return float(agreement[rows, rows - first].mean())
+        return float(by_shift[shift][rows, rows - first].mean())
 
     starts = range(bars - need + 1)
-    fits = {s: fit(s) for s in starts}
+    fits = {(s, k): fit(s, k) for s in starts for k in shifts}
     # Phase = position within the form; "mod size" groups the repeats of it.
     phase_best: dict[int, float] = {}
-    for s, value in fits.items():
+    for (s, _), value in fits.items():
         phase_best[s % size] = max(phase_best.get(s % size, -np.inf), value)
     best_phase = max(phase_best, key=lambda p: phase_best[p])
-    runner_up = max((v for p, v in phase_best.items() if p != best_phase), default=nan)
 
     on_phase = [s for s in starts if s % size == best_phase]
-    chosen = next((s for s in on_phase if fits[s] >= ANCHOR_MIN_AGREEMENT), None)
+    best_key = {s: max(shifts, key=lambda k: fits[(s, k)]) for s in on_phase}
+    gate = _agreement_gate(len(shifts))
+    chosen = next((s for s in on_phase if fits[(s, best_key[s])] >= gate), None)
     if chosen is None:
         # Not hidden: the refusal reports the best fit it found.
-        chosen = max(on_phase, key=lambda s: fits[s])
+        chosen = max(on_phase, key=lambda s: fits[(s, best_key[s])])
+    key = best_key[chosen]
+
+    other_phases = [v for (s, _), v in fits.items() if s % size != best_phase]
+    other_keys = [fits[(chosen, k)] for k in shifts if k != key]
+    # Without another phase to compare, the start is forced, not found.
+    runner_up = max([*other_phases, *other_keys]) if other_phases else nan
     return Anchor(
         bar_index=chosen,
         start=float(downbeats[chosen]),
-        mean_agreement=fits[chosen],
+        mean_agreement=fits[(chosen, key)],
         runner_up=runner_up,
-        margin=fits[chosen] - runner_up,
+        margin=fits[(chosen, key)] - runner_up,
+        shift=key,
+        keys=len(shifts),
     )
+
+
+def chorus_shifts(
+    chroma: Chromagram,
+    downbeats: Sequence[float],
+    templates: Sequence[np.ndarray],
+    blocks: Sequence[tuple[int, int]],
+    *,
+    start: int = 0,
+    shifts: Sequence[int] = AS_WRITTEN,
+) -> list[int]:
+    """The key of each ``(first bar, bar count)`` block, in the order given.
+
+    A key holds until another beats it clearly: the best key must fit well and
+    lead every other, the current one included, by the anchor's margin. A
+    reharmonised chorus fits no key clearly, so it stays in the key it was in
+    rather than being moved on noise, which would score it against a wrong chart.
+    """
+    by_shift = keyed_agreement(chroma, downbeats, templates, shifts)
+    gate = _agreement_gate(len(shifts))
+    current = start
+    found: list[int] = []
+    for first, count in blocks:
+        rows = np.arange(first, min(first + count, len(downbeats) - 1))
+        fits = {
+            k: float(by_shift[k][rows, rows - first].mean()) if len(rows) else 0.0 for k in shifts
+        }
+        ranked = sorted(fits, key=lambda k: fits[k], reverse=True)
+        best = ranked[0]
+        lead = fits[best] - fits[ranked[1]] if len(ranked) > 1 else 0.0
+        if best != current and fits[best] >= gate and lead >= ANCHOR_MIN_MARGIN:
+            current = best
+        found.append(current)
+    return found

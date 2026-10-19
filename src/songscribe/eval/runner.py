@@ -7,8 +7,8 @@ separated stem) and track; the report gives per-track mean and duration-weighted
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from math import isnan, nan
 from pathlib import Path
 
@@ -367,13 +367,15 @@ def score_performance(
     vocabularies: tuple[str, ...] = metrics.DEFAULT_VOCABULARIES,
     check_alignment: bool = True,
     reference: list[ChordEvent] | None = None,
+    blocks: Sequence[form.Chorus] | None = None,
 ) -> TrackResult:
     """Score a recording of the chart played several times, one chorus at a time.
 
-    Each scored block goes through :func:`score_track` on the chart's own clock.
-    The track-level numbers sum the full choruses -- never the best -- and a
-    partial last pass is reported but left out of them; with no full chorus it
-    stands in. A refused anchor raises: scoring against a guess is worse than none.
+    Each scored block goes through :func:`score_track` on the chart's own clock,
+    against the chart moved to the block's key (the estimate is never moved).
+    Track-level numbers sum the full choruses, never the best; a partial last
+    pass is reported but left out, unless it is all there is. A refused anchor
+    raises. ``blocks`` carries the keys; without it every chorus is in the anchor's.
     """
     from .. import lab
 
@@ -383,7 +385,9 @@ def score_performance(
     if reference is None:
         reference = lab.read(track.reference)
     start, end = metrics.extent(reference)
-    blocks = form.choruses(grid, bars_per_chorus, anchor.bar_index, end - start)
+    if blocks is None:
+        found = form.choruses(grid, bars_per_chorus, anchor.bar_index, end - start)
+        blocks = [replace(c, shift=anchor.shift) if c.is_scored else c for c in found]
     reference_bar = (end - start) / bars_per_chorus
 
     results: list[ChorusResult] = []
@@ -394,6 +398,7 @@ def score_performance(
         part = reference
         if chorus.bars < bars_per_chorus:
             part = form.truncate_reference(reference, bars_per_chorus, chorus.bars)
+        part = form.transpose_events(part, chorus.shift)
         result = score_track(
             track,
             form.project_estimate(estimated, chorus, origin=start),
@@ -455,6 +460,34 @@ def score_performance(
     )
 
 
+def keyed_choruses(
+    evidence: chroma.Chromagram,
+    grid: BeatGrid,
+    reference: Sequence[ChordEvent],
+    bars_per_chorus: int,
+    anchor: chroma.Anchor,
+    shifts: Sequence[int],
+) -> list[form.Chorus]:
+    """The form's choruses, each in the key the recording plays it in.
+
+    Tiling and the lost-count rule are :func:`form.choruses`'s, untouched; keys
+    are decided afterwards and only for the blocks that get scored.
+    """
+    start, end = metrics.extent(list(reference))
+    blocks = form.choruses(grid, bars_per_chorus, anchor.bar_index, end - start)
+    scored = [c for c in blocks if c.is_scored]
+    keys = chroma.chorus_shifts(
+        evidence,
+        grid.downbeats,
+        chroma.bar_templates(reference, bars_per_chorus),
+        [(c.first_bar, c.bars) for c in scored],
+        start=anchor.shift,
+        shifts=shifts,
+    )
+    key_of = {c.index: k for c, k in zip(scored, keys, strict=True)}
+    return [replace(c, shift=key_of[c.index]) if c.index in key_of else c for c in blocks]
+
+
 def chroma_of(track: Track) -> chroma.Chromagram:
     """The recording's chroma: the evidence the form is anchored on, never the estimate."""
     from .. import audio
@@ -506,18 +539,24 @@ def _score_form(
     beats_dir: Path | None,
     beat_backend: str | None,
     cache_dir: Path | None,
+    shifts: Sequence[int] = chroma.ANY_KEY,
 ) -> TrackResult:
     if track.bars is None:
         raise ValueError(f"{track.id}: the manifest gives no 'bars' for this track")
     grid = bar_grid(track, beats_dir, beat_backend, cache_dir)
+    evidence = chroma_of(track)
     found = chroma.anchor_bar(
-        chroma_of(track),
+        evidence,
         grid.downbeats,
         chroma.bar_templates(reference, track.bars),
         min_bars=form.CHORUS_MIN_BARS,
+        shifts=shifts,
     )
     if found is None:
         raise ValueError(f"{track.id}: the recording is too short to hold the form")
+    blocks = None
+    if found.refusal() is None:
+        blocks = keyed_choruses(evidence, grid, reference, track.bars, found, shifts)
     return score_performance(
         track,
         estimated,
@@ -527,6 +566,18 @@ def _score_form(
         vocabularies=vocabularies,
         check_alignment=check_alignment,
         reference=reference,
+        blocks=blocks,
+    )
+
+
+def key_search(mode: str) -> tuple[int, ...]:
+    """The keys a take may be in: ``auto`` any of the twelve, ``none`` only the chart's."""
+    if mode == "auto":
+        return chroma.ANY_KEY
+    if mode == "none":
+        return chroma.AS_WRITTEN
+    raise ValueError(
+        f"unknown transpose mode {mode!r}, expected one of {list(form.TRANSPOSE_MODES)}"
     )
 
 
@@ -543,6 +594,7 @@ def evaluate(
     check_alignment: bool = True,
     beats_dir: Path | None = None,
     beat_backend: str | None = None,
+    transpose: str = "auto",
 ) -> Report:
     """Score every usable track in ``dataset``.
 
@@ -550,7 +602,7 @@ def evaluate(
     ``estimates_dir`` reads ``.lab`` files somebody else produced. A track
     whose reference or estimate is missing is skipped and named in the report
     rather than scored as zero -- an absent measurement is not a wrong one.
-    A bar grid (``beats_dir`` or ``beat_backend``) turns on per-chorus scoring.
+    A bar grid turns on per-chorus scoring; ``transpose="none"`` pins the chart's key.
     """
     import subprocess
 
@@ -560,6 +612,7 @@ def evaluate(
         raise ValueError("pass exactly one of backend= or estimates_dir=")
     if beats_dir is not None and beat_backend is not None:
         raise ValueError("pass at most one of beats_dir= or beat_backend=")
+    shifts = key_search(transpose)
     if beat_backend is not None:
         beats.sample_rate_for(beat_backend)
     # Checked here because the per-track catch below takes ValueError: an
@@ -643,6 +696,7 @@ def evaluate(
                     beats_dir,
                     beat_backend,
                     cache_dir,
+                    shifts,
                 )
         # A form that cannot be found is one track's problem, named and skipped.
         except (OSError, ValueError, AudioDecodeError) as error:

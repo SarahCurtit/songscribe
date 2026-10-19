@@ -15,6 +15,7 @@ from statistics import median
 
 from ..beats import BAR_DRIFT_TOLERANCE, BeatGrid
 from ..types import ChordEvent
+from .harte import transpose_label
 from .metrics import MIN_SEGMENT, extent
 
 #: Which full choruses are the head. In jazz the head is stated first and
@@ -24,6 +25,9 @@ HEAD_CHORUSES = (0, -1)
 #: A shorter last block is an ending, not a partial chorus: scoring two bars
 #: against a thirty-two-bar chart gives a confident number about nothing.
 CHORUS_MIN_BARS = 4
+
+#: How a take's key is decided: ``auto`` per chorus, ``none`` the chart's own.
+TRANSPOSE_MODES = ("auto", "none")
 
 #: Kinds whose time is scored.
 SCORED_KINDS = ("head", "chorus", "partial")
@@ -36,7 +40,8 @@ class Chorus:
     ``kind`` is ``intro``, ``head``, ``chorus``, ``partial``, ``tail`` or
     ``unaligned`` (a block whose bars do not tile evenly). ``scale`` is the
     block's mean bar length over the chart's, and ``nan`` where nothing is
-    mapped. ``bars`` counts the chart bars covered.
+    mapped. ``bars`` counts the chart bars covered. ``shift`` is the key it is
+    played in, in semitones above the chart's.
     """
 
     index: int
@@ -46,6 +51,7 @@ class Chorus:
     bars: int
     scale: float
     kind: str
+    shift: int = 0
 
     @property
     def duration(self) -> float:
@@ -186,3 +192,8 @@ def truncate_reference(
     if not 0 < bars <= bars_per_chorus:
         raise ValueError(f"bars must be within 1..{bars_per_chorus}, got {bars}")
     return _clip(reference, start, start + (end - start) * bars / bars_per_chorus)
+
+
+def transpose_events(events: Sequence[ChordEvent], semitones: int) -> list[ChordEvent]:
+    """The chart moved to the key a chorus is played in; the estimate is never moved."""
+    return [ChordEvent(e.start, e.end, transpose_label(e.label, semitones)) for e in events]

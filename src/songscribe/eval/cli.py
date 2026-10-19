@@ -19,6 +19,7 @@ from .dataset import (
     load_manifest,
     write_manifest,
 )
+from .form import TRANSPOSE_MODES
 from .metrics import (
     ALIGNMENT_WARN_GAIN,
     ALIGNMENT_WARN_OFFSET,
@@ -191,6 +192,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print a row per chorus; needs --beats or --beat-backend",
     )
+    score.add_argument(
+        "--transpose",
+        choices=TRANSPOSE_MODES,
+        default="auto",
+        help=(
+            "keys a take may be played in: auto searches all twelve for each chorus and "
+            "scores against the chart moved to it; none insists on the chart's own "
+            "(default: %(default)s)"
+        ),
+    )
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
     score.add_argument(
         "--no-alignment-check",
@@ -249,6 +260,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="a chord .lab to anchor on instead of audio: for looking at a form only, "
         "since it fits the start to the estimate",
+    )
+    form.add_argument(
+        "--transpose",
+        choices=TRANSPOSE_MODES,
+        default="auto",
+        help=(
+            "keys a take may be played in: auto searches all twelve for each chorus and "
+            "scores against the chart moved to it; none insists on the chart's own "
+            "(default: %(default)s)"
+        ),
     )
     form_grid = form.add_mutually_exclusive_group(required=True)
     form_grid.add_argument("--beats", type=Path, help="a .beats file for the recording")
@@ -355,7 +376,6 @@ def _form(args: argparse.Namespace) -> int:
     from .. import beats, lab
     from . import chroma, form, runner
     from .dataset import Track
-    from .metrics import extent
 
     if (args.audio is None) == (args.estimate is None):
         print("songscribe-eval: pass exactly one of --audio or --estimate", file=sys.stderr)
@@ -378,17 +398,18 @@ def _form(args: argparse.Namespace) -> int:
             if args.audio is not None
             else chroma.chroma_from_events(lab.read(args.estimate))
         )
+        shifts = runner.key_search(args.transpose)
         found = chroma.anchor_bar(
             evidence,
             grid.downbeats,
             chroma.bar_templates(reference, args.bars),
             min_bars=form.CHORUS_MIN_BARS,
+            shifts=shifts,
         )
-        start, end = extent(reference)
         blocks = (
             ()
             if found is None or found.refusal()
-            else form.choruses(grid, args.bars, found.bar_index, end - start)
+            else runner.keyed_choruses(evidence, grid, reference, args.bars, found, shifts)
         )
     except (OSError, ValueError, runner.AudioDecodeError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -416,7 +437,7 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
     lines.append(
         f"anchor    bar {anchor.bar_index} at {anchor.start:.2f} s   "
         f"agreement {anchor.mean_agreement:.2f}  runner-up {anchor.runner_up:.2f}  "
-        f"margin {anchor.margin:.2f}"
+        f"margin {anchor.margin:.2f}  key {_key(anchor.shift)}"
     )
     if from_estimate:
         lines.append(
@@ -431,13 +452,15 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
         return "\n".join(lines)
     lines += [
         "",
-        f"{'#':>3} {'kind':<10}{'first bar':>10}{'bars':>6}{'start':>10}{'end':>10}{'scale':>8}",
+        f"{'#':>3} {'kind':<10}{'first bar':>10}{'bars':>6}{'start':>10}{'end':>10}"
+        f"{'scale':>8}{'key':>6}",
     ]
     for chorus in blocks:
         scale = "--" if isnan(chorus.scale) else f"{chorus.scale:.3f}"
+        key = _key(chorus.shift) if chorus.is_scored else "--"
         lines.append(
             f"{chorus.index:>3} {chorus.kind:<10}{chorus.first_bar:>10}{chorus.bars:>6}"
-            f"{chorus.start:>9.2f}s{chorus.end:>9.2f}s{scale:>8}"
+            f"{chorus.start:>9.2f}s{chorus.end:>9.2f}s{scale:>8}{key:>6}"
         )
     unscored = form.unscored_seconds(blocks)
     lines += ["", f"{unscored:.1f} s in blocks no score covers (intro, ending, unaligned)", ""]
@@ -582,6 +605,7 @@ def _score(args: argparse.Namespace) -> int:
             check_alignment=not args.no_alignment_check,
             beats_dir=args.beats,
             beat_backend=args.beat_backend,
+            transpose=args.transpose,
         )
     except (OSError, ValueError, ImportError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -610,19 +634,19 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
     """
     header_written = False
 
-    def row(label: str, scores, segmentation, bar: float | None) -> None:
+    def row(label: str, scores, segmentation, bar: float | None, key: str = "") -> None:
         nonlocal header_written
         if not header_written:
             columns = "".join(f"{name:>10}" for name in vocabularies)
             print(
                 f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}"
-                + (f"{'bar':>10}" if per_chorus else "")
+                + (f"{'bar':>10}{'key':>6}" if per_chorus else "")
             )
             header_written = True
         cells = "".join(f"{_percent(scores[v].wcsr):>10}" for v in vocabularies)
         line = f"{label:<{_ID_WIDTH}}{cells}{_percent(segmentation.score):>10}"
         if per_chorus:
-            line += f"{'' if bar is None else _percent(bar):>10}"
+            line += f"{'' if bar is None else _percent(bar):>10}{key:>6}"
         print(line)
 
     def write(result) -> None:
@@ -634,7 +658,7 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
             name = f"{_truncate(result.track_id)[: _ID_WIDTH - 22]} #{chorus.index} {chorus.kind}"
             if chorus.kind == "partial":
                 name += f" ({chorus.bars} bars)"
-            row(name, part.scores, part.segmentation, part.bar)
+            row(name, part.scores, part.segmentation, part.bar, _key(chorus.shift))
 
     return write
 
@@ -839,6 +863,8 @@ def _anchor_to_dict(anchor) -> dict:
         "agreement": _jsonable(anchor.mean_agreement),
         "runner_up": _jsonable(anchor.runner_up),
         "margin": _jsonable(anchor.margin),
+        "shift": anchor.shift,
+        "keys_searched": anchor.keys,
     }
 
 
@@ -852,6 +878,7 @@ def _chorus_to_dict(part) -> dict:
         "first_bar": chorus.first_bar,
         "bars": chorus.bars,
         "scale": _jsonable(chorus.scale),
+        "shift": chorus.shift,
         "bar": _jsonable(part.bar),
         "chart": _jsonable(part.chart),
         "grid": _jsonable(part.grid),
@@ -863,6 +890,11 @@ def _chorus_to_dict(part) -> dict:
 def _jsonable(value: float) -> float | None:
     """JSON has no NaN; an unscoreable track is a null, not a zero."""
     return None if isnan(value) else value
+
+
+def _key(shift: int) -> str:
+    """A key relative to the chart's: ``+0`` as written, ``+2`` a tone up, ``-3`` down."""
+    return f"{shift:+d}"
 
 
 def _percent(value: float) -> str:

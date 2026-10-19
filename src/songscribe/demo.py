@@ -83,6 +83,14 @@ def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
     )
 
 
+def transpose_chord(label: str, semitones: int) -> str:
+    """``label`` moved ``semitones`` up, spelled with sharps; raises as parse_chord does."""
+    pitch_class, _ = parse_chord(label)
+    label = label.strip()
+    quality = label[2:] if label[:2] in PITCH_CLASSES or label[:2] in FLAT_TO_SHARP else label[1:]
+    return PITCH_CLASSES[(pitch_class + semitones) % 12] + quality
+
+
 def chord_frequencies(label: str, octave: int = ROOT_OCTAVE) -> list[float]:
     """Frequencies in Hz for the notes of ``label``, voiced from ``octave``."""
     pitch_class, intervals = parse_chord(label)
@@ -206,12 +214,16 @@ def synthesise_performance(
     lead_in_seconds: float = 0.0,
     tempo_drift: float = 0.0,
     substitutions: Mapping[int, Mapping[int, str]] | None = None,
+    transpose: int = 0,
+    modulations: Mapping[int, int] | None = None,
 ) -> Performance:
     """Render ``repeats`` choruses the way a band plays them, not a loop.
 
     ``lead_in_seconds`` of noise precede bar 1 (no chord there, no bar line);
     ``tempo_drift`` is the fractional tempo change from first bar to last;
     ``substitutions[repeat][bar]`` swaps one bar's chord in one chorus.
+    The take is played ``transpose`` semitones above the chart, and
+    ``modulations[repeat]`` moves that chorus further; ``reference`` stays as written.
     """
     if not progression:
         raise ValueError("progression is empty")
@@ -223,6 +235,9 @@ def synthesise_performance(
         raise ValueError(f"tempo_drift must exceed -1, got {tempo_drift}")
 
     substitutions = substitutions or {}
+    modulations = modulations or {}
+    if any(not 0 <= repeat < repeats for repeat in modulations):
+        raise ValueError(f"modulation outside the {repeats} choruses")
     for repeat, changes in substitutions.items():
         if not 0 <= repeat < repeats or any(not 0 <= bar < len(progression) for bar in changes):
             raise ValueError(f"substitution outside the {repeats} x {len(progression)} take")
@@ -238,6 +253,7 @@ def synthesise_performance(
     for index in range(total):
         repeat, bar = divmod(index, len(progression))
         label = substitutions.get(repeat, {}).get(bar, progression[bar])
+        label = transpose_chord(label, transpose + modulations.get(repeat, 0))
         ramp = tempo_drift * index / (total - 1) if total > 1 else 0.0
         length = round(beats_per_bar * 60.0 / (bpm * (1 + ramp)) * sample_rate)
         t = np.arange(length) / sample_rate
@@ -343,6 +359,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="swap one bar's chord in one chorus, counting from 0; repeatable",
     )
     parser.add_argument(
+        "--transpose-take",
+        type=int,
+        default=0,
+        metavar="SEMITONES",
+        help="play the whole take this far above the chart, which stays as written",
+    )
+    parser.add_argument(
+        "--modulate",
+        action="append",
+        default=[],
+        metavar="CHORUS=SEMITONES",
+        help="move one chorus further from the chart, counting from 0; repeatable",
+    )
+    parser.add_argument(
         "--no-annotation", action="store_true", help="skip writing the .lab ground truth"
     )
     return parser
@@ -360,6 +390,17 @@ def _parse_variation(texts: list[str]) -> dict[int, dict[int, str]]:
     return substitutions
 
 
+def _parse_modulation(texts: list[str]) -> dict[int, int]:
+    modulations: dict[int, int] = {}
+    for text in texts:
+        try:
+            chorus, semitones = text.split("=", 1)
+            modulations[int(chorus)] = int(semitones)
+        except ValueError:
+            raise ValueError(f"--modulate wants CHORUS=SEMITONES, got {text!r}") from None
+    return modulations
+
+
 def _write_performance(args: argparse.Namespace) -> int:
     """The multi-chorus take: audio, full timeline, chart, and true bar lines."""
     import soundfile as sf
@@ -374,6 +415,8 @@ def _write_performance(args: argparse.Namespace) -> int:
         lead_in_seconds=args.lead_in_seconds,
         tempo_drift=args.tempo_drift,
         substitutions=_parse_variation(args.vary),
+        transpose=args.transpose_take,
+        modulations=_parse_modulation(args.modulate),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     sf.write(args.output, performance.audio, args.sample_rate)
@@ -396,7 +439,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        if args.lead_in_seconds or args.tempo_drift or args.vary:
+        if (
+            args.lead_in_seconds
+            or args.tempo_drift
+            or args.vary
+            or args.transpose_take
+            or args.modulate
+        ):
             return _write_performance(args)
         audio, events = synthesise(
             progression=args.progression,
