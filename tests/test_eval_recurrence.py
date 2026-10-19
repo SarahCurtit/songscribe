@@ -132,6 +132,12 @@ class TestTrackerPhase:
         assert anchor.pickup_beats == 2
         assert grid.downbeats[anchor.bar_index] == pytest.approx(anchor.start)
 
+    def test_moved_bar_lines_still_close_the_last_chorus(self):
+        performance = the_take(intro=INTRO, pickup=2, varied=True)
+        anchor, grid = locate(performance, tracker_phase=2)
+        blocks = form.choruses(grid, BARS, anchor.bar_index, performance.reference[-1].end)
+        assert [b.kind for b in blocks] == ["intro", "head", "chorus", "chorus", "head"]
+
     def test_a_correct_tracker_is_left_alone(self):
         performance = the_take(intro=INTRO, pickup=2, varied=True)
         anchor, grid = locate(performance)

@@ -128,8 +128,11 @@ def locate(
     shift = ((moved + per_bar // 2) % per_bar) - per_bar // 2
     if moved:
         first = start % per_bar
-        marks = tuple(float(t) for t in times[first::per_bar])
-        grid = BeatGrid(downbeats=marks, beats_per_bar=per_bar)
+        marks = [float(t) for t in times[first::per_bar]]
+        if (len(times) - 1 - first) % per_bar:
+            # The audio ends inside a bar of the moved grid; close it at the last tempo.
+            marks.append(marks[-1] + per_bar * float(times[-1] - times[-2]))
+        grid = BeatGrid(downbeats=tuple(marks), beats_per_bar=per_bar)
         bar = (start - first) // per_bar
     else:
         bar = (start - lead) // per_bar
