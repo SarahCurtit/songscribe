@@ -418,20 +418,29 @@ the reference's clock. Give a manifest track `"bars"` (the chart's bar count) an
 with `--beats DIR` (or `--beat-backend`); `songscribe-eval form` shows what was detected
 first. The pieces, and what each refuses to do:
 
-- **Anchor** (`eval/chroma.py`): the chart's per-bar pitch classes are slid along the
-  recording's bars, scoring each candidate start on its own chorus. The evidence is the
-  *audio's* chroma, never the estimate: anchoring on the estimate would pick the start that
-  flatters it. The form length is the chart's bar count, not searched; self-similarity
-  returns the half-form. A start whose margin over the best rival is under
-  `ANCHOR_MIN_MARGIN`, or whose agreement is under `ANCHOR_MIN_AGREEMENT`, is **refused**: the
-  track is skipped and named, not scored against a guess. Both gates are provisional (a
-  cosine of standardised chroma, checked only on synthetic takes).
+- **Start** (`eval/recurrence.py`, `eval/form_start.py`): the recording's own repetition
+  finds where the form starts; the chart does not. Each bar-long window of chroma is compared
+  with the one a form later (the chart gives only the length in bars, not searched for, since
+  self-similarity alone returns the half-form). The stretch where that holds begins at the
+  head, or at the pickup into it, so the bars before it are the intro and the beats just
+  before the head that also recur are the pickup. The chords' timing says which beat the bar
+  lines fall on, so a tracker whose downbeats are a few beats off is moved. A run counts only
+  if it beats every other lag as a null and spans three quarters of a form (`MIN_RUN_FORMS`);
+  shuffled and unrelated controls never did, and the tolerance for choruses that differ is
+  the step limit of the run. The chart's pitch classes are then compared at the start
+  (`eval/chroma.py`) as a check: they choose between starts within a form of the opening and
+  put the head a pass earlier when it differs from the solos. If nothing recurs (one chorus)
+  the chart match alone finds the start, as before, and `form` says which evidence did. A
+  start the chart fits below `ANCHOR_MIN_AGREEMENT`, or fits in no key clearly, is **refused**:
+  the track is skipped and named, not scored against a guess. The gates are provisional
+  (checked on synthetic takes and one real recording).
 - **Key** (`--transpose auto`, the default): a tune is often played in another key, so the
   chart is also tried in each of the twelve keys. A rival is any other phase in any key, or the
   chosen start in any other key, so more keys cannot make a wrong chart fit; because twelve
-  keys are twelve chances to fit by luck, the agreement gate is
-  `ANCHOR_MIN_AGREEMENT_ANY_KEY` (0.65). One key is assumed for the whole take: the anchor's
-  shift applies to every chorus, which is scored against the chart transposed by it; the
+  keys are twelve chances to fit by luck, a start found by the chart alone needs
+  `ANCHOR_MIN_AGREEMENT_ANY_KEY` (0.65). A start found by recurrence is already fixed, so only
+  the key is chosen: it needs `ANCHOR_MIN_AGREEMENT` and a margin over the next key. One key
+  is assumed for the whole take: the anchor's shift applies to every chorus, which is scored against the chart transposed by it; the
   estimate is never altered. `form` and `--per-chorus` show it as `key` (`+2` a tone up), the
   JSON as `shift`. A chart is refused when no key gives a clear fit. `--transpose none` insists
   on the written key and refuses a transposed take as before. A song that changes key partway

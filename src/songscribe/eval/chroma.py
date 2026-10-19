@@ -179,7 +179,7 @@ def keyed_agreement(
     return {shift: every[:, k * size : (k + 1) * size] for k, shift in enumerate(shifts)}
 
 
-def _agreement_gate(keys: int) -> float:
+def agreement_gate(keys: int) -> float:
     return ANCHOR_MIN_AGREEMENT if keys == 1 else ANCHOR_MIN_AGREEMENT_ANY_KEY
 
 
@@ -201,13 +201,41 @@ class Anchor:
     shift: int = 0
     #: How many keys were searched; more than one raises the agreement gate.
     keys: int = 1
+    #: What found the start: ``chart`` (matching the chart's pitch classes) or
+    #: ``recurrence`` (the audio repeating one form later, see ``recurrence.py``).
+    evidence: str = "chart"
+    #: Whole bars before the pickup, and the pickup's beats; ``None`` if not measured.
+    intro_bars: int | None = None
+    pickup_beats: int | None = None
+    #: Beats the tracker's bar lines were moved to put the start on a downbeat.
+    phase_shift: int = 0
+    #: Bars after the last stretch that recurs (a tag or ending), by recurrence.
+    ending_bars: int | None = None
+    #: Strength of the recurrence over the best other lag; ``nan`` if none was claimed.
+    recurrence_ratio: float = nan
+    #: Whether the chart match alone picks the same start (a whole form apart counts);
+    #: ``None`` when it is not clear enough to say.
+    chart_agrees: bool | None = None
+    #: With a start found by recurrence: the fit in the chosen key over the best other key.
+    key_margin: float = nan
 
     def refusal(
         self, min_agreement: float | None = None, min_margin: float = ANCHOR_MIN_MARGIN
     ) -> str | None:
-        """Why this start should not be trusted, or ``None`` if it can be."""
+        """Why this start should not be trusted, or ``None`` if it can be.
+
+        A start found by recurrence does not hinge on the chart, so the chart is held to
+        a plain fit there, and to a clear margin only when it also chose among keys.
+        """
+        if self.evidence == "recurrence":
+            least = ANCHOR_MIN_AGREEMENT if min_agreement is None else min_agreement
+            if self.mean_agreement < least:
+                return f"chart fits the recurring start badly: {self.mean_agreement:.2f}"
+            if self.keys > 1 and self.key_margin < min_margin:
+                return f"key margin {self.key_margin:.2f} under {min_margin:.2f}: another key fits"
+            return None
         if min_agreement is None:
-            min_agreement = _agreement_gate(self.keys)
+            min_agreement = agreement_gate(self.keys)
         if isnan(self.margin):
             return "only one candidate position in the form, nothing to compare it with"
         if self.mean_agreement < min_agreement:
@@ -263,7 +291,7 @@ def anchor_bar(
 
     on_phase = [s for s in starts if s % size == best_phase]
     best_key = {s: max(shifts, key=lambda k: fits[(s, k)]) for s in on_phase}
-    gate = _agreement_gate(len(shifts))
+    gate = agreement_gate(len(shifts))
     chosen = next((s for s in on_phase if fits[(s, best_key[s])] >= gate), None)
     if chosen is None:
         # Not hidden: the refusal reports the best fit it found.
