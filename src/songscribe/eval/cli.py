@@ -357,6 +357,7 @@ def _form(args: argparse.Namespace) -> int:
     from .. import beats, lab
     from . import chroma, form, runner
     from .dataset import Track
+    from .form_start import locate
     from .metrics import extent
 
     if (args.audio is None) == (args.estimate is None):
@@ -380,9 +381,9 @@ def _form(args: argparse.Namespace) -> int:
             if args.audio is not None
             else chroma.chroma_from_events(lab.read(args.estimate))
         )
-        found = chroma.anchor_bar(
+        found, grid = locate(
             evidence,
-            grid.downbeats,
+            grid,
             chroma.bar_templates(reference, args.bars),
             min_bars=form.CHORUS_MIN_BARS,
         )
@@ -420,6 +421,7 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
         f"agreement {anchor.mean_agreement:.2f}  runner-up {anchor.runner_up:.2f}  "
         f"margin {anchor.margin:.2f}"
     )
+    lines += _start_lines(anchor)
     if from_estimate:
         lines.append("          anchored on the estimate, not on audio: do not use it for scoring")
     if refusal:
@@ -442,6 +444,31 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
     unscored = form.unscored_seconds(blocks)
     lines += ["", f"{unscored:.1f} s not scored (intro, tail, unaligned blocks)", ""]
     return "\n".join(lines)
+
+
+def _start_lines(anchor) -> list[str]:
+    """How the start was found: the evidence, the intro and pickup, the ending, the check."""
+    if anchor.evidence == "recurrence":
+        lines = [
+            f"          found by recurrence (strength {anchor.recurrence_ratio:.1f}x the best "
+            "other lag)",
+            f"          intro {anchor.intro_bars} bars, pickup {anchor.pickup_beats} beats, "
+            f"about {anchor.ending_bars} bars after the last recurring pass",
+        ]
+        if anchor.phase_shift:
+            lines.append(
+                f"          bar lines moved {anchor.phase_shift:+d} beats from the tracker's"
+            )
+        if anchor.chart_agrees is not None:
+            verdict = "agrees" if anchor.chart_agrees else "DISAGREES"
+            lines.append(f"          chart match alone {verdict}")
+        return lines
+    why = (
+        "nothing recurs"
+        if isnan(anchor.recurrence_ratio)
+        else f"recurrence {anchor.recurrence_ratio:.1f}x the best other lag is not enough"
+    )
+    return [f"          found by chart match ({why}); intro and pickup not measured"]
 
 
 def format_survey(result, label_limit: int = TOP_LABELS) -> str:
@@ -839,6 +866,13 @@ def _anchor_to_dict(anchor) -> dict:
         "agreement": _jsonable(anchor.mean_agreement),
         "runner_up": _jsonable(anchor.runner_up),
         "margin": _jsonable(anchor.margin),
+        "evidence": anchor.evidence,
+        "intro_bars": anchor.intro_bars,
+        "pickup_beats": anchor.pickup_beats,
+        "phase_shift": anchor.phase_shift,
+        "ending_bars": anchor.ending_bars,
+        "recurrence_ratio": _jsonable(anchor.recurrence_ratio),
+        "chart_agrees": anchor.chart_agrees,
     }
 
 

@@ -419,16 +419,22 @@ such a recording, give the manifest track `"bars"` (the number of bars in the ch
 pass `--beats DIR` (or `--beat-backend`). `songscribe-eval form` prints what was detected
 without scoring. The steps are:
 
-- **Anchor** (`eval/chroma.py`): find which bar of the recording is the first bar of the
-  chart. Each bar of the chart is turned into its 12 pitch-class weights and compared with the
-  chroma of the recording's bars, at every possible start. Each start is scored on the one
-  chorus that follows it. The comparison uses the chroma of the audio, not the chord estimate,
-  because anchoring on the estimate would pick the start that makes it look best. The length
-  of the form is the chart's bar count and is not searched for (self-similarity returns half
-  the form). If the margin over the best start at another position in the form is below
-  `ANCHOR_MIN_MARGIN`, or the agreement is below `ANCHOR_MIN_AGREEMENT`, the anchor is
-  rejected and the track is skipped and listed in the report. Both thresholds are guesses so
-  far: they have only been checked on synthetic recordings.
+- **Start** (`eval/recurrence.py`, `eval/form_start.py`): the recording's own repetition
+  finds where the form starts; the chart does not. Each bar-long window of chroma is compared
+  with the one a form later (the chart gives only the length in bars; it is not searched for,
+  since self-similarity alone returns half of it). The stretch where that holds begins at the
+  head, or at the pickup into it, so the bars before it are the intro and the beats just
+  before the head that also recur are the pickup. The chords' timing says which beat the bar
+  lines fall on, so a tracker whose downbeats are a few beats off is moved. A run counts only
+  if it beats every other lag as a null and spans three quarters of a form (`MIN_RUN_FORMS`):
+  that held for every shuffled and unrelated control, and the tolerance for choruses that
+  differ is the step limit of the run. The chart's pitch classes are then compared at the
+  start (`eval/chroma.py`) as a check; they choose between starts within a form of the opening
+  and put the head a pass earlier when it differs from the solos. If nothing recurs (one
+  chorus) the chart match alone is used, as before, and `form` says which evidence found the
+  start. If the chart fits the recurring start below `ANCHOR_MIN_AGREEMENT`, or fits another
+  bar clearly better, the start is rejected or moved. The anchor thresholds are guesses,
+  checked only on synthetic takes and one real recording.
 - **Choruses** (`eval/form.py`): cut the recording from the anchor into blocks of the chart's
   bar count. A block is one of `intro`, `head` (the first and last full chorus), `chorus`,
   `partial` (a shorter last block of at least four bars), `tail` (a shorter block, treated as
