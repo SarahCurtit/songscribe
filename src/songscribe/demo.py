@@ -176,8 +176,7 @@ class Performance:
     ``events`` are the chords of the whole recording, in seconds from the start of ``audio``.
     ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
     ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
-    A pickup is in ``events`` and ``beat_events()``, not in ``reference``.
-    The first ``intro_bars`` bars of ``downbeats`` are an intro; the head opens at the next.
+    A pickup is in ``events`` and ``beat_events()``, not ``reference``; ``intro_bars`` come first.
     """
 
     audio: np.ndarray
@@ -237,13 +236,10 @@ def synthesise_performance(
 ) -> Performance:
     """Synthesise ``repeats`` choruses of ``progression``, one chord per bar.
 
-    ``pickup_beats`` beats of the chart's last chord are played before the head, at the first
-    bar's tempo, as a jazz take starts on the tune's last beats. With an ``intro`` they are
-    the last beats of its final bar; without one they are a stub before bar 0, not a bar.
-    ``intro`` is one chord per bar played before the head. ``colour[repeat]`` adds notes
-    (semitones above each chord's root) to a whole chorus, as a soloist's voicings would.
-    ``tempo_drift`` is the relative tempo change from first to last bar (0.03 = 3% faster).
-    ``substitutions[repeat][bar]`` replaces one bar's chord in one chorus; both count from 0.
+    ``pickup_beats`` of the chart's last chord precede the head: the last beats of the
+    ``intro`` (one chord per bar) or, with none, a stub before bar 0. ``colour[repeat]`` adds
+    notes (semitones above each root) to a whole chorus. ``tempo_drift`` is the relative
+    tempo change from first to last bar. ``substitutions[repeat][bar]`` replaces one chord.
     """
     if not progression:
         raise ValueError("progression is empty")
