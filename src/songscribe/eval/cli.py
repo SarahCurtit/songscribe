@@ -197,8 +197,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(BACKENDS),
         help=(
             "chord backend whose estimate of the recording finds where the form starts, run on "
-            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Scoring this "
-            "same backend warns: the start found can be the one that flatters it"
+            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Warns if it is "
+            "the backend being scored"
         ),
     )
     anchor_source.add_argument(
@@ -471,7 +471,7 @@ def format_form(grid, anchor, blocks, source: str | None = None) -> str:
 
 
 def _start_lines(anchor) -> list[str]:
-    """How the start was found: the evidence, the intro and pickup, the ending, the check."""
+    """Lines saying how the start was found: its method, intro, pickup, ending and chart check."""
     if anchor.evidence == "recurrence":
         lines = [
             f"          found by recurrence (strength {anchor.recurrence_ratio:.1f}x the best "

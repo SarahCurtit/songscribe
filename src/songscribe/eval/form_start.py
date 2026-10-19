@@ -1,13 +1,9 @@
-"""Decide where a recording's form starts: by recurrence, checked against the chart.
+"""Find the bar where the chart's form starts in a recording.
 
-``recurrence.measure`` finds the stretch of a chord estimate that repeats one form later and
-where it opens, which is the pickup into the head or the head itself. The chart then checks
-it and settles which bar within a form of the opening is the head (an intro can echo the
-tune, a head can differ from the solos). The chords' timing moves bar lines the tracker has a
-few beats off. With no recurrence it is the chart match alone.
-
-The estimate is a model's output, so a start found on it can be the one that suits it. Anchor
-on an estimate from a different backend than the one scored; ``score`` warns when they match.
+``recurrence.measure`` finds the stretch of the chord estimate that repeats one form later.
+The chart then picks which bar of the form is the head's first (an intro can echo the tune).
+When nothing recurs, the start is the best match of the chart alone. Use an estimate from a
+different backend than the one being scored.
 """
 
 from __future__ import annotations
@@ -23,15 +19,10 @@ from ..types import ChordEvent
 from . import chart_fit, recurrence
 from .chart_fit import AS_WRITTEN
 
-#: The chart must beat the best bar-shuffled chart (``Anchor.chance``, over the same starts
-#: and keys) by this much. The chance level rises as more starts and keys are searched, so
-#: twelve keys need no separate bar. Over 1000 shuffled and unrelated charts the best excess
-#: was 0.03; true charts under heavy perturbation had at least 0.07.
+#: How far the chart's fit must exceed ``Anchor.chance`` (the best shuffled chart's fit).
 ANCHOR_MIN_EXCESS = 0.05
-#: Between two positions in the form (or two keys), the one fitting better must lead by this
-#: much, to move the start off the recurrence's bar or to accept a chart-only start. Loops
-#: and repeated phrases, where the position is genuinely ambiguous, reached 0.14; true charts
-#: at least 0.28.
+#: How far the best position in the form must lead the next, to override the recurrence's bar
+#: or to accept a start found by the chart alone.
 ANCHOR_MIN_MARGIN = 0.20
 
 
@@ -39,11 +30,10 @@ ANCHOR_MIN_MARGIN = 0.20
 class Anchor:
     """The recording's bar that matches the first bar of the chart.
 
-    ``bar_index`` is that bar's position in the recording, and ``start`` its time in seconds.
-    ``label_agreement`` is the share of beats of one chorus from there whose chord agrees with
-    the estimate's, in the key ``shift``. ``chance`` is the best any bar-shuffled chart reached
-    over the same starts and keys. ``runner_up`` is the best agreement at a different position
-    in the form, and ``margin`` is ``label_agreement`` minus it.
+    ``bar_index`` is its index in the grid and ``start`` its time in seconds.
+    ``label_agreement`` is the chart's agreement with one chorus from there, in the key
+    ``shift``; ``chance`` the best agreement of a shuffled chart. ``runner_up`` is the best
+    agreement at another position in the form and ``margin`` the lead over it.
     """
 
     bar_index: int
@@ -54,34 +44,32 @@ class Anchor:
     #: Semitones the chart is moved up to fit, and how many keys were searched.
     shift: int = 0
     keys: int = 1
-    #: What found the start: ``chart`` (matching the chart's chords) or ``recurrence``
-    #: (the estimate repeating one form later, see ``recurrence.py``).
+    #: What found the start: ``chart`` (the chart's chords alone) or ``recurrence``.
     evidence: str = "chart"
-    #: Whole bars before the pickup, and the pickup's beats; ``None`` if not measured.
+    #: Whole bars before the pickup, and the pickup's beats; ``None`` for a chart-only start.
     intro_bars: int | None = None
     pickup_beats: int | None = None
-    #: Beats the tracker's bar lines were moved to put the start on a downbeat.
+    #: Beats the tracker's bar lines were moved by.
     phase_shift: int = 0
-    #: Bars after the last stretch that recurs (a tag or ending), by recurrence.
+    #: Bars after the last recurring pass (a tag or ending).
     ending_bars: int | None = None
-    #: Strength of the recurrence over the best other lag; ``nan`` if none was claimed.
+    #: The recurrence's strength over the best null lag; ``nan`` if it was not measured.
     recurrence_ratio: float = nan
-    #: Whether the chart match alone picks the same start (a whole form apart counts);
-    #: ``None`` when it is not clear enough to say.
+    #: Whether the chart-only start is the same, to a whole form; ``None`` if that is unclear.
     chart_agrees: bool | None = None
-    #: With a start found by recurrence: the fit in the chosen key over the best other key.
+    #: For a recurrence start: the chosen key's fit minus the next key's.
     key_margin: float = nan
     chance: float = nan
 
     def gate(self) -> float:
-        """The agreement the chart has to reach: the shuffled charts' best, and a little more."""
+        """The agreement the chart has to reach: ``chance`` plus ``ANCHOR_MIN_EXCESS``."""
         return self.chance + ANCHOR_MIN_EXCESS
 
     def refusal(self, min_margin: float = ANCHOR_MIN_MARGIN) -> str | None:
-        """Return the reason this anchor is unreliable, or ``None`` if it is reliable.
+        """The reason this anchor is unreliable, or ``None``.
 
-        A start found by recurrence does not hinge on the chart, so only the chart's fit
-        there is checked: a recurring stretch the chart does not describe is not its form.
+        A recurrence start is only checked for the chart fitting there; a chart-only start
+        also needs a clear lead over the other positions.
         """
         gate = self.gate()
         if self.evidence == "recurrence":
@@ -115,16 +103,14 @@ def _chart_only(
     shifts: Sequence[int],
     min_bars: int,
 ) -> Anchor | None:
-    """Find the downbeat that opens the chart by matching it alone, or ``None``.
+    """Find the downbeat that opens the chart by matching the chart alone, or ``None``.
 
-    Each downbeat is scored as a start on the one chorus after it, so an intro or a
-    different-chord solo does not matter. The chart's bar count is the form length.
-    The anchor is the earliest start, at the best-scoring position in the form, whose
-    agreement reaches the gate.
+    Each downbeat is scored as a start on the chorus after it. The anchor is the earliest
+    start, at the best-fitting position in the form, whose fit reaches the gate.
     """
     size, per_bar = chart.shape[1], chart.shape[2]
     bars = len(grid.downbeats) - 1
-    # A whole chorus is the evidence; a short block only when no whole one fits.
+    # Compare a whole chorus, or a shorter block only if no whole one fits.
     need = size if bars >= size else min(min_bars, size)
     if size < 1 or bars < need:
         return None
@@ -141,13 +127,13 @@ def _chart_only(
     gate = fitted.chance + ANCHOR_MIN_EXCESS
     chosen = next((k for k in on_phase if fits[k] >= gate), None)
     if chosen is None:
-        # Not hidden: the refusal reports the best fit it found.
+        # Report the best fit even though it is below the gate.
         chosen = max(on_phase, key=lambda k: fits[k])
     row = first_bars.index(chosen)
     other_phases = [v for k, v in fits.items() if k % size != best_phase]
     best_key = int(np.nanargmax(fitted.fit[row]))
     other_keys = [v for j, v in enumerate(fitted.fit[row]) if j != best_key]
-    # Without another phase to compare, the start is forced, not found.
+    # With one position in the form there is nothing to compare, so the margin is nan.
     runner_up = max([*other_phases, *other_keys]) if other_phases else nan
     return Anchor(
         bar_index=chosen,
@@ -162,10 +148,9 @@ def _chart_only(
 
 
 def _pickup(found: recurrence.Recurrence, start: int) -> int:
-    """Beats just before ``start`` that recur one form later, 0 to a bar less one.
+    """Beats just before ``start`` that recur one form later, from 0 to a bar less one.
 
-    The pickup plays the form's tail, so it resembles the tail of the form before it.
-    The count is where the running sum of agreement over the beat level peaks.
+    A pickup plays the end of the form, so it matches the end of the form before it.
     """
     best, beats, running = 0.0, 0, 0.0
     for back in range(1, found.beats_per_bar):
@@ -187,11 +172,11 @@ def locate(
     min_bars: int,
     shifts: Sequence[int] = AS_WRITTEN,
 ) -> tuple[Anchor | None, BeatGrid]:
-    """Find the form's first bar, returning the anchor and the grid it indexes.
+    """Find the form's first bar; returns the anchor and the grid its ``bar_index`` refers to.
 
-    The grid is the tracker's unless the start fell off its bar lines, in which case
-    the bar lines are moved by whole beats and ``Anchor.phase_shift`` says by how many.
-    Recurrence does not depend on the key; the chart's key is the best fit at the start.
+    The grid is the tracker's unless the chords change on other beats, in which case its bar
+    lines are moved by whole beats (``Anchor.phase_shift``). The key is the best fit of
+    ``shifts`` at the start; the recurrence does not depend on it.
     """
     shifts = tuple(shifts)
     per_bar = grid.beats_per_bar
@@ -204,7 +189,7 @@ def locate(
         return (None if alone is None else replace(alone, recurrence_ratio=ratio)), grid
 
     opening = found.first_beat
-    # The tracker's downbeat unless the chords change on another beat, bar after bar.
+    # Bar line phase: the tracker's unless the chords change on another beat, bar after bar.
     phase, _ = recurrence.bar_line_phase(found, lead % per_bar)
     form_beats = found.form_beats
     starts = list(range(phase % per_bar, opening + form_beats + 1, per_bar))
@@ -219,10 +204,9 @@ def locate(
     if opens is None:
         return alone, grid
     gate = fitted.chance + ANCHOR_MIN_EXCESS
-    # Starts a whole form apart are the same bar of the tune. The recurrence's opening
-    # keeps its bar unless the chart fits another clearly better, and well (an intro that
-    # echoes the tune); within the bar, the earliest pass that fits is the head, even if it
-    # differs enough from the solos that the recurrence opens a pass later.
+    # Starts a whole form apart are the same bar of the tune. Keep the recurrence's bar unless
+    # the chart fits another clearly better (an intro that echoes the tune). Within that bar
+    # the earliest pass that fits is the head, even if the recurrence opens a pass later.
     by_bar: dict[int, float] = {}
     for s, v in fits.items():
         by_bar[s % form_beats] = max(by_bar.get(s % form_beats, -np.inf), v)
@@ -231,8 +215,7 @@ def locate(
     if not (clearly_better and by_bar[bar_of_tune] >= gate):
         bar_of_tune = opens % form_beats
     passes = [s for s in fits if s % form_beats == bar_of_tune]
-    # With no pass the chart describes, the recurrence's own opening stands; picking the best
-    # of several poor fits would be picking noise.
+    # If the chart fits no pass, keep the recurrence's opening.
     start = next((s for s in passes if fits[s] >= gate), opens)
     value = fits[start]
     rivals = [v for b, v in by_bar.items() if b != bar_of_tune]
@@ -246,7 +229,7 @@ def locate(
         first = start % per_bar
         marks = [float(t) for t in times[first::per_bar]]
         if (len(times) - 1 - first) % per_bar:
-            # The audio ends inside a bar of the moved grid; close it at the last tempo.
+            # The audio ends inside the last bar of the moved grid; close it at the last tempo.
             marks.append(marks[-1] + per_bar * float(times[-1] - times[-2]))
         grid = BeatGrid(downbeats=tuple(marks), beats_per_bar=per_bar)
         bar = (start - first) // per_bar

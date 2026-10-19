@@ -429,22 +429,16 @@ def _content_label(chord: Chord) -> str:
 def _class_label(label: str, vocabulary: str) -> str:
     """Map a chord label to its class in ``vocabulary``.
 
-    A chord the vocabulary cannot express keeps a label of its own, built from
-    its pitch content, so that spellings such as `B:dim` and `Bdim` still
-    compare equal. A label that cannot be parsed, and `X`, are returned as
-    they are.
+    A chord the vocabulary cannot express gets a label built from its pitch content, so
+    `B:dim` and `Bdim` compare equal. An unparseable label and `X` are returned as they are.
     """
     chord = parse(label)
     projected = None if chord is None else project(chord, vocabulary)
     if projected is not None:
         return projected
-    # Chords outside the vocabulary are kept, not dropped. Dropping them would
-    # shorten the sequence, and a wrong chord would disappear from the
-    # comparison. A reference `X` stays in the sequence as a label no backend
-    # outputs (WCSR skips it instead, but skipping here would merge the chords
-    # on either side of it). Whether a backend loses points on an `X` depends on
-    # what it outputs there and on the neighbouring chords, and can decide a
-    # close comparison. See EVALUATION.md, "What gets excluded".
+    # Such chords stay in the sequence: dropping one would hide a wrong chord. A reference `X`
+    # stays as a label no backend outputs (WCSR skips it, but here that would merge its
+    # neighbours). See EVALUATION.md, "What gets excluded".
     return label if chord is None or chord.unknown else _content_label(chord)
 
 

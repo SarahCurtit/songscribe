@@ -401,8 +401,7 @@ def score_performance(
             vocabularies,
             check_alignment,
             reference=part,
-            # Limit the offset search to one bar. A longer search can find
-            # false matches in a form with repeating chords.
+            # One bar is the widest offset worth trying; repeating chords match further out.
             alignment_search=reference_bar,
         )
         chart_lines = [start + k * reference_bar for k in range(chorus.bars + 1)]
@@ -498,12 +497,12 @@ def anchor_estimate(
     estimates_dir: Path | None = None,
     refresh: bool = False,
 ) -> list[ChordEvent]:
-    """The chord estimate the form's start is found on: a given ``.lab`` or a backend's.
+    """The chord estimate the form's start is found on.
 
-    The backend is fixed by the caller (default ``chords.DEFAULT_BACKEND``), run on the full
-    mix and cached like any estimate, so the scored run reuses it. It need not be the backend
-    being scored, and it should not be: a start found on the estimate under test can be the
-    one that flatters it. An unknown backend raises; nothing falls back to another model.
+    It is the track's ``.lab`` in ``estimates_dir``, or else ``backend`` (default
+    ``chords.DEFAULT_BACKEND``) run on the full mix. The backend's estimate is cached like
+    any other, so a scored run of the same backend reuses it. Prefer a backend other than
+    the one being scored. An unknown backend raises.
     """
     from .. import chords
 
