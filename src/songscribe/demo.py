@@ -80,7 +80,7 @@ def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
 
 
 def transpose_chord(label: str, semitones: int) -> str:
-    """``label`` moved ``semitones`` up, spelled with sharps; raises as parse_chord does."""
+    """``label`` moved ``semitones`` up, spelled with sharps. Raises like ``parse_chord``."""
     pitch_class, _ = parse_chord(label)
     label = label.strip()
     quality = label[2:] if label[:2] in PITCH_CLASSES or label[:2] in FLAT_TO_SHARP else label[1:]

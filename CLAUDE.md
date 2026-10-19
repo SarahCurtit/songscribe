@@ -48,6 +48,7 @@ src/songscribe/
     recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
     form_start.py recurrence first, chart as check and fallback -> the form's start (numpy)
     form.py       splits a recording into choruses, on the chart's timeline (pure Python)
+    README.md     how labels, recurrence, chart_fit, form_start and form fit together
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
@@ -133,10 +134,10 @@ chorus with `score --beats DIR --per-chorus`. Its form starts where a chord esti
 recording repeats one form later: from `--anchor-backend` (default madmom, run on the full
 mix and cached under `--cache`, so a later scoring run reuses it) or from `--anchor-estimates
 DIR`. Anchoring on the backend being scored warns, since the start found can be the one that
-flatters it. `songscribe-eval form` prints the detected grid, anchor and choruses first and
-exits 2 if the start is not clear (no key gives a clear fit). A take in another key is
-handled by default: one key is assumed for the whole take, and every chorus is scored against
-the chart transposed to it (`--transpose none` turns the key search off). See `EVALUATION.md`.
+flatters it. `songscribe-eval form` prints the grid, anchor and choruses, and exits 2 if the
+start is not clear. The key is searched by default: one key is assumed for the whole take and
+every chorus is scored against the chart transposed to it (`--transpose none` turns this
+off). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in

@@ -371,10 +371,10 @@ def score_performance(
 ) -> TrackResult:
     """Score a recording of the chart played several times, one chorus at a time.
 
-    Each scored block goes through :func:`score_track` on the chart's own clock,
-    against the chart moved to the anchor's key (the estimate is never moved).
-    Track-level numbers sum the full choruses, never the best; a partial last
-    pass is reported but left out, unless it is all there is. A refused anchor raises.
+    Each scored block is mapped to the chart's timeline and scored with :func:`score_track`
+    against the chart transposed to the anchor's key. Track-level scores combine all full
+    choruses, not the best; a partial chorus is left out unless it is the only block.
+    Raises ``ValueError`` if the anchor is not clear or no block can be scored.
     """
     from .. import lab
 
@@ -385,8 +385,7 @@ def score_performance(
         reference = lab.read(track.reference)
     start, end = metrics.extent(reference)
     found = form.choruses(grid, bars_per_chorus, anchor.bar_index, end - start)
-    # One key for the whole take: a song that modulates is not supported, so the
-    # anchor's shift is applied to every chorus rather than decided per chorus.
+    # One key for the whole take; a tune that modulates is not handled.
     blocks = form.in_key(found, anchor.shift)
     reference_bar = (end - start) / bars_per_chorus
 
@@ -405,8 +404,7 @@ def score_performance(
             vocabularies,
             check_alignment,
             reference=part,
-            # Limit the offset search to one bar. A longer search can find
-            # false matches in a form with repeating chords.
+            # One bar is the widest offset worth trying; repeating chords match further out.
             alignment_search=reference_bar,
         )
         chart_lines = [start + k * reference_bar for k in range(chorus.bars + 1)]
@@ -502,12 +500,12 @@ def anchor_estimate(
     estimates_dir: Path | None = None,
     refresh: bool = False,
 ) -> list[ChordEvent]:
-    """The chord estimate the form's start is found on: a given ``.lab`` or a backend's.
+    """The chord estimate the form's start is found on.
 
-    The backend is fixed by the caller (default ``chords.DEFAULT_BACKEND``), run on the full
-    mix and cached like any estimate, so the scored run reuses it. It need not be the backend
-    being scored, and it should not be: a start found on the estimate under test can be the
-    one that flatters it. An unknown backend raises; nothing falls back to another model.
+    It is the track's ``.lab`` in ``estimates_dir``, or else ``backend`` (default
+    ``chords.DEFAULT_BACKEND``) run on the full mix. The backend's estimate is cached like
+    any other, so a scored run of the same backend reuses it. Prefer a backend other than
+    the one being scored. An unknown backend raises.
     """
     from .. import chords
 
@@ -588,7 +586,7 @@ def _score_form(
 
 
 def key_search(mode: str) -> tuple[int, ...]:
-    """The keys a take may be in: ``auto`` any of the twelve, ``none`` only the chart's."""
+    """The keys to search for a ``--transpose`` mode: ``auto`` all twelve, ``none`` the chart's."""
     if mode == "auto":
         return chart_fit.ANY_KEY
     if mode == "none":

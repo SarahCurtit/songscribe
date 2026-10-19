@@ -197,9 +197,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=TRANSPOSE_MODES,
         default="auto",
         help=(
-            "keys a take may be played in: auto searches all twelve for the whole take and "
-            "scores against the chart moved to it; none insists on the chart's own "
-            "(default: %(default)s)"
+            "auto: find the key the whole take is played in (all twelve) and score against the "
+            "chart transposed to it; none: the chart's own key (default: %(default)s)"
         ),
     )
     anchor_source = score.add_mutually_exclusive_group()
@@ -208,8 +207,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(BACKENDS),
         help=(
             "chord backend whose estimate of the recording finds where the form starts, run on "
-            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Scoring this "
-            "same backend warns: the start found can be the one that flatters it"
+            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Warns if it is "
+            "the backend being scored"
         ),
     )
     anchor_source.add_argument(
@@ -290,9 +289,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=TRANSPOSE_MODES,
         default="auto",
         help=(
-            "keys a take may be played in: auto searches all twelve for the whole take and "
-            "scores against the chart moved to it; none insists on the chart's own "
-            "(default: %(default)s)"
+            "auto: find the key the whole take is played in (all twelve); none: the chart's own "
+            "key (default: %(default)s)"
         ),
     )
     form.add_argument("--cache", type=Path, help="cache the estimate here, named after --audio")
@@ -499,7 +497,7 @@ def format_form(grid, anchor, blocks, source: str | None = None) -> str:
 
 
 def _start_lines(anchor) -> list[str]:
-    """How the start was found: the evidence, the intro and pickup, the ending, the check."""
+    """Lines saying how the start was found: its method, intro, pickup, ending and chart check."""
     if anchor.evidence == "recurrence":
         lines = [
             f"          found by recurrence (strength {anchor.recurrence_ratio:.1f}x the best "
@@ -962,7 +960,7 @@ def _jsonable(value: float) -> float | None:
 
 
 def _key(shift: int) -> str:
-    """A key relative to the chart's: ``+0`` as written, ``+2`` a tone up, ``-3`` down."""
+    """Key relative to the chart's: ``+0`` as written, ``+2`` a tone up, ``-3`` down."""
     return f"{shift:+d}"
 
 
