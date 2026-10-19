@@ -179,6 +179,15 @@ class TestRecurrenceStart:
         assert anchor.chart_agrees is True
         assert anchor.ending_bars == 0
 
+    def test_a_recurring_start_the_chart_does_not_describe_keeps_the_recurrences_opening(self):
+        performance = the_take(intro=INTRO, pickup=2)
+        moved = form.transpose_events(performance.events, 6)
+        anchor, _ = locate(performance, moved)
+        assert anchor.evidence == "recurrence"
+        assert anchor.start == pytest.approx(performance.head_start)
+        assert anchor.pickup_beats == 2
+        assert "chart fits the recurring start badly" in anchor.refusal()
+
     @pytest.mark.parametrize(("name", "rough"), ROUGH, ids=[name for name, _ in ROUGH])
     def test_it_holds_on_an_estimate_that_only_roughly_matches_what_was_played(self, name, rough):
         performance = the_take(intro=INTRO, pickup=2, varied=True)

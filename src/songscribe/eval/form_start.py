@@ -231,9 +231,9 @@ def locate(
     if not (clearly_better and by_bar[bar_of_tune] >= gate):
         bar_of_tune = opens % form_beats
     passes = [s for s in fits if s % form_beats == bar_of_tune]
-    start = next((s for s in passes if fits[s] >= gate), None)
-    if start is None:
-        start = max(passes, key=lambda s: fits[s])
+    # With no pass the chart describes, the recurrence's own opening stands; picking the best
+    # of several poor fits would be picking noise.
+    start = next((s for s in passes if fits[s] >= gate), opens)
     value = fits[start]
     rivals = [v for b, v in by_bar.items() if b != bar_of_tune]
     runner_up = max(rivals) if rivals else nan
