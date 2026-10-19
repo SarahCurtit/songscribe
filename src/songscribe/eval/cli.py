@@ -464,9 +464,9 @@ def _start_lines(anchor) -> list[str]:
             lines.append(f"          chart match alone {verdict}")
         return lines
     why = (
-        "nothing recurs"
+        "recording too short to compare a form with the next"
         if isnan(anchor.recurrence_ratio)
-        else f"recurrence {anchor.recurrence_ratio:.1f}x the best other lag is not enough"
+        else f"nothing recurs clearly: best run {anchor.recurrence_ratio:.1f}x the best other lag"
     )
     return [f"          found by chart match ({why}); intro and pickup not measured"]
 
