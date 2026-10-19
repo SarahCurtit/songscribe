@@ -24,7 +24,7 @@ def downbeats(bars: int, length=BAR) -> list[float]:
 
 
 def take(intro: int, choruses: int = 3, solo: bool = True) -> list[ChordEvent]:
-    """Intro bars of unrelated chords, then choruses; the middle one is reharmonised."""
+    """Intro bars of unrelated chords, then choruses. The middle chorus has different chords."""
     labels = [JUNK[i % len(JUNK)] for i in range(intro)]
     for index in range(choruses):
         labels += list(JUNK if solo and index == 1 else CHART)
@@ -79,7 +79,7 @@ class TestBarAgreement:
         events = timeline(CHART * 2)
         args = (chroma.chroma_from_events(events), downbeats(16))
         right = chroma.bar_templates(timeline(CHART), 8)
-        # A tritone up shares almost nothing with these changes.
+        # A tritone (6 semitones) up has almost no notes in common with these chords.
         up = ("F#", "D#m", "G#m", "C#7", "A#m", "D#7", "G#m", "C#7")
         moved = chroma.bar_templates(timeline(up), 8)
         good = np.mean([chroma.bar_agreement(*args, right)[i, i % 8] for i in range(16)])
@@ -117,7 +117,7 @@ class TestAnchorBar:
         assert anchor.is_clear
 
     def test_a_reharmonised_first_chorus_is_passed_over(self):
-        # The first chorus is the one that differs; the anchor is the next that fits.
+        # The first chorus has different chords, so the anchor is the start of the next chorus.
         labels = list(JUNK) + list(CHART) * 2
         anchor = anchor_of(timeline(labels), 24)
         assert anchor.bar_index == 8
@@ -128,7 +128,7 @@ class TestAnchorBar:
         assert anchor.refusal() is not None
 
     def test_it_refuses_a_chart_that_fits_every_phase_alike(self):
-        # One chord throughout: every start fits, so none is the start.
+        # With one chord throughout, every start scores the same, so no start can be told apart.
         anchor = anchor_of(timeline(["C"] * 24), 24, reference=timeline(["C"] * 8))
         assert anchor.margin < chroma.ANCHOR_MIN_MARGIN
         assert "margin" in anchor.refusal() or "agreement" in anchor.refusal()
@@ -137,7 +137,7 @@ class TestAnchorBar:
         assert anchor_of(timeline(CHART[:3]), 3) is None
 
     def test_a_recording_that_is_only_one_phase_wide_is_refused(self):
-        # Fits exactly one start, so there is no other phase to compare it with.
+        # There is only one possible start, so there is no other position to compare it with.
         anchor = anchor_of(timeline(CHART), 8)
         assert anchor is not None
         assert anchor.refusal() is not None
@@ -156,9 +156,9 @@ class TestChromagram:
             substitutions={1: {0: "Gm", 1: "Bb", 2: "Eb", 5: "C"}},
         )
         spectrum = chroma.chromagram(performance.audio, sample_rate)
-        # The tracker would find these; the demo knows them, which is the point.
+        # Use the demo's exact bar lines, so no beat tracker is needed.
         grid = list(performance.downbeats)
-        # Pretend the tracker also saw three bars of the lead-in as bars.
+        # Add three extra bar lines in the lead-in, as a beat tracker might.
         lead = [grid[0] - 3 * 1.0 + i * 1.0 for i in range(3)]
         full = lead + grid
         templates = chroma.bar_templates(performance.reference, 8)

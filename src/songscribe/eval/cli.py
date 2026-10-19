@@ -177,14 +177,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--beats",
         type=Path,
         help=(
-            "directory of <track>.beats bar grids: scores a recording of the chart played "
-            "several times, per chorus (tracks need 'bars' in the manifest, and audio)"
+            "directory of <track>.beats files with the recordings' bar lines. Scores each "
+            "chorus separately (tracks need 'bars' in the manifest, and audio)"
         ),
     )
     grid_source.add_argument(
         "--beat-backend",
         choices=sorted(BEAT_BACKENDS),
-        help="track the bar grid with this backend instead (cached under --cache)",
+        help="find the bar lines with this beat tracker instead (results cached under --cache)",
     )
     score.add_argument(
         "--per-chorus",
@@ -234,26 +234,28 @@ def build_parser() -> argparse.ArgumentParser:
     form = subparsers.add_parser(
         "form",
         parents=[common],
-        help="show the detected bar grid, anchor and choruses for one recording",
+        help="print the bar grid, anchor and choruses found in one recording",
         description=(
-            "Find where the chart's form starts in a recording and how it splits into "
-            "choruses, printing what was detected before any score is trusted. Exits 2 "
-            "when the start is not clear."
+            "Find the bar where the chart starts in a recording and split the recording "
+            "into choruses. Prints the result without scoring anything. Exits 2 if the "
+            "start bar is not clear."
         ),
     )
     form.add_argument("reference", type=Path, help="the chart as a .lab file, one chorus")
-    form.add_argument("--bars", type=_positive_int, required=True, help="bars in the chart")
-    form.add_argument("--audio", type=Path, help="the recording; its chroma is the evidence")
+    form.add_argument(
+        "--bars", type=_positive_int, required=True, help="number of bars in the chart"
+    )
+    form.add_argument("--audio", type=Path, help="the recording, compared with the chart by chroma")
     form.add_argument(
         "--estimate",
         type=Path,
-        help="a chord .lab to anchor on instead of audio: for looking at a form only, "
-        "since it fits the start to the estimate",
+        help="a chord .lab file to use instead of --audio. Only for inspecting a form: "
+        "the start found is the one that suits the estimate",
     )
     form_grid = form.add_mutually_exclusive_group(required=True)
     form_grid.add_argument("--beats", type=Path, help="a .beats file for the recording")
     form_grid.add_argument(
-        "--beat-backend", choices=sorted(BEAT_BACKENDS), help="track the bar grid in --audio"
+        "--beat-backend", choices=sorted(BEAT_BACKENDS), help="find the bar lines in --audio"
     )
     return parser
 
@@ -399,7 +401,7 @@ def _form(args: argparse.Namespace) -> int:
 
 
 def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
-    """Render what ``form`` detected: bar grid, anchor, and the chorus table."""
+    """Format the output of ``form``: the bar grid, the anchor, and a table of choruses."""
     from . import form
 
     tempo = f"{grid.tempo:.1f}" if not isnan(grid.tempo) else "--"
@@ -410,7 +412,7 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
         f"          {len(grid.unreliable_bars())} bars far from the median length",
     ]
     if anchor is None:
-        lines += ["anchor    none: the recording is too short to hold the form", ""]
+        lines += ["anchor    none: the recording is too short for the chart", ""]
         return "\n".join(lines)
     refusal = anchor.refusal()
     lines.append(
@@ -419,13 +421,11 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
         f"margin {anchor.margin:.2f}"
     )
     if from_estimate:
-        lines.append(
-            "          anchored on the estimate, not audio: for looking, never for scoring"
-        )
+        lines.append("          anchored on the estimate, not on audio: do not use it for scoring")
     if refusal:
         lines += [
-            f"          REFUSED: {refusal}",
-            "          no choruses are drawn from a guess",
+            f"          NOT CLEAR: {refusal}",
+            "          choruses are not listed because the start is not reliable",
             "",
         ]
         return "\n".join(lines)
@@ -440,7 +440,7 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
             f"{chorus.start:>9.2f}s{chorus.end:>9.2f}s{scale:>8}"
         )
     unscored = form.unscored_seconds(blocks)
-    lines += ["", f"{unscored:.1f} s in blocks no score covers (intro, ending, unaligned)", ""]
+    lines += ["", f"{unscored:.1f} s not scored (intro, tail, unaligned blocks)", ""]
     return "\n".join(lines)
 
 
@@ -603,10 +603,10 @@ def _score(args: argparse.Namespace) -> int:
 
 
 def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
-    """A callback printing one row per track (or per chorus) as the run proceeds.
+    """Return a callback that prints one row per track, or per chorus if ``per_chorus``.
 
-    Printed live rather than collected, because a full corpus run takes long
-    enough that silence is indistinguishable from a hang.
+    Rows are printed as each track finishes, because a full corpus run is
+    slow enough that no output looks like a hang.
     """
     header_written = False
 
@@ -674,7 +674,7 @@ def format_report(report) -> str:
     if report.chorus_count():
         lines.append(
             f"{'bar':<12}{_percent(report.mean_bar()):>10}"
-            f"{'':>10}   right chord in the right bar, tempo- and offset-free"
+            f"{'':>10}   bars with the right chord (independent of tempo and offset)"
         )
     lines += [
         "",
@@ -684,9 +684,9 @@ def format_report(report) -> str:
     ]
     if report.chorus_count():
         lines += [
-            f"{report.chorus_count()} choruses in {len(report.results)} tracks, each scored on",
-            "its own; the track rows aggregate the full choruses. Intro, ending and unaligned",
-            f"choruses are left out ({sum(r.unscored_seconds for r in report.results):.0f} s).",
+            f"{report.chorus_count()} choruses in {len(report.results)} tracks, scored separately.",
+            "The track rows combine the full choruses. Intro, tail and unaligned blocks are",
+            f"not scored ({sum(r.unscored_seconds for r in report.results):.0f} s in total).",
             "",
         ]
     if report.graded_grids() < len(report.results):

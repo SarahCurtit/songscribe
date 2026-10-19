@@ -57,17 +57,17 @@ class TestFormCommand:
         assert "anchor    bar 0 at 3.00 s" in out.out
         kinds = [line.split()[1] for line in out.out.splitlines() if line[:3].strip().isdigit()]
         assert kinds == ["intro", "head", "chorus", "head"]
-        assert "3.0 s in blocks no score covers" in out.out
+        assert "3.0 s not scored" in out.out
 
     def test_anchoring_on_an_estimate_says_it_is_not_for_scoring(self, files, capsys):
         code, out = run_form(files, capsys, "--estimate", str(files["estimate"]))
         assert code == 0
-        assert "not for scoring" in out.out or "never for scoring" in out.out
+        assert "do not use it for scoring" in out.out
 
     def test_a_recording_that_is_not_the_chart_is_refused_with_exit_two(self, files, capsys):
         code, out = run_form(files, capsys, "--audio", str(files["stranger"]))
         assert code == 2
-        assert "REFUSED" in out.out
+        assert "NOT CLEAR" in out.out
         assert "head" not in out.out
 
     def test_it_wants_exactly_one_source_of_evidence(self, files, capsys):
@@ -113,7 +113,7 @@ class TestScoreWithABarGrid:
         assert "#1 head" in out
         assert "#2 chorus" in out
         assert "#3 head" in out
-        assert "right chord in the right bar" in out
+        assert "bars with the right chord" in out
         assert "3 choruses in 1 tracks" in out
 
     def test_the_json_keeps_every_old_key_and_adds_the_choruses(self, manifest, tmp_path):
