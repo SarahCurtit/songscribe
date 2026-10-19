@@ -413,51 +413,24 @@ test.
 
 ### A chart played several times: `form`, `bar`, and `--beats`
 
-A real recording usually has an intro, the chart played several times, and an ending. Its
-times do not line up with the reference, which is a single chorus. To score
-such a recording, give the manifest track `"bars"` (the number of bars in the chart) and
-pass `--beats DIR` (or `--beat-backend`). `songscribe-eval form` prints what was detected
-without scoring. The steps are:
+A real recording has an intro, the chart played several times and an ending, so its times do
+not line up with the single-chorus reference. To score one, give the manifest track `"bars"`
+(the number of bars in the chart) and pass `--beats DIR` or `--beat-backend`.
+`songscribe-eval form` prints the detected start and choruses without scoring, and exits 2
+when the start is not clear. How the start is found is described in
+`src/songscribe/eval/README.md`.
 
-- **Start** (`eval/recurrence.py`, `eval/chart_fit.py`, `eval/form_start.py`): a chord
-  estimate of the recording finds where the form starts; the chart does not. The estimate is
-  one symbol per beat (root and third, so `C`, `C7` and `Cmaj7` agree and flicker or an
-  anticipated change is outvoted within the beat), and each bar is compared with the bar a form
-  later (the chart gives only the length in bars; it is not searched for, since self-similarity
-  alone returns half of it). The stretch where that holds begins at the head, or at the pickup
-  into it, so the bars before it are the intro and the beats just before the head that also
-  recur are the pickup. Where the chords change says which beat the bar lines fall on, so a
-  tracker whose downbeats are a few beats off is moved. A run counts only if it beats every
-  other lag as a null and spans three quarters of a form (`MIN_RUN_FORMS`); the tolerance for
-  choruses that differ is the step limit of the run. The chart's labels are then compared with
-  the estimate from the start, beat by beat, in the key asked for (the chart transposed, never
-  the estimate). That fraction is read against the best that bar-shuffled copies of the chart
-  reach over the same starts and keys (`Anchor.chance`): the chart has to beat it by
-  `ANCHOR_MIN_EXCESS`, so a vamp or a loop, where the shuffles agree as well, is refused.
-  The chart chooses between starts within a form of the opening (an intro that echoes the
-  tune; a head that differs from the solos) and, if nothing recurs (one chorus), finds the
-  start alone. `form` says which evidence found the start. The thresholds come from synthetic
-  takes (shuffled, unrelated, one-chord and looped controls under three levels of perturbed
-  estimates), never from a real recording.
-  The estimate is a model's output, so the start can be the one that suits it: anchor on a
-  different backend from the one scored (`--anchor-backend`, default `madmom`; `score` warns
-  when it is the same one) or on pre-computed `.lab` files (`--anchor-estimates`, `form
-  --estimate`).
-- **Choruses** (`eval/form.py`): cut the recording from the anchor into blocks of the chart's
-  bar count. A block is one of `intro`, `head` (the first and last full chorus), `chorus`,
-  `partial` (a shorter last block of at least four bars), `tail` (a shorter block, treated as
-  an ending) or `unaligned`. A block is `unaligned` if one of its bars is much longer or
-  shorter than the block's median bar, or if its tempo differs from the other choruses'. Once
-  a bar has been added or dropped, all later blocks are `unaligned` as well. The seconds that
-  are not scored are reported.
-- **Mapping**: the estimate in each scored chorus is shifted and scaled to the chart's
-  timeline, so WCSR, `chart`, `grid` and `segmentation` work per chorus without changes. The
-  time offset check per chorus covers one bar, not three seconds.
-- **`bar`**: the fraction of bars that have the right chord. The recording's own bar lines are
-  used, so tempo, offset and length do not affect it. Use it as the main score for a real
-  recording.
-- **Aggregation**: the track row combines all full choruses, not only the best one. A partial
-  last chorus is reported but not included.
+- The start is found on a chord estimate of the recording: `--anchor-backend` (default
+  `madmom`), or pre-computed `.lab` files with `--anchor-estimates` / `form --estimate`. Use a
+  different backend from the one being scored; `score` warns when they are the same.
+- Choruses are `intro`, `head`, `chorus`, `partial`, `tail` or `unaligned` (a block whose bars
+  or tempo are inconsistent, and every block after it). The seconds not scored are reported.
+- Each chorus is mapped onto the reference timeline, so WCSR, `chart`, `grid` and
+  `segmentation` work per chorus unchanged.
+- `bar` is the fraction of bars with the right chord, independent of tempo, offset and
+  length; use it as the main score for a real recording.
+- The track row combines all full choruses; a partial last chorus is reported but not
+  included.
 
 ### `placement`: lyric-chord synchronisation, for songs
 
