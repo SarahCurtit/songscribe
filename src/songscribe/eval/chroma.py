@@ -170,11 +170,34 @@ class Anchor:
     mean_agreement: float
     runner_up: float
     margin: float
+    #: What found the start: ``chart`` (matching the chart's pitch classes) or
+    #: ``recurrence`` (the audio repeating one form later, see ``recurrence.py``).
+    evidence: str = "chart"
+    #: Whole bars before the pickup, and the pickup's beats; ``None`` if not measured.
+    intro_bars: int | None = None
+    pickup_beats: int | None = None
+    #: Beats the tracker's bar lines were moved to put the start on a downbeat.
+    phase_shift: int = 0
+    #: Bars after the last stretch that recurs (a tag or ending), by recurrence.
+    ending_bars: int | None = None
+    #: Strength of the recurrence over the best other lag; ``nan`` if none was claimed.
+    recurrence_ratio: float = nan
+    #: Whether the chart match alone picks the same start (a whole form apart counts);
+    #: ``None`` when it is not clear enough to say.
+    chart_agrees: bool | None = None
 
     def refusal(
         self, min_agreement: float = ANCHOR_MIN_AGREEMENT, min_margin: float = ANCHOR_MIN_MARGIN
     ) -> str | None:
-        """Return the reason this anchor is unreliable, or ``None`` if it is reliable."""
+        """Return the reason this anchor is unreliable, or ``None`` if it is reliable.
+
+        A start found by recurrence does not hinge on the chart, so only the chart's fit
+        there is checked: a recurring stretch the chart does not describe is not its form.
+        """
+        if self.evidence == "recurrence":
+            if self.mean_agreement < min_agreement:
+                return f"chart fits the recurring start badly: {self.mean_agreement:.2f}"
+            return None
         if isnan(self.margin):
             return "only one candidate position in the form, nothing to compare it with"
         if self.mean_agreement < min_agreement:

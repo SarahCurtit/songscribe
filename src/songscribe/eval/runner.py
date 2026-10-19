@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..beats import BeatGrid
 from ..types import ChordEvent
-from . import chroma, form, metrics
+from . import chroma, form, form_start, metrics
 from .dataset import Dataset, Track
 
 log = logging.getLogger(__name__)
@@ -519,9 +519,9 @@ def _score_form(
     if track.bars is None:
         raise ValueError(f"{track.id}: the manifest gives no 'bars' for this track")
     grid = bar_grid(track, beats_dir, beat_backend, cache_dir)
-    found = chroma.anchor_bar(
+    found, grid = form_start.locate(
         chroma_of(track),
-        grid.downbeats,
+        grid,
         chroma.bar_templates(reference, track.bars),
         min_bars=form.CHORUS_MIN_BARS,
     )
