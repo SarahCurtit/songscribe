@@ -5,7 +5,7 @@ import json
 import pytest
 import soundfile as sf
 
-from songscribe import lab
+from songscribe import chords, lab
 from songscribe.demo import synthesise_performance
 from songscribe.eval import cli, dataset
 
@@ -33,13 +33,13 @@ def files(tmp_path):
         "beats": tmp_path / "song.beats",
         "estimate": tmp_path / "song.lab",
         "audio": tmp_path / "song.wav",
-        "stranger": tmp_path / "stranger.wav",
+        "stranger": tmp_path / "stranger.lab",
     }
     lab.write(paths["reference"], performance.reference)
     lab.write_beats(paths["beats"], performance.beat_events())
     lab.write(paths["estimate"], performance.events)
+    lab.write(paths["stranger"], take(STRANGER).events)
     sf.write(paths["audio"], performance.audio, SAMPLE_RATE)
-    sf.write(paths["stranger"], take(STRANGER).audio, SAMPLE_RATE)
     return paths
 
 
@@ -51,21 +51,17 @@ def run_form(files, capsys, *extra):
 
 class TestFormCommand:
     def test_it_prints_the_grid_the_anchor_and_the_choruses(self, files, capsys):
-        code, out = run_form(files, capsys, "--audio", str(files["audio"]))
+        code, out = run_form(files, capsys, "--estimate", str(files["estimate"]))
         assert code == 0
         assert "bar grid  24 bars, median 1.000 s (240.0 bpm in 4 beats)" in out.out
         assert "anchor    bar 0 at 0.75 s" in out.out
+        assert "found on the estimate song.lab" in out.out
         kinds = [line.split()[1] for line in out.out.splitlines() if line[:3].strip().isdigit()]
         assert kinds == ["intro", "head", "chorus", "head"]
         assert "0.8 s not scored" in out.out
 
-    def test_anchoring_on_an_estimate_says_it_is_not_for_scoring(self, files, capsys):
-        code, out = run_form(files, capsys, "--estimate", str(files["estimate"]))
-        assert code == 0
-        assert "do not use it for scoring" in out.out
-
     def test_a_recording_that_is_not_the_chart_is_refused_with_exit_two(self, files, capsys):
-        code, out = run_form(files, capsys, "--audio", str(files["stranger"]))
+        code, out = run_form(files, capsys, "--estimate", str(files["stranger"]))
         assert code == 2
         assert "NOT CLEAR" in out.out
         assert "head" not in out.out
@@ -77,9 +73,30 @@ class TestFormCommand:
 
     def test_a_missing_file_is_an_error_not_a_traceback(self, files, capsys):
         files["beats"].unlink()
-        code, out = run_form(files, capsys, "--audio", str(files["audio"]))
+        code, out = run_form(files, capsys, "--estimate", str(files["estimate"]))
         assert code == 1
         assert "songscribe-eval:" in out.err
+
+    def test_with_audio_the_anchor_backend_estimates_the_chords_and_the_cache_keeps_them(
+        self, files, tmp_path, capsys, monkeypatch
+    ):
+        cache = tmp_path / "cache"
+        extra = ("--audio", str(files["audio"]), "--anchor-backend", "template")
+        code, out = run_form(files, capsys, *extra, "--cache", str(cache))
+        assert code == 0
+        assert "found on the template estimate of song.wav" in out.out
+        assert (cache / "template" / "song.lab").exists()
+
+        def never(*args, **kwargs):
+            raise AssertionError("the cached estimate should have been used")
+
+        monkeypatch.setattr(chords, "recognise", never)
+        again, _ = run_form(files, capsys, *extra, "--cache", str(cache))
+        assert again == 0
+
+    def test_an_unknown_anchor_backend_is_rejected_not_replaced_by_another(self, files, capsys):
+        with pytest.raises(SystemExit):
+            run_form(files, capsys, "--audio", str(files["audio"]), "--anchor-backend", "nope")
 
 
 class TestScoreWithABarGrid:
@@ -91,6 +108,9 @@ class TestScoreWithABarGrid:
         estimates = tmp_path / "est"
         estimates.mkdir()
         (estimates / "song.lab").write_text(files["estimate"].read_text(encoding="utf-8"))
+        anchors = tmp_path / "anchors"
+        anchors.mkdir()
+        (anchors / "song.lab").write_text(files["estimate"].read_text(encoding="utf-8"))
         path = tmp_path / "m.json"
         entry = {"id": "song", "reference": "reference.lab", "audio": "song.wav", "bars": 8}
         dataset.write_manifest(path, dataset.build("take", [entry]))
@@ -105,6 +125,8 @@ class TestScoreWithABarGrid:
             str(tmp_path),
             "--annotations",
             str(tmp_path),
+            "--anchor-estimates",
+            str(anchors),
         ]
 
     def test_per_chorus_rows_and_a_bar_summary(self, manifest, capsys):

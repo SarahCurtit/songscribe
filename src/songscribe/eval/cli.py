@@ -191,6 +191,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print a row per chorus; needs --beats or --beat-backend",
     )
+    anchor_source = score.add_mutually_exclusive_group()
+    anchor_source.add_argument(
+        "--anchor-backend",
+        choices=sorted(BACKENDS),
+        help=(
+            "chord backend whose estimate of the recording finds where the form starts, run on "
+            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Scoring this "
+            "same backend warns: the start found can be the one that flatters it"
+        ),
+    )
+    anchor_source.add_argument(
+        "--anchor-estimates",
+        type=Path,
+        help="directory of pre-computed .lab estimates to find the start on instead",
+    )
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
     score.add_argument(
         "--no-alignment-check",
@@ -236,22 +251,30 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="print the bar grid, anchor and choruses found in one recording",
         description=(
-            "Find the bar where the chart starts in a recording and split the recording "
-            "into choruses. Prints the result without scoring anything. Exits 2 if the "
-            "start bar is not clear."
+            "Find the bar where the chart starts in a recording, from a chord estimate of "
+            "it, and split the recording into choruses. Prints the result without scoring "
+            "anything. Exits 2 if the start bar is not clear."
         ),
     )
     form.add_argument("reference", type=Path, help="the chart as a .lab file, one chorus")
     form.add_argument(
         "--bars", type=_positive_int, required=True, help="number of bars in the chart"
     )
-    form.add_argument("--audio", type=Path, help="the recording, compared with the chart by chroma")
+    form.add_argument(
+        "--audio", type=Path, help="the recording; --anchor-backend estimates its chords"
+    )
     form.add_argument(
         "--estimate",
         type=Path,
-        help="a chord .lab file to use instead of --audio. Only for inspecting a form: "
-        "the start found is the one that suits the estimate",
+        help="a chord .lab file of the recording to find the start on instead of --audio",
     )
+    form.add_argument(
+        "--anchor-backend",
+        choices=sorted(BACKENDS),
+        default=DEFAULT_BACKEND,
+        help="chord backend run on --audio (default: %(default)s)",
+    )
+    form.add_argument("--cache", type=Path, help="cache the estimate here, named after --audio")
     form_grid = form.add_mutually_exclusive_group(required=True)
     form_grid.add_argument("--beats", type=Path, help="a .beats file for the recording")
     form_grid.add_argument(
@@ -355,7 +378,7 @@ def _survey(args: argparse.Namespace) -> int:
 
 def _form(args: argparse.Namespace) -> int:
     from .. import beats, lab
-    from . import chroma, form, runner
+    from . import form, runner
     from .dataset import Track
     from .form_start import locate
     from .metrics import extent
@@ -367,8 +390,12 @@ def _form(args: argparse.Namespace) -> int:
         print("songscribe-eval: --beat-backend tracks beats in --audio", file=sys.stderr)
         return 1
 
+    # The recording's name keys the cached estimate, as a manifest track's id does in 'score'.
     track = Track(
-        id=args.reference.stem, reference=args.reference, audio=args.audio, bars=args.bars
+        id=(args.audio or args.reference).stem,
+        reference=args.reference,
+        audio=args.audio,
+        bars=args.bars,
     )
     try:
         reference = lab.read(args.reference)
@@ -376,16 +403,13 @@ def _form(args: argparse.Namespace) -> int:
             grid = beats.grid(lab.read_beats(args.beats))
         else:
             grid = runner.bar_grid(track, None, args.beat_backend, None)
-        evidence = (
-            runner.chroma_of(track)
-            if args.audio is not None
-            else chroma.chroma_from_events(lab.read(args.estimate))
-        )
+        if args.estimate is not None:
+            estimate, source = lab.read(args.estimate), f"the estimate {args.estimate.name}"
+        else:
+            estimate = runner.anchor_estimate(track, args.anchor_backend, args.cache)
+            source = f"the {args.anchor_backend} estimate of {args.audio.name}"
         found, grid = locate(
-            evidence,
-            grid,
-            chroma.bar_templates(reference, args.bars),
-            min_bars=form.CHORUS_MIN_BARS,
+            estimate, grid, reference, bars=args.bars, min_bars=form.CHORUS_MIN_BARS
         )
         start, end = extent(reference)
         blocks = (
@@ -397,11 +421,11 @@ def _form(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1
 
-    sys.stdout.write(format_form(grid, found, blocks, from_estimate=args.estimate is not None))
+    sys.stdout.write(format_form(grid, found, blocks, source))
     return 0 if blocks else 2
 
 
-def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
+def format_form(grid, anchor, blocks, source: str | None = None) -> str:
     """Format the output of ``form``: the bar grid, the anchor, and a table of choruses."""
     from . import form
 
@@ -418,12 +442,12 @@ def format_form(grid, anchor, blocks, from_estimate: bool = False) -> str:
     refusal = anchor.refusal()
     lines.append(
         f"anchor    bar {anchor.bar_index} at {anchor.start:.2f} s   "
-        f"agreement {anchor.mean_agreement:.2f}  runner-up {anchor.runner_up:.2f}  "
-        f"margin {anchor.margin:.2f}"
+        f"label agreement {anchor.label_agreement:.2f}  shuffled charts {anchor.chance:.2f}  "
+        f"runner-up {anchor.runner_up:.2f}  margin {anchor.margin:.2f}"
     )
     lines += _start_lines(anchor)
-    if from_estimate:
-        lines.append("          anchored on the estimate, not on audio: do not use it for scoring")
+    if source:
+        lines.append(f"          found on {source}")
     if refusal:
         lines += [
             f"          NOT CLEAR: {refusal}",
@@ -609,6 +633,8 @@ def _score(args: argparse.Namespace) -> int:
             check_alignment=not args.no_alignment_check,
             beats_dir=args.beats,
             beat_backend=args.beat_backend,
+            anchor_backend=args.anchor_backend,
+            anchor_dir=args.anchor_estimates,
         )
     except (OSError, ValueError, ImportError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -673,6 +699,7 @@ def format_report(report) -> str:
         f"dataset   {report.dataset}",
         f"backend   {report.backend}",
         f"input     {_input_variant(report)}",
+        *([f"anchor    form start found on {report.anchor}"] if report.anchor else []),
         f"tracks    {len(report.results)} scored"
         + (f", {len(report.skipped)} skipped" if report.skipped else ""),
         f"duration  {report.total_duration / 60:.1f} min of annotated audio",
@@ -788,6 +815,7 @@ def report_to_dict(report) -> dict:
         # null for pre-computed estimates, whose input is not known here.
         "separated": report.separated,
         "separation_fallbacks": report.fallbacks,
+        "anchor": report.anchor,
         "vocabularies": list(report.vocabularies),
         "total_duration": report.total_duration,
         "skipped": list(report.skipped),
@@ -863,9 +891,12 @@ def _anchor_to_dict(anchor) -> dict:
     return {
         "bar_index": anchor.bar_index,
         "start": anchor.start,
-        "agreement": _jsonable(anchor.mean_agreement),
+        "label_agreement": _jsonable(anchor.label_agreement),
+        "chance": _jsonable(anchor.chance),
         "runner_up": _jsonable(anchor.runner_up),
         "margin": _jsonable(anchor.margin),
+        "shift": anchor.shift,
+        "keys_searched": anchor.keys,
         "evidence": anchor.evidence,
         "intro_bars": anchor.intro_bars,
         "pickup_beats": anchor.pickup_beats,
@@ -873,6 +904,7 @@ def _anchor_to_dict(anchor) -> dict:
         "ending_bars": anchor.ending_bars,
         "recurrence_ratio": _jsonable(anchor.recurrence_ratio),
         "chart_agrees": anchor.chart_agrees,
+        "key_margin": _jsonable(anchor.key_margin),
     }
 
 
