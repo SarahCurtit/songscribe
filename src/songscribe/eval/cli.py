@@ -10,6 +10,7 @@ from math import isnan
 from pathlib import Path
 
 from .. import __version__
+from ..beats import BACKENDS as BEAT_BACKENDS
 from ..chords import BACKENDS, DEFAULT_BACKEND
 from .dataset import (
     ANNOTATION_ROOT_ENV,
@@ -18,6 +19,7 @@ from .dataset import (
     load_manifest,
     write_manifest,
 )
+from .form import TRANSPOSE_MODES
 from .metrics import (
     ALIGNMENT_WARN_GAIN,
     ALIGNMENT_WARN_OFFSET,
@@ -171,6 +173,49 @@ def build_parser() -> argparse.ArgumentParser:
     )
     score.add_argument("--limit", type=_positive_int, help="score only the first N tracks")
     score.add_argument("--per-track", action="store_true", help="print a row per track")
+    grid_source = score.add_mutually_exclusive_group()
+    grid_source.add_argument(
+        "--beats",
+        type=Path,
+        help=(
+            "directory of <track>.beats files with the recordings' bar lines. Scores each "
+            "chorus separately (tracks need 'bars' in the manifest, and audio)"
+        ),
+    )
+    grid_source.add_argument(
+        "--beat-backend",
+        choices=sorted(BEAT_BACKENDS),
+        help="find the bar lines with this beat tracker instead (results cached under --cache)",
+    )
+    score.add_argument(
+        "--per-chorus",
+        action="store_true",
+        help="print a row per chorus; needs --beats or --beat-backend",
+    )
+    score.add_argument(
+        "--transpose",
+        choices=TRANSPOSE_MODES,
+        default="auto",
+        help=(
+            "auto: find the key the whole take is played in (all twelve) and score against the "
+            "chart transposed to it; none: the chart's own key (default: %(default)s)"
+        ),
+    )
+    anchor_source = score.add_mutually_exclusive_group()
+    anchor_source.add_argument(
+        "--anchor-backend",
+        choices=sorted(BACKENDS),
+        help=(
+            "chord backend whose estimate of the recording finds where the form starts, run on "
+            f"the full mix and cached under --cache (default: {DEFAULT_BACKEND}). Warns if it is "
+            "the backend being scored"
+        ),
+    )
+    anchor_source.add_argument(
+        "--anchor-estimates",
+        type=Path,
+        help="directory of pre-computed .lab estimates to find the start on instead",
+    )
     score.add_argument("--json", type=Path, help="also write the full results as JSON")
     score.add_argument(
         "--no-alignment-check",
@@ -210,6 +255,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="how many labels to list by time (default: %(default)s; 0 for none)",
     )
     survey.add_argument("--json", type=Path, help="also write the survey as JSON")
+
+    form = subparsers.add_parser(
+        "form",
+        parents=[common],
+        help="print the bar grid, anchor and choruses found in one recording",
+        description=(
+            "Find the bar where the chart starts in a recording, from a chord estimate of "
+            "it, and split the recording into choruses. Prints the result without scoring "
+            "anything. Exits 2 if the start bar is not clear."
+        ),
+    )
+    form.add_argument("reference", type=Path, help="the chart as a .lab file, one chorus")
+    form.add_argument(
+        "--bars", type=_positive_int, required=True, help="number of bars in the chart"
+    )
+    form.add_argument(
+        "--audio", type=Path, help="the recording; --anchor-backend estimates its chords"
+    )
+    form.add_argument(
+        "--estimate",
+        type=Path,
+        help="a chord .lab file of the recording to find the start on instead of --audio",
+    )
+    form.add_argument(
+        "--anchor-backend",
+        choices=sorted(BACKENDS),
+        default=DEFAULT_BACKEND,
+        help="chord backend run on --audio (default: %(default)s)",
+    )
+    form.add_argument(
+        "--transpose",
+        choices=TRANSPOSE_MODES,
+        default="auto",
+        help=(
+            "auto: find the key the whole take is played in (all twelve); none: the chart's own "
+            "key (default: %(default)s)"
+        ),
+    )
+    form.add_argument("--cache", type=Path, help="cache the estimate here, named after --audio")
+    form_grid = form.add_mutually_exclusive_group(required=True)
+    form_grid.add_argument("--beats", type=Path, help="a .beats file for the recording")
+    form_grid.add_argument(
+        "--beat-backend", choices=sorted(BEAT_BACKENDS), help="find the bar lines in --audio"
+    )
     return parser
 
 
@@ -230,6 +319,8 @@ def main(argv: list[str] | None = None) -> int:
         return _manifest(args)
     if args.command == "survey":
         return _survey(args)
+    if args.command == "form":
+        return _form(args)
     return _score(args)
 
 
@@ -302,6 +393,132 @@ def _survey(args: argparse.Namespace) -> int:
     # An unparseable label is a gap in our own vocabulary, not bad data, so it
     # is worth a non-zero exit: this is the shape of thing CI should catch.
     return 2 if result.unparseable else 0
+
+
+def _form(args: argparse.Namespace) -> int:
+    from .. import beats, lab
+    from . import form, runner
+    from .dataset import Track
+    from .form_start import locate
+    from .metrics import extent
+
+    if (args.audio is None) == (args.estimate is None):
+        print("songscribe-eval: pass exactly one of --audio or --estimate", file=sys.stderr)
+        return 1
+    if args.beat_backend is not None and args.audio is None:
+        print("songscribe-eval: --beat-backend tracks beats in --audio", file=sys.stderr)
+        return 1
+
+    # The recording's name keys the cached estimate, as a manifest track's id does in 'score'.
+    track = Track(
+        id=(args.audio or args.reference).stem,
+        reference=args.reference,
+        audio=args.audio,
+        bars=args.bars,
+    )
+    try:
+        reference = lab.read(args.reference)
+        if args.beats is not None:
+            grid = beats.grid(lab.read_beats(args.beats))
+        else:
+            grid = runner.bar_grid(track, None, args.beat_backend, None)
+        if args.estimate is not None:
+            estimate, source = lab.read(args.estimate), f"the estimate {args.estimate.name}"
+        else:
+            estimate = runner.anchor_estimate(track, args.anchor_backend, args.cache)
+            source = f"the {args.anchor_backend} estimate of {args.audio.name}"
+        found, grid = locate(
+            estimate,
+            grid,
+            reference,
+            bars=args.bars,
+            min_bars=form.CHORUS_MIN_BARS,
+            shifts=runner.key_search(args.transpose),
+        )
+        blocks = ()
+        if found is not None and not found.refusal():
+            start, end = extent(reference)
+            blocks = form.in_key(
+                form.choruses(grid, args.bars, found.bar_index, end - start), found.shift
+            )
+    except (OSError, ValueError, runner.AudioDecodeError) as error:
+        print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+
+    sys.stdout.write(format_form(grid, found, blocks, source))
+    return 0 if blocks else 2
+
+
+def format_form(grid, anchor, blocks, source: str | None = None) -> str:
+    """Format the output of ``form``: the bar grid, the anchor, and a table of choruses."""
+    from . import form
+
+    tempo = f"{grid.tempo:.1f}" if not isnan(grid.tempo) else "--"
+    length = f"{grid.bar_length:.3f} s" if not isnan(grid.bar_length) else "--"
+    lines = [
+        "",
+        f"bar grid  {grid.bars} bars, median {length} ({tempo} bpm in {grid.beats_per_bar} beats)",
+        f"          {len(grid.unreliable_bars())} bars far from the median length",
+    ]
+    if anchor is None:
+        lines += ["anchor    none: the recording is too short for the chart", ""]
+        return "\n".join(lines)
+    refusal = anchor.refusal()
+    lines.append(
+        f"anchor    bar {anchor.bar_index} at {anchor.start:.2f} s   "
+        f"label agreement {anchor.label_agreement:.2f}  shuffled charts {anchor.chance:.2f}  "
+        f"runner-up {anchor.runner_up:.2f}  margin {anchor.margin:.2f}  key {_key(anchor.shift)}"
+    )
+    lines += _start_lines(anchor)
+    if source:
+        lines.append(f"          found on {source}")
+    if refusal:
+        lines += [
+            f"          NOT CLEAR: {refusal}",
+            "          choruses are not listed because the start is not reliable",
+            "",
+        ]
+        return "\n".join(lines)
+    lines += [
+        "",
+        f"{'#':>3} {'kind':<10}{'first bar':>10}{'bars':>6}{'start':>10}{'end':>10}"
+        f"{'scale':>8}{'key':>6}",
+    ]
+    for chorus in blocks:
+        scale = "--" if isnan(chorus.scale) else f"{chorus.scale:.3f}"
+        key = _key(chorus.shift) if chorus.is_scored else "--"
+        lines.append(
+            f"{chorus.index:>3} {chorus.kind:<10}{chorus.first_bar:>10}{chorus.bars:>6}"
+            f"{chorus.start:>9.2f}s{chorus.end:>9.2f}s{scale:>8}{key:>6}"
+        )
+    unscored = form.unscored_seconds(blocks)
+    lines += ["", f"{unscored:.1f} s not scored (intro, tail, unaligned blocks)", ""]
+    return "\n".join(lines)
+
+
+def _start_lines(anchor) -> list[str]:
+    """Lines saying how the start was found: its method, intro, pickup, ending and chart check."""
+    if anchor.evidence == "recurrence":
+        lines = [
+            f"          found by recurrence (strength {anchor.recurrence_ratio:.1f}x the best "
+            "other lag)",
+            f"          intro {anchor.intro_bars} bars, pickup {anchor.pickup_beats} beats, "
+            f"about {anchor.ending_bars} bars after the last recurring pass",
+        ]
+        if anchor.phase_shift:
+            lines.append(
+                f"          bar lines moved {anchor.phase_shift:+d} beats from the tracker's"
+            )
+        if anchor.chart_agrees is not None:
+            verdict = "agrees" if anchor.chart_agrees else "DISAGREES"
+            lines.append(f"          chart match alone {verdict}")
+        return lines
+    why = (
+        "recording too short to compare a form with the next"
+        if isnan(anchor.recurrence_ratio)
+        else f"nothing recurs clearly: best run {anchor.recurrence_ratio:.1f}x the best other lag"
+    )
+    return [f"          found by chart match ({why}); intro and pickup not measured"]
 
 
 def format_survey(result, label_limit: int = TOP_LABELS) -> str:
@@ -421,7 +638,13 @@ def _score(args: argparse.Namespace) -> int:
         print("songscribe-eval: manifest lists no tracks", file=sys.stderr)
         return 1
 
-    printer = _per_track_printer(vocabularies) if args.per_track else None
+    if args.per_chorus and args.beats is None and args.beat_backend is None:
+        print("songscribe-eval: --per-chorus needs --beats or --beat-backend", file=sys.stderr)
+        return 1
+
+    printer = None
+    if args.per_track or args.per_chorus:
+        printer = _per_track_printer(vocabularies, args.per_chorus)
     try:
         report = evaluate(
             dataset,
@@ -434,6 +657,11 @@ def _score(args: argparse.Namespace) -> int:
             limit=args.limit,
             on_track=printer,
             check_alignment=not args.no_alignment_check,
+            beats_dir=args.beats,
+            beat_backend=args.beat_backend,
+            anchor_backend=args.anchor_backend,
+            anchor_dir=args.anchor_estimates,
+            transpose=args.transpose,
         )
     except (OSError, ValueError, ImportError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
@@ -454,23 +682,45 @@ def _score(args: argparse.Namespace) -> int:
     return 0
 
 
-def _per_track_printer(vocabularies: tuple[str, ...]):
-    """A callback printing one row per track as the run proceeds.
+def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
+    """Return a callback that prints one row per track, or per chorus if ``per_chorus``.
 
-    Printed live rather than collected, because a full corpus run takes long
-    enough that silence is indistinguishable from a hang.
+    Rows are printed as each track finishes, because a full corpus run is
+    slow enough that no output looks like a hang.
     """
     header_written = False
 
-    def write(result) -> None:
+    bar_vocabularies = tuple(v for v in vocabularies if v != "mirex")
+
+    def row(label: str, scores, segmentation, bars: dict[str, float] | None, key: str = "") -> None:
         nonlocal header_written
         if not header_written:
             columns = "".join(f"{name:>10}" for name in vocabularies)
-            print(f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}")
+            bar_columns = "".join(f"{'bar-' + v:>14}" for v in bar_vocabularies)
+            print(
+                f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}"
+                + (f"{bar_columns}{'key':>6}" if per_chorus else "")
+            )
             header_written = True
-        scores = "".join(f"{_percent(result.scores[v].wcsr):>10}" for v in vocabularies)
-        boundary = _percent(result.segmentation.score)
-        print(f"{_truncate(result.track_id):<{_ID_WIDTH}}{scores}{boundary:>10}")
+        cells = "".join(f"{_percent(scores[v].wcsr):>10}" for v in vocabularies)
+        line = f"{label:<{_ID_WIDTH}}{cells}{_percent(segmentation.score):>10}"
+        if per_chorus:
+            line += "".join(
+                f"{'' if bars is None else _percent(bars[v]):>14}" for v in bar_vocabularies
+            )
+            line += f"{key:>6}"
+        print(line)
+
+    def write(result) -> None:
+        if not (per_chorus and result.choruses):
+            row(_truncate(result.track_id), result.scores, result.segmentation, None)
+            return
+        for part in result.choruses:
+            chorus = part.chorus
+            name = f"{_truncate(result.track_id)[: _ID_WIDTH - 22]} #{chorus.index} {chorus.kind}"
+            if chorus.kind == "partial":
+                name += f" ({chorus.bars} bars)"
+            row(name, part.scores, part.segmentation, part.bar_by_vocabulary, _key(chorus.shift))
 
     return write
 
@@ -482,6 +732,7 @@ def format_report(report) -> str:
         f"dataset   {report.dataset}",
         f"backend   {report.backend}",
         f"input     {_input_variant(report)}",
+        *([f"anchor    form start found on {report.anchor}"] if report.anchor else []),
         f"tracks    {len(report.results)} scored"
         + (f", {len(report.skipped)} skipped" if report.skipped else ""),
         f"duration  {report.total_duration / 60:.1f} min of annotated audio",
@@ -506,11 +757,31 @@ def format_report(report) -> str:
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
+    ]
+    if report.chorus_count():
+        lines.append(
+            f"{'bar':<12}{_percent(report.mean_bar()):>10}"
+            f"{'':>10}   bars with the right chord (independent of tempo and offset)"
+        )
+        lines += [
+            f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
+            f"{'':>10}   same, comparing chords as {v}"
+            for v in report.vocabularies
+            if v not in ("majmin", "mirex")
+        ]
+    lines += [
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
         "chart and grid are per-track and unweighted: a chart is a chart at any length.",
         "",
     ]
+    if report.chorus_count():
+        lines += [
+            f"{report.chorus_count()} choruses in {len(report.results)} tracks, scored separately.",
+            "The track rows combine the full choruses. Intro, tail and unaligned blocks are",
+            f"not scored ({sum(r.unscored_seconds for r in report.results):.0f} s in total).",
+            "",
+        ]
     if report.graded_grids() < len(report.results):
         lines += [
             "grid is skipped where the reference's own chords do not fall on a regular",
@@ -583,6 +854,7 @@ def report_to_dict(report) -> dict:
         # null for pre-computed estimates, whose input is not known here.
         "separated": report.separated,
         "separation_fallbacks": report.fallbacks,
+        "anchor": report.anchor,
         "vocabularies": list(report.vocabularies),
         "total_duration": report.total_duration,
         "skipped": list(report.skipped),
@@ -599,6 +871,13 @@ def report_to_dict(report) -> dict:
             "graded_tracks": report.graded_grids(),
         },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
+        "bar": {
+            "mean": _jsonable(report.mean_bar()),
+            "choruses": report.chorus_count(),
+            "by_vocabulary": {
+                v: _jsonable(report.mean_bar(v)) for v in report.vocabularies if v != "mirex"
+            },
+        },
         "tracks": [
             {
                 "id": result.track_id,
@@ -643,15 +922,66 @@ def report_to_dict(report) -> dict:
                         ALIGNMENT_WARN_GAIN, ALIGNMENT_WARN_OFFSET
                     ),
                 },
+                "bar": _jsonable(result.bar),
+                "bar_by_vocabulary": {k: _jsonable(v) for k, v in result.bar_by_vocabulary.items()},
+                "anchor": None if result.anchor is None else _anchor_to_dict(result.anchor),
+                "unscored_seconds": result.unscored_seconds,
+                "choruses": [_chorus_to_dict(part) for part in result.choruses],
             }
             for result in report.results
         ],
     }
 
 
+def _anchor_to_dict(anchor) -> dict:
+    return {
+        "bar_index": anchor.bar_index,
+        "start": anchor.start,
+        "label_agreement": _jsonable(anchor.label_agreement),
+        "chance": _jsonable(anchor.chance),
+        "runner_up": _jsonable(anchor.runner_up),
+        "margin": _jsonable(anchor.margin),
+        "shift": anchor.shift,
+        "keys_searched": anchor.keys,
+        "evidence": anchor.evidence,
+        "intro_bars": anchor.intro_bars,
+        "pickup_beats": anchor.pickup_beats,
+        "phase_shift": anchor.phase_shift,
+        "ending_bars": anchor.ending_bars,
+        "recurrence_ratio": _jsonable(anchor.recurrence_ratio),
+        "chart_agrees": anchor.chart_agrees,
+        "key_margin": _jsonable(anchor.key_margin),
+    }
+
+
+def _chorus_to_dict(part) -> dict:
+    chorus = part.chorus
+    return {
+        "index": chorus.index,
+        "kind": chorus.kind,
+        "start": chorus.start,
+        "end": chorus.end,
+        "first_bar": chorus.first_bar,
+        "bars": chorus.bars,
+        "scale": _jsonable(chorus.scale),
+        "shift": chorus.shift,
+        "bar": _jsonable(part.bar),
+        "bar_by_vocabulary": {k: _jsonable(v) for k, v in part.bar_by_vocabulary.items()},
+        "chart": _jsonable(part.chart),
+        "grid": _jsonable(part.grid),
+        "segmentation": _jsonable(part.segmentation.score),
+        "scores": {name: _jsonable(score.wcsr) for name, score in part.scores.items()},
+    }
+
+
 def _jsonable(value: float) -> float | None:
     """JSON has no NaN; an unscoreable track is a null, not a zero."""
     return None if isnan(value) else value
+
+
+def _key(shift: int) -> str:
+    """Key relative to the chart's: ``+0`` as written, ``+2`` a tone up, ``-3`` down."""
+    return f"{shift:+d}"
 
 
 def _percent(value: float) -> str:

@@ -189,6 +189,21 @@ def parse(label: str) -> Chord | None:
     return Chord(root=root, intervals=frozenset(intervals), bass=bass)
 
 
+def transpose_label(label: str, semitones: int) -> str:
+    """The label with its root moved ``semitones`` up, spelled with sharps.
+
+    The quality and any bass degree are relative, so they are kept as written.
+    ``N``, ``X`` and anything that does not parse come back untouched.
+    """
+    chord = parse(label)
+    if chord is None or chord.root is None or semitones % 12 == 0:
+        return label
+    head = label.strip()
+    root = _ROOT_PREFIX.match(head)
+    assert root is not None  # parse() found a root, so the label starts with one
+    return PITCH_CLASSES[(chord.root + semitones) % 12] + head[root.end() :]
+
+
 def _parse_quality(quality: str | None) -> set[int] | None:
     """Intervals named by the part of a label after the root."""
     # A bare root is a major triad in both notations: "C" == "C:maj".

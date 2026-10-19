@@ -2,7 +2,7 @@
 
 A manifest holds track ids and *relative* paths, never content, so it is publishable while
 the corpus stays local. Roots resolve from the explicit argument, then the
-``SONGSCRIBE_EVAL_*`` env vars, then the manifest's directory. Corpora and licences are in
+``SONGSCRIBE_EVAL_*`` env vars, then the manifest's directory. Setup is in
 ``EVALUATION.md``.
 """
 
@@ -39,6 +39,9 @@ class Track:
     id: str
     reference: Path
     audio: Path | None = None
+    #: Bars in the reference. Set it when the recording plays the chart several times: it is
+    #: the chorus length. ``None`` when the reference covers the whole recording.
+    bars: int | None = None
 
     @property
     def is_runnable(self) -> bool:
@@ -78,7 +81,7 @@ def resolve_root(explicit: str | Path | None, env_var: str, fallback: Path) -> P
 
 def build(
     name: str,
-    entries: list[dict[str, str]],
+    entries: list[dict[str, str | int]],
     notes: str = "",
 ) -> dict:
     """Assemble a manifest document ready to be written as JSON."""
@@ -146,11 +149,16 @@ def load_manifest(
         seen.add(track_id)
 
         audio = entry.get("audio")
+        bars = entry.get("bars")
+        # bool is a subclass of int in Python, so reject it explicitly.
+        if bars is not None and (not isinstance(bars, int) or isinstance(bars, bool) or bars < 1):
+            raise ManifestError(f"{path}: track {track_id!r}: 'bars' must be a positive integer")
         tracks.append(
             Track(
                 id=track_id,
                 reference=_resolve(annotation_base, reference),
                 audio=_resolve(audio_base, audio) if audio else None,
+                bars=bars,
             )
         )
 

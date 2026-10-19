@@ -88,7 +88,7 @@ CONTAINED_NAME_EXTRAS = frozenset(
 #: Deliberately silent about provenance: this builder reads any
 #: Isophonics-*shaped* tree, and stamping "isophonics.net" onto a manifest
 #: built from something else would misattribute someone's annotations. Record
-#: the real source in ``EVALUATION.md``, where its licence can sit beside it.
+#: the real source in the manifest's ``notes`` field yourself.
 DEFAULT_NOTES = (
     "Chord reference annotations paired against a local audio library. Paths "
     "are relative, and no audio or annotation text is stored here -- only "

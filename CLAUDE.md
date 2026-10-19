@@ -42,7 +42,13 @@ src/songscribe/
   lab.py        .lab chord annotation read/write               (pure Python)
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
-    metrics.py    WCSR, vocabularies, segmentation             (pure Python)
+    metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
+    labels.py     chord labels -> one rough symbol per beat, and how well two agree (numpy)
+    chart_fit.py  the chart's labels against an estimate from a start, with its chance level (numpy)
+    recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
+    form_start.py recurrence first, chart as check and fallback -> the form's start (numpy)
+    form.py       splits a recording into choruses, on the chart's timeline (pure Python)
+    README.md     how labels, recurrence, chart_fit, form_start and form fit together
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
@@ -54,7 +60,7 @@ eval/           committed manifests: track ids + relative paths, no content
 notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
-EVALUATION.md   how to measure a backend, and which corpora are usable
+EVALUATION.md   how to measure a backend
 ```
 
 ## Test material
@@ -65,17 +71,26 @@ chord branch gets measured without shipping a recording. It is **instrumental on
 don't try to make it sing; that is what a real recording is for.
 
 For a real accuracy number, `songscribe-eval` scores a backend against reference
-annotations. **`EVALUATION.md` records which corpora are usable and which are not, and
-why** — Ultimate Guitar and ripped streaming audio are both settled no, so don't re-open
-them. The rule the harness is built around: manifests hold track ids and relative paths
-only, so the evaluation code is publishable while the corpus stays local. Never commit
-annotations, estimates, or a manifest with absolute paths in it.
+annotations; `EVALUATION.md` explains how. The rule the harness is built around: manifests
+hold track ids and relative paths only, so the evaluation code is publishable while the
+corpus stays local. Never commit annotations, estimates, or a manifest with absolute paths
+in it.
 
 Real audio goes in the gitignored `audio/` directory and is never committed, whatever its
 licence. For anything claiming an accuracy number, prefer a recording where the chords and
-words are known in advance; CC0 sources are fine for sanity checks but come with no ground
-truth. "Royalty-free" stock libraries are **not** usable here — they're licensed, not free,
-and their terms forbid redistributing the audio.
+words are known in advance.
+
+Corpus decisions (settled; don't re-open them):
+
+- **Usable:** recordings you own, analysed locally; Isophonics and McGill Billboard
+  annotations (audio not included, keep them out of the repo); RWC Popular Music (licensed
+  to researchers with the audio); CC0/CC-BY audio (FMA, MTG-Jamendo) for sanity checks only,
+  since it has no chord ground truth; `songscribe-demo`.
+- **Not usable:** Ultimate Guitar and other chord/tab/sheet-music sites (terms forbid
+  extraction, crowd tabs are unverified, lyrics are copyrighted); audio ripped from
+  streaming services (circumvents DRM; YouTube downloads breach its terms); "royalty-free"
+  stock libraries (licensed, not free, redistribution forbidden).
+- The eval tool only reads local paths and manifests. It never contains a scraper or ripper.
 
 ## Architecture rules
 
@@ -122,6 +137,11 @@ songscribe-eval survey eval/isophonics-beatles.json          # no audio, no mode
 songscribe-eval manifest data/isophonics -a ~/music -o eval/isophonics.json
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
+
+A recording of the chart played several times (a manifest track with `"bars"`) is scored per
+chorus with `score --beats DIR --per-chorus`; `songscribe-eval form` prints the detected
+start and choruses without scoring. The key is searched by default (`--transpose none` keeps
+the chart as written). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in

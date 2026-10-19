@@ -40,7 +40,7 @@ METRE_CANDIDATES = (3, 4)
 
 #: How far one bar may differ from the median before it is called unreliable,
 #: as a fraction. Catches gross faults only (a dropped bar is ~100% long);
-#: good bars scatter up to 6.4%. EVALUATION.md has the measurement.
+#: good bars scatter up to 6.4%.
 BAR_DRIFT_TOLERANCE = 0.10
 
 #: A grid implying a tempo outside this range is not a tempo, it is a tracking
@@ -184,8 +184,8 @@ class BeatGrid:
     def unreliable_bars(self, tolerance: float = BAR_DRIFT_TOLERANCE) -> tuple[int, ...]:
         """Bars whose length is further than ``tolerance`` from the median.
 
-        A gross-fault detector, not a "is this bar in the form" test -- see
-        "Beat-grid drift" in EVALUATION.md for why the distinction matters.
+        A gross-fault detector, not an "is this bar in the form" test: a tracked
+        bar scatters by several percent even on a steady grid.
         """
         return tuple(i for i, d in enumerate(self.drift()) if d > tolerance)
 

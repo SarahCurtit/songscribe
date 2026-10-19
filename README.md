@@ -175,7 +175,7 @@ nor the default madmom model can emit a seventh, so each guesses the triad every
 
 Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
 the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
-setup, how the metrics work, and which corpora can and cannot legitimately be used.
+setup and how the metrics work.
 
 ## How it works
 
@@ -253,9 +253,8 @@ are for your personal use. Don't commit song audio or generated lyric transcript
 repo; `.gitignore` is set up to help you not do that by accident.
 
 The same applies to evaluation corpora, where the constraint is lawful access to the copy
-you analyse — your own rips, or a corpus licensed to you. `EVALUATION.md` has the detail,
-including why tabs scraped from tab sites and audio ripped from streaming services are not
-usable here.
+you analyse — your own rips, or a corpus licensed to you. Tabs scraped from tab sites and
+audio ripped from streaming services are not usable here.
 
 ## License
 

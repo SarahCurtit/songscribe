@@ -2,8 +2,8 @@
 
 Measures a chord backend against reference annotations, so "the model got better" is a number
 rather than an impression. The baseline it exists to beat is the ``template`` backend; the corpus
-it is wired up for is Isophonics. See ``EVALUATION.md`` for how to obtain a corpus, and what may
-be redistributed. Only ``runner`` touches audio or models, so scoring is tested with no weights.
+it is wired up for is Isophonics. See ``EVALUATION.md`` for how to set up a corpus and read the
+scores. Only ``runner`` touches audio or models, so scoring is tested with no weights.
 """
 
 from __future__ import annotations

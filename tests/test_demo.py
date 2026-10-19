@@ -8,10 +8,146 @@ import pytest
 from songscribe.demo import (
     DEFAULT_PROGRESSION,
     chord_frequencies,
+    main,
     parse_chord,
     synthesise,
+    synthesise_performance,
     write_annotation,
 )
+
+SR = 8_000
+PROGRESSION = ("C", "Am", "F", "G")
+
+
+class TestSynthesisePerformance:
+    def take(self, **kwargs):
+        defaults = {"progression": PROGRESSION, "bpm": 120.0, "repeats": 3, "sample_rate": SR}
+        return synthesise_performance(**{**defaults, **kwargs})
+
+    def test_the_plain_take_matches_synthesise(self):
+        # With no extra options, synthesise_performance must give the same audio as synthesise.
+        audio, _ = synthesise(progression=PROGRESSION, bpm=120.0, repeats=3, sample_rate=SR)
+        np.testing.assert_allclose(self.take().audio, audio, atol=1e-6)
+
+    def test_a_pickup_is_the_last_chord_ending_on_the_first_downbeat(self):
+        take = self.take(pickup_beats=3)
+        assert take.downbeats[0] == pytest.approx(1.5)  # 3 beats at 120 bpm
+        first = take.events[0]
+        assert (first.start, first.label) == (0.0, PROGRESSION[-1])
+        assert first.end == pytest.approx(take.downbeats[0])
+        assert take.events[1].label == PROGRESSION[0]
+        assert len(take.downbeats) == 3 * 4 + 1
+
+    def test_a_pickup_is_not_in_the_chart_and_adds_no_bar(self):
+        plain, with_pickup = self.take(), self.take(pickup_beats=3)
+        assert with_pickup.reference == plain.reference
+        assert with_pickup.downbeats == pytest.approx([d + 1.5 for d in plain.downbeats])
+
+    def test_the_pickup_beats_are_listed_before_bar_zero(self):
+        beats = self.take(pickup_beats=3).beat_events()
+        assert [b.position for b in beats[:5]] == [2, 3, 4, 1, 2]
+        assert [b.time for b in beats[:4]] == pytest.approx([0.0, 0.5, 1.0, 1.5])
+
+    def test_a_pickup_keeps_the_first_bars_tempo_under_drift(self):
+        take = self.take(pickup_beats=3, tempo_drift=0.2)
+        assert take.downbeats[0] == pytest.approx(1.5)
+
+    def test_drift_shortens_bars_progressively(self):
+        take = self.take(tempo_drift=0.2)
+        lengths = [b - a for a, b in pairwise(take.downbeats)]
+        assert lengths == sorted(lengths, reverse=True)
+        assert lengths[0] / lengths[-1] == pytest.approx(1.2, abs=0.01)
+
+    def test_a_substitution_changes_one_bar_of_one_chorus(self):
+        take = self.take(substitutions={1: {2: "Dm"}})
+        labels = [e.label for e in take.events]
+        assert labels[4 + 2] == "Dm"
+        assert labels.count("Dm") == 1
+        assert [e.label for e in take.reference] == list(PROGRESSION)
+
+    def test_the_reference_is_one_chorus_from_zero(self):
+        take = self.take(pickup_beats=3, tempo_drift=0.1)
+        assert take.reference[0].start == 0.0
+        assert take.reference[-1].end == pytest.approx(4 * 2.0)
+        assert take.bars_per_chorus == 4
+
+    def test_the_beats_close_the_last_bar(self):
+        take = self.take()
+        beats = take.beat_events()
+        assert [b.position for b in beats[:5]] == [1, 2, 3, 4, 1]
+        assert beats[-1].time == take.downbeats[-1]
+        assert sum(b.position == 1 for b in beats) == len(take.downbeats)
+
+    def test_an_intro_precedes_the_head_and_is_not_in_the_chart(self):
+        take = self.take(intro=("Dm", "Em"))
+        assert take.intro_bars == 2
+        assert take.head_start == pytest.approx(4.0)
+        assert [e.label for e in take.events[:3]] == ["Dm", "Em", "C"]
+        assert [e.label for e in take.reference] == list(PROGRESSION)
+        assert len(take.downbeats) == 2 + 3 * 4 + 1
+
+    def test_with_an_intro_the_pickup_is_the_last_beats_of_its_final_bar(self):
+        take = self.take(intro=("Dm", "Em"), pickup_beats=2)
+        assert take.head_start == pytest.approx(4.0)
+        assert [(e.start, e.label) for e in take.events[:4]] == [
+            (0.0, "Dm"),
+            (2.0, "Em"),
+            (3.0, PROGRESSION[-1]),
+            (4.0, PROGRESSION[0]),
+        ]
+        # A pickup inside the intro adds no stub before bar 0.
+        beats = take.beat_events()
+        assert [b.position for b in beats[:5]] == [1, 2, 3, 4, 1]
+
+    def test_colour_adds_notes_to_one_chorus_only(self):
+        plain, coloured = self.take(), self.take(colour={1: [10, 14]})
+        chorus = 4 * SR * 2
+
+        def likeness(a, b):
+            return float(np.corrcoef(a, b)[0, 1])
+
+        # The whole take is rescaled together, so compare shapes, not samples.
+        assert likeness(plain.audio[:chorus], coloured.audio[:chorus]) > 0.999
+        middle = slice(chorus, 2 * chorus)
+        assert likeness(plain.audio[middle], coloured.audio[middle]) < 0.99
+        assert coloured.events == plain.events
+
+    def test_a_tracker_phase_moves_the_downbeat_labels_not_the_beat_times(self):
+        take = self.take()
+        right, off = take.beat_events(), take.beat_events(tracker_phase=1)
+        assert [b.time for b in right] == [b.time for b in off]
+        assert [b.position for b in off[:5]] == [2, 3, 4, 1, 2]
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"pickup_beats": -1},
+            {"pickup_beats": 4},
+            {"tempo_drift": -1.0},
+            {"substitutions": {5: {0: "C"}}},
+            {"substitutions": {0: {9: "C"}}},
+            {"bpm": 0},
+        ],
+    )
+    def test_rejects_degenerate_arguments(self, kwargs):
+        with pytest.raises(ValueError):
+            self.take(**kwargs)
+
+    def test_the_command_line_writes_audio_chart_and_beats(self, tmp_path):
+        out = tmp_path / "demo.wav"
+        argv = ["-o", str(out), "--sample-rate", str(SR), "--pickup-beats", "3", "-r", "2"]
+        assert main([*argv, "--vary", "1:0=Em"]) == 0
+        assert out.exists()
+        assert (tmp_path / "demo.lab").exists()
+        assert (tmp_path / "demo.reference.lab").exists()
+        first_beat = (tmp_path / "demo.beats").read_text(encoding="utf-8").splitlines()[0]
+        assert float(first_beat.split()[0]) == 0.0
+        assert first_beat.split()[1] == "2"
+        assert "Em" in (tmp_path / "demo.lab").read_text(encoding="utf-8")
+
+    def test_a_malformed_vary_is_reported(self, tmp_path, capsys):
+        assert main(["-o", str(tmp_path / "d.wav"), "--vary", "nonsense"]) == 1
+        assert "--vary" in capsys.readouterr().err
 
 
 class TestParseChord:
