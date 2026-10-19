@@ -1,10 +1,9 @@
-"""How well the chart's chord labels describe a chord estimate, bar by bar, from each start.
+"""How well the chart's chords describe a chord estimate, from each candidate start.
 
-The chart's bars are cut into beats and compared with the estimate's beats from a candidate
-start, in each key asked for (the chart's labels transposed, never the estimate). The
-fraction of beats that agree is only meaningful against what a wrong chart reaches, so
-every fit comes with the best that shuffled copies of the chart reached over the same
-starts and keys. Pure numpy.
+The chart is cut into equal bars and beats and compared with the estimate's beats from each
+start, in each key asked for (the chart is transposed, not the estimate). Every fit comes
+with the best fit of bar-shuffled copies of the chart over the same starts and keys, as the
+level a wrong chart reaches. Pure numpy.
 """
 
 from __future__ import annotations
@@ -19,14 +18,12 @@ from .form import transpose_events
 from .labels import NO_SYMBOL, agreement, beat_symbols
 from .metrics import MIN_SEGMENT, extent
 
-#: Keys a take may be in, as semitones up from the chart's: ``AS_WRITTEN`` is the strict
-#: search, ``ANY_KEY`` the twelve. Reported in -5..+6, a tone down being -2.
+#: Keys to try, as semitones above the chart's: only the written key, or all twelve (-5..+6).
 AS_WRITTEN = (0,)
 ANY_KEY = tuple(range(-5, 7))
 
-#: How many bar-shuffled charts set the chance level. The level is the best of them over
-#: every start and key searched, so a larger search raises it. Fixed seed: a rerun on the
-#: same inputs must say the same thing.
+#: Bar-shuffled charts used for the chance level, which is their best fit over all starts and
+#: keys. The seed is fixed so a rerun gives the same level.
 NULL_SHUFFLES = 200
 NULL_SEED = 0
 
@@ -35,10 +32,9 @@ NULL_SEED = 0
 class ChartFit:
     """Agreement of the chart with the estimate at each candidate start and key.
 
-    ``fit[i, k]`` is the mean per-beat agreement over the bars the estimate has from
-    ``starts[i]`` (beats), with the chart ``shifts[k]`` semitones up; ``nan`` where the
-    estimate has fewer than ``need`` bars left. ``chance`` is the best any shuffled chart
-    reached over all of them.
+    ``fit[i, k]`` is the mean per-beat agreement from ``starts[i]`` (a beat index), with the
+    chart ``shifts[k]`` semitones up; ``nan`` where fewer than ``need`` bars remain.
+    ``chance`` is the best fit any shuffled chart reached.
     """
 
     starts: tuple[int, ...]
@@ -55,7 +51,7 @@ class ChartFit:
         return self.shifts[int(np.nanargmax(self.fit[index]))]
 
     def key_margin(self, index: int) -> float:
-        """Fit in the best key over the next best at ``starts[index]``; ``nan`` for one key."""
+        """Fit in the best key minus the next best at ``starts[index]``; ``nan`` for one key."""
         row = np.sort(self.fit[index])[::-1]
         return float(row[0] - row[1]) if len(row) > 1 else float("nan")
 
@@ -63,7 +59,7 @@ class ChartFit:
 def chart_beats(
     chart: Sequence[ChordEvent], bars: int, beats_per_bar: int, shifts: Sequence[int]
 ) -> np.ndarray:
-    """The chart as symbols, shape (shifts, bars, beats per bar): equal bars, equal beats."""
+    """The chart as symbols, shape (shifts, bars, beats per bar), in equal bars and beats."""
     if bars < 1:
         raise ValueError(f"bars must be at least 1, got {bars}")
     start, end = extent(list(chart))
@@ -98,8 +94,7 @@ def fit_chart(
 ) -> ChartFit:
     """Fit ``chart`` (from :func:`chart_beats`) to ``symbols`` from each of ``starts``.
 
-    A start with fewer than ``need`` bars left is not fitted. Raises ``ValueError`` if no
-    start can be.
+    A start with fewer than ``need`` bars left is not fitted; ``ValueError`` if none can be.
     """
     size, per_bar = chart.shape[1], chart.shape[2]
     left = np.array([(len(symbols) - s) // per_bar if s >= 0 else 0 for s in starts])

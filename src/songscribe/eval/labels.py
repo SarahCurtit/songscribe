@@ -1,8 +1,8 @@
-"""Chord labels reduced to one rough symbol per beat, and how well two sequences agree.
+"""Chord labels reduced to one coarse symbol per beat, and how well two sequences agree.
 
-A symbol is the root and whether the chord has a minor third, so ``C``, ``C7`` and ``Cmaj7``
-are one symbol and ``Cm``, ``Cm7`` and ``Cdim`` another. Estimates disagree about
-extensions and flicker; they rarely do about a bar's root and third. Pure numpy.
+A symbol is the root and whether the chord has a minor third: ``C``, ``C7`` and ``Cmaj7`` are
+one symbol, ``Cm``, ``Cm7`` and ``Cdim`` another. Extensions differ between estimates far
+more than roots and thirds do. Pure numpy.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from .harte import parse
 
 #: Symbol of a beat that has no chord (``N``, unparseable, or nothing sounding).
 NO_SYMBOL = -1
-#: Interval of a minor third; a chord without a major or minor third (sus, power) counts as major.
+#: Semitones in a minor third. A chord with no third (sus, power) counts as major.
 MINOR_THIRD = 3
-#: Credit for the same root with the other third (``A`` against ``Am``), against 1 for a
-#: match and 0 for a different root. Estimates confuse a chord with its parallel often.
+#: Agreement for the same root with the other third (``A`` against ``Am``); a match scores 1,
+#: a different root 0. Estimates often confuse a chord with its parallel.
 ROOT_CREDIT = 0.5
 
 
@@ -36,9 +36,7 @@ def symbol(label: str) -> int:
 def beat_symbols(events: Sequence[ChordEvent], edges: np.ndarray) -> np.ndarray:
     """The symbol sounding for most of each beat between consecutive ``edges``.
 
-    A chord that moves a fraction of a beat early or flickers for a moment does not change
-    the beat's symbol, which is what makes the comparison tolerant of both. A beat that is
-    mostly ``N`` or uncovered has no symbol.
+    A beat that is mostly ``N`` or uncovered has no symbol (``NO_SYMBOL``).
     """
     count = max(len(edges) - 1, 0)
     out = np.full(count, NO_SYMBOL, dtype=np.int16)

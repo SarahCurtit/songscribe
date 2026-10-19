@@ -39,9 +39,8 @@ class Track:
     id: str
     reference: Path
     audio: Path | None = None
-    #: Number of bars in the reference. Set it when the recording plays the
-    #: chart several times; it is the length used to split the recording into
-    #: choruses. ``None`` when the reference covers the whole recording.
+    #: Bars in the reference. Set it when the recording plays the chart several times: it is
+    #: the chorus length. ``None`` when the reference covers the whole recording.
     bars: int | None = None
 
     @property

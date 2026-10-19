@@ -48,6 +48,7 @@ src/songscribe/
     recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
     form_start.py recurrence first, chart as check and fallback -> the form's start (numpy)
     form.py       splits a recording into choruses, on the chart's timeline (pure Python)
+    README.md     how labels, recurrence, chart_fit, form_start and form fit together
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
