@@ -191,8 +191,8 @@ swappable:
 1. **Separation** (`separate.py`) — Demucs v4 splits the mix so each downstream model hears
    only what it needs. Slow, optional, and the single biggest quality win.
 2. **Chord recognition** (`chords.py`) — pluggable backends behind one function. Default is
-   madmom's CNN chord features with CRF decoding; BTC (transformer, larger vocabulary) is
-   the planned upgrade; `template` is a chroma baseline kept only for comparison and CI.
+   madmom's CNN chord features with CRF decoding; `btc` (transformer, large vocabulary with
+   sevenths, `pip install 'songscribe[btc]'`) is the one to use on jazz; `template` is a chroma baseline kept only for comparison and CI.
 3. **Lyric transcription** (`lyrics.py`) — faster-whisper with word-level timestamps. The
    timestamps are the point; a transcript without them can't be aligned to chords.
 4. **Alignment and rendering** (`align.py`, `render.py`) — pure Python, no model. Words are
@@ -209,7 +209,7 @@ It is honest about being v0. Realistically today:
 - **Good** on sparse recordings with clear diatonic triads and intelligible vocals.
 - **Shaky** on dense mixes, key changes, and anything where backing vocals fight the lead.
 - **Limited vocabulary** — the default backend knows major and minor triads, so sevenths and
-  extensions get rounded to their nearest triad. That is what the BTC backend is for.
+  extensions get rounded to their nearest triad. Use `-c btc` for sevenths.
 - **Timestamps drift** on long held notes, which pushes chord labels a word too far right.
   Forced alignment (WhisperX) is the planned fix.
 
@@ -217,7 +217,7 @@ Treat the output as a first draft to correct, not a finished chart.
 
 ## Roadmap
 
-- [ ] Wire up the BTC backend (sevenths, inversions, no-chord)
+- [x] BTC backend (sevenths, sixths, sus, no-chord; no inversions)
 - [ ] Beat and downbeat tracking, so chords snap to bars instead of raw frames
 - [ ] Phoneme-level forced alignment to fix held-note drift
 - [x] Evaluation harness against reference annotations (Isophonics; McGill Billboard next)

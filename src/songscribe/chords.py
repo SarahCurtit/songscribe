@@ -52,7 +52,7 @@ HARTE_QUALITIES = {
 
 DEFAULT_BACKEND = "madmom"
 
-# Both DL backends expect 44.1 kHz; they were trained on it.
+# madmom expects 44.1 kHz; it was trained on it. btc is registered at its own rate below.
 MODEL_SAMPLE_RATE = 44_100
 
 
@@ -83,22 +83,62 @@ def _recognise_madmom(audio: np.ndarray, sample_rate: int) -> list[ChordEvent]:
     ]
 
 
+BTC_DEVICES = ("auto", "cpu", "cuda")
+
+
+def _btc_device(value: object) -> str | None:
+    if value not in BTC_DEVICES:
+        return f"must be one of {', '.join(BTC_DEVICES)}, got {value!r}"
+    return None
+
+
+# BTC's 170 classes: 12 roots x 14 qualities (a major triad is the bare root), then N, X.
+BTC_ROOTS = PITCH_CLASSES
+BTC_QUALITIES = (
+    "min", "maj", "dim", "aug", "min6", "maj6", "min7",
+    "minmaj7", "maj7", "7", "dim7", "hdim7", "sus2", "sus4",
+)  # fmt: skip
+BTC_NO_CHORD, BTC_UNKNOWN = 169, 168
+
+
+def btc_label(index: int) -> str:
+    """Harte label for one of BTC's 170 output classes (``X`` means unknown)."""
+    if index == BTC_NO_CHORD:
+        return NO_CHORD
+    if index == BTC_UNKNOWN:
+        return "X"
+    root, quality = divmod(index, len(BTC_QUALITIES))
+    return f"{BTC_ROOTS[root]}:{BTC_QUALITIES[quality]}"
+
+
+@setting_rules(device=_btc_device)
 def _recognise_btc(
     audio: np.ndarray,
     sample_rate: int,
     checkpoint: str | None = None,
     device: str = "auto",
 ) -> list[ChordEvent]:
-    """Bi-directional Transformer chord recognition (BTC, ISMIR'19).
+    """Bi-directional Transformer chord recognition (BTC, ISMIR'19), large vocabulary.
 
-    Not yet wired up: BTC has no pip package, so this needs the upstream
-    repo vendored or added as a submodule plus its published checkpoint. The
-    signature is fixed so the rest of the pipeline is already backend-agnostic.
+    Emits sevenths, sixths, sus and diminished chords as well as triads. ``checkpoint``
+    is a local file; by default the published one is downloaded and cached on first use.
     """
-    raise NotImplementedError(
-        "the btc backend is not implemented yet -- see MODELS.md for the "
-        "checkpoint source, and use backend='madmom' in the meantime"
-    )
+    import torch
+
+    from . import btc
+
+    if sample_rate != btc.SAMPLE_RATE:
+        raise ValueError(f"btc backend expects {btc.SAMPLE_RATE} Hz, got {sample_rate}")
+
+    use_cuda = device == "cuda" or (device == "auto" and torch.cuda.is_available())
+    torch_device = torch.device("cuda" if use_cuda else "cpu")
+    model, mean, std = btc.load(checkpoint, torch_device)
+    classes = btc.predict(model, mean, std, btc.features(audio), torch_device)
+    labels = [normalise_label(btc_label(i)) for i in range(btc.NUM_CHORDS)]
+    # The last frame can run past the end of the audio; nothing sounds there.
+    times = np.minimum(np.arange(len(classes) + 1) * btc.FRAME_SECONDS, len(audio) / sample_rate)
+    events = _runs_to_events(classes, times, labels)
+    return [event for event in events if event.end > event.start]
 
 
 # Rules are checked in the registry so a bad value fails before dispatch and before any
@@ -141,7 +181,7 @@ BACKENDS: dict[str, Callable[..., list[ChordEvent]]] = {
 #: Sample rate each backend wants its audio in.
 BACKEND_SAMPLE_RATES = {
     "madmom": MODEL_SAMPLE_RATE,
-    "btc": MODEL_SAMPLE_RATE,
+    "btc": 22_050,  # what its checkpoint was trained on
     "template": 22_050,
 }
 
