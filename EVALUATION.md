@@ -416,7 +416,8 @@ test.
 A real recording is an intro, the chart several times through, and an ending, none of it on
 the reference's clock. Give a manifest track `"bars"` (the chart's bar count) and score it
 with `--beats DIR` (or `--beat-backend`); `songscribe-eval form` shows what was detected
-first. The pieces, and what each refuses to do:
+first. Captured runs on a synthetic take are in
+[docs/stage-2-examples.md](docs/stage-2-examples.md). The pieces, and what each refuses to do:
 
 - **Anchor** (`eval/chroma.py`): the chart's per-bar pitch classes are slid along the
   recording's bars, scoring each candidate start on its own chorus. The evidence is the
