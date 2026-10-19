@@ -2,7 +2,7 @@
 
 A recording is usually an intro, the chart played several times, sometimes a
 shorter last pass, and an ending. Starting from the anchor bar (the bar where
-the first chorus begins, see ``chroma.anchor_bar``), the recording's bars are
+the first chorus begins, see ``form_start.locate``), the recording's bars are
 cut into blocks of the chart's length. Each block's times are then converted
 to the chart's timeline, so the existing metrics can score it unchanged.
 """
@@ -16,6 +16,7 @@ from statistics import median
 
 from ..beats import BAR_DRIFT_TOLERANCE, BeatGrid
 from ..types import ChordEvent
+from .harte import transpose_label
 from .metrics import MIN_SEGMENT, extent
 
 #: Which full choruses count as the head, by position (negative counts from
@@ -192,3 +193,8 @@ def truncate_reference(
     if not 0 < bars <= bars_per_chorus:
         raise ValueError(f"bars must be within 1..{bars_per_chorus}, got {bars}")
     return _clip(reference, start, start + (end - start) * bars / bars_per_chorus)
+
+
+def transpose_events(events: Sequence[ChordEvent], semitones: int) -> list[ChordEvent]:
+    """The chart moved to the key a chorus is played in; the estimate is never moved."""
+    return [ChordEvent(e.start, e.end, transpose_label(e.label, semitones)) for e in events]
