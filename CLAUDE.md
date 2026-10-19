@@ -129,15 +129,10 @@ songscribe-eval manifest data/isophonics -a ~/music -o eval/isophonics.json
 songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
 ```
 
-A recording of the chart played several times (manifest track with `"bars"`) is scored per
-chorus with `score --beats DIR --per-chorus`. Its form starts where a chord estimate of the
-recording repeats one form later: from `--anchor-backend` (default madmom, run on the full
-mix and cached under `--cache`, so a later scoring run reuses it) or from `--anchor-estimates
-DIR`. Anchoring on the backend being scored warns, since the start found can be the one that
-flatters it. `songscribe-eval form` prints the grid, anchor and choruses, and exits 2 if the
-start is not clear. The key is searched by default: one key is assumed for the whole take and
-every chorus is scored against the chart transposed to it (`--transpose none` turns this
-off). See `EVALUATION.md`.
+A recording of the chart played several times (a manifest track with `"bars"`) is scored per
+chorus with `score --beats DIR --per-chorus`; `songscribe-eval form` prints the detected
+start and choruses without scoring. The key is searched by default (`--transpose none` keeps
+the chart as written). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in
