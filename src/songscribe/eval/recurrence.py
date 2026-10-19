@@ -1,41 +1,41 @@
-"""Find where a recording's form starts from the recording alone.
+"""Find where a recording's form starts from a chord estimate of the recording.
 
-A tune is played as a head and then choruses that repeat its changes, so the
-audio one form later resembles the audio now. Comparing each bar with the bar
-one form later finds a stretch where that holds: it begins at the head (or at the
-pickup into it) and ends one form before the last pass. The chart supplies only
-the form's length in bars, never searched. Pure numpy, no model.
+A tune is played as a head and then choruses that repeat its changes, so the chords one
+form later resemble the chords now. Comparing each bar of the estimate with the bar one
+form later finds a stretch where that holds: it begins at the head (or at the pickup into
+it) and ends one form before the last pass. The chart supplies only the form's length in
+bars, never searched. The estimate is rough, so bars are compared by root and third.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from itertools import pairwise
-from math import ceil, floor
+from math import floor
 
 import numpy as np
 
-from .chroma import Chromagram
+from ..types import ChordEvent
+from .labels import NO_SYMBOL, agreement, beat_symbols
 
-#: Lags within this many beats of a whole or half form are left out of the null: a
-#: tracker a beat off still sees the true recurrence there.
-NULL_EXCLUSION_BEATS = 1
 #: Windows closer than this many bars overlap or share a sustained chord, which
 #: makes any short lag look like a recurrence.
 MIN_NULL_LAG_BARS = 2
 #: A window counts as recurring above this many standard deviations over the null's mean;
-#: a run's steps are limited to the same distance either way.
-LEVEL_SIGMAS = 1.0
-#: The run must beat the strongest run at any null lag. By itself that passed 2 of 80 shuffled
-#: takes (up to 1.36x), so the run must also span this much of a form: shuffled takes
-#: reached 0.66 of one, takes that do recur at least 1.9.
+#: a run's steps are limited to the same distance either way. On synthetic controls none of
+#: 450 shuffled, 450 unrelated and 450 one-chord takes claimed a form at 0.75 or at 1.0, and
+#: 0.75 keeps more of the heavily perturbed takes that do recur (78% against 67%).
+LEVEL_SIGMAS = 0.75
+#: The run must beat the strongest run at any null lag. Alone that passed unrelated takes
+#: (up to 1.27x), so it must also span this much of a form: shuffled takes reached 0.56 of
+#: one, one-chord vamps 0.66, and takes that recur reach about 3 (5th percentile 2.7 under
+#: moderate perturbation).
 MIN_STRENGTH_RATIO = 1.0
 MIN_RUN_FORMS = 0.75
-#: A beat other than the tracker's downbeat takes over only if the chroma changes into it more
-#: than into the tracker's, bar after bar, with a paired t at least this large. Correct
-#: trackers gave a best rival at -9 or lower (24 synthetic takes, one real); ones off by
-#: 1-3 beats gave 20 or more (18 takes).
+#: A beat other than the tracker's downbeat takes over only if chords change into it more
+#: often than into the tracker's, bar after bar, with a paired t at least this large. Correct
+#: trackers gave a best rival at -3.2 or lower (180 takes), ones off by 1-3 beats 3.2 or more
+#: (720 takes), so the bar sits in the empty gap, nearer the wrong ones.
 PHASE_MIN_T = 3.0
 
 
@@ -45,7 +45,7 @@ class Recurrence:
 
     Beats index ``beat_times`` (the bar grid cut into beats). ``first_beat`` opens the first
     stretch that recurs; ``end_beat`` is one past the last beat with a later copy.
-    ``strength`` is the run's summed similarity over the level, ``null_best`` the strongest
+    ``strength`` is the run's summed agreement over the level, ``null_best`` the strongest
     run at any other lag; ``beat_similarity[b]`` recurs above ``beat_level``.
     """
 
@@ -59,7 +59,8 @@ class Recurrence:
     null_best: float
     mean_similarity: float
     null_mean: float
-    profiles: np.ndarray
+    null_spread: float
+    symbols: np.ndarray
     beat_similarity: np.ndarray
     beat_level: float
 
@@ -70,6 +71,11 @@ class Recurrence:
     @property
     def run_bars(self) -> float:
         return (self.end_beat - self.first_beat) / self.beats_per_bar
+
+    @property
+    def separation(self) -> float:
+        """How many null spreads the form lag's mean agreement in the run is over the null."""
+        return (self.mean_similarity - self.null_mean) / max(self.null_spread, 1e-9)
 
     @property
     def is_found(self) -> bool:
@@ -94,30 +100,15 @@ def beat_times(downbeats: Sequence[float], beats_per_bar: int) -> tuple[np.ndarr
     return np.concatenate([before, inner, down[-1:]]), lead
 
 
-def beat_profiles(chroma: Chromagram, edges: np.ndarray) -> np.ndarray:
-    """Mean standardised chroma of each beat, shape (beats, 12)."""
-    standard = chroma.standardised()
-    frames = standard.shape[1]
-    out = np.zeros((max(len(edges) - 1, 0), 12))
-    for i, (a, b) in enumerate(pairwise(edges)):
-        low = min(max(0, floor(a / chroma.hop)), frames - 1)
-        high = min(frames, max(ceil(b / chroma.hop), low + 1))
-        out[i] = standard[:, low:high].mean(axis=1)
-    return out
-
-
-def _unit(rows: np.ndarray) -> np.ndarray:
-    """Rows with their mean removed and scaled to length 1 (flat rows become 0)."""
-    centred = rows - rows.mean(axis=1, keepdims=True)
-    norm = np.linalg.norm(centred, axis=1, keepdims=True)
-    return np.divide(centred, norm, out=np.zeros_like(centred), where=norm > 1e-9)
-
-
-def bar_windows(profiles: np.ndarray, beats_per_bar: int, bars: int = 1) -> np.ndarray:
-    """Mean profile of the ``bars`` bars starting at every beat, shape (starts, 12)."""
-    width = beats_per_bar * bars
-    total = np.concatenate([np.zeros((1, 12)), np.cumsum(profiles, axis=0)])
+def _windowed(values: np.ndarray, width: int) -> np.ndarray:
+    """Mean of every ``width`` consecutive values, one per starting beat."""
+    total = np.concatenate([[0.0], np.cumsum(values)])
     return (total[width:] - total[:-width]) / width
+
+
+def _lag_agreement(symbols: np.ndarray, lag: int) -> np.ndarray:
+    """Agreement of every beat with the beat ``lag`` later."""
+    return agreement(symbols[:-lag], symbols[lag:])
 
 
 def _best_run(values: np.ndarray, level: float, cap: float) -> tuple[float, int, int]:
@@ -137,13 +128,30 @@ def _best_run(values: np.ndarray, level: float, cap: float) -> tuple[float, int,
     return best, best_first, best_end
 
 
+def _strongest_run(runs: Sequence[np.ndarray], level: float, cap: float) -> float:
+    """The largest sum :func:`_best_run` gives for any of ``runs``, all lags at once."""
+    steps = np.zeros((len(runs), max((len(r) for r in runs), default=0)))
+    for row, values in enumerate(runs):
+        steps[row, : len(values)] = np.clip(values - level, -cap, cap)
+    running, best = np.zeros(len(runs)), np.zeros(len(runs))
+    for column in steps.T:
+        running = np.maximum(running + column, 0.0)
+        best = np.maximum(best, running)
+    return float(best.max(initial=0.0))
+
+
 def _null_lags(count: int, form_beats: int, beats_per_bar: int) -> list[int]:
-    """Lags that are not a whole or half form (nor within a beat of one)."""
+    """Lags that are not a whole or half form, nor within half a bar of one.
+
+    A sustained chord still agrees with itself over half its bar when shifted by half the
+    bar, which is above the level a run counts at, so such lags recur as the form does.
+    """
     half = form_beats / 2
+    near = beats_per_bar // 2
     keep = []
     for lag in range(MIN_NULL_LAG_BARS * beats_per_bar, count - MIN_NULL_LAG_BARS * beats_per_bar):
         nearest = round(lag / half) * half
-        if nearest == 0 or abs(lag - nearest) > NULL_EXCLUSION_BEATS:
+        if nearest == 0 or abs(lag - nearest) > near:
             keep.append(lag)
     return keep
 
@@ -151,7 +159,7 @@ def _null_lags(count: int, form_beats: int, beats_per_bar: int) -> list[int]:
 def _refine(
     beat_sim: np.ndarray, level: float, around: int, reach: int, rising: bool, span: int
 ) -> int:
-    """Beat where the single-beat similarity crosses ``level``, searched within ``reach``.
+    """Beat where the single-beat agreement crosses ``level``, searched within ``reach``.
 
     Picks the split of a ``span``-beat window either side that best separates
     recurring (above ``level``) from not; beats with no partner count for neither side.
@@ -170,16 +178,16 @@ def _refine(
 def bar_line_phase(found: Recurrence, tracker: int) -> tuple[int, float]:
     """Which beat of the bar the chords change on, as ``(beat residue, t statistic)``.
 
-    Over the recurring music, compares how much the chroma changes into each beat of
-    the bar with how much it changes into the tracker's downbeat (``tracker``, a residue
+    Over the recurring music, compares how often the chord changes into each beat of the
+    bar with how often it changes into the tracker's downbeat (``tracker``, a residue
     modulo the metre), bar by bar. The statistic is the best rival's paired t over the
     tracker's: a rival wins only with ``t`` of at least ``PHASE_MIN_T``.
     """
-    per_bar = found.beats_per_bar
-    units = _unit(found.profiles)
+    per_bar, symbols = found.beats_per_bar, found.symbols
     low = max(found.first_beat, 1)
-    high = min(found.end_beat + found.form_beats, len(units))
-    change = 1.0 - (units[low:high] * units[low - 1 : high - 1]).sum(axis=1)
+    high = min(found.end_beat + found.form_beats, len(symbols))
+    changed = (symbols[low:high] != NO_SYMBOL) & (symbols[low:high] != symbols[low - 1 : high - 1])
+    change = changed.astype(float)
     first_bar = low // per_bar + 1
     last_bar = high // per_bar
     best, best_t = tracker, -np.inf
@@ -198,8 +206,16 @@ def bar_line_phase(found: Recurrence, tracker: int) -> tuple[int, float]:
     return (best, best_t) if best_t >= PHASE_MIN_T else (tracker, best_t)
 
 
+def beats_of(
+    estimate: Sequence[ChordEvent], downbeats: Sequence[float], beats_per_bar: int
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """The estimate as one symbol per beat of the bar grid: (symbols, beat edges, lead)."""
+    edges, lead = beat_times(downbeats, beats_per_bar)
+    return beat_symbols(estimate, edges), edges, lead
+
+
 def measure(
-    chroma: Chromagram, downbeats: Sequence[float], beats_per_bar: int, bars: int
+    symbols: np.ndarray, edges: np.ndarray, lead: int, beats_per_bar: int, bars: int
 ) -> Recurrence | None:
     """Find the stretch that recurs ``bars`` bars later, or ``None`` if the take is too short.
 
@@ -207,27 +223,24 @@ def measure(
     above the null's level with the largest total, and its edges are refined on single
     beats. The null is every other lag, scored the same way, so a vamp raises the bar.
     """
-    edges, lead = beat_times(downbeats, beats_per_bar)
-    profiles = beat_profiles(chroma, edges)
     form_beats = bars * beats_per_bar
-    windows = _unit(bar_windows(profiles, beats_per_bar))
-    count = len(windows)
+    count = len(symbols) - beats_per_bar + 1
     if bars < 1 or count <= form_beats + beats_per_bar * MIN_NULL_LAG_BARS:
         return None
 
-    gram = windows @ windows.T
     lags = _null_lags(count, form_beats, beats_per_bar)
-    pooled = np.concatenate([gram.diagonal(lag) for lag in lags]) if lags else np.zeros(1)
+    beat_by_lag = {lag: _lag_agreement(symbols, lag) for lag in [*lags, form_beats]}
+    by_lag = {lag: _windowed(values, beats_per_bar) for lag, values in beat_by_lag.items()}
+    pooled = np.concatenate([by_lag[lag] for lag in lags]) if lags else np.zeros(1)
     null_mean, spread = float(pooled.mean()), float(pooled.std())
     level, cap = null_mean + LEVEL_SIGMAS * spread, LEVEL_SIGMAS * spread
-    strength, first, end = _best_run(gram.diagonal(form_beats), level, cap)
-    null_best = max((_best_run(gram.diagonal(lag), level, cap)[0] for lag in lags), default=0.0)
-    mean = float(gram.diagonal(form_beats)[first:end].mean()) if end > first else float("nan")
+    strength, first, end = _best_run(by_lag[form_beats], level, cap)
+    null_best = _strongest_run([by_lag[lag] for lag in lags], level, cap)
+    mean = float(by_lag[form_beats][first:end].mean()) if end > first else float("nan")
 
     # Edges on single beats: a window straddling the start is already half inside.
-    units = _unit(profiles)
-    beat_sim = (units[:-form_beats] * units[form_beats:]).sum(axis=1)
-    beat_null = np.concatenate([(units[:-lag] * units[lag:]).sum(axis=1) for lag in lags] or [[0]])
+    beat_sim = beat_by_lag[form_beats]
+    beat_null = np.concatenate([beat_by_lag[lag] for lag in lags] or [[0.0]])
     inside = beat_sim[first : end + beats_per_bar - 1]
     # Equally many standard deviations from the null and from what recurs, but no stricter
     # than the windows' level: a sharp run would otherwise reject its own pickup.
@@ -248,7 +261,8 @@ def measure(
         null_best=null_best,
         mean_similarity=mean,
         null_mean=null_mean,
-        profiles=profiles,
+        null_spread=spread,
+        symbols=symbols,
         beat_similarity=beat_sim,
         beat_level=beat_level,
     )

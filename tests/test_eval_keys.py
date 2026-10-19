@@ -6,9 +6,9 @@ import random
 import pytest
 import soundfile as sf
 
-from songscribe import demo, lab
+from songscribe import beats, demo, lab
 from songscribe.demo import synthesise_performance
-from songscribe.eval import chroma, cli, dataset, form, harte, runner
+from songscribe.eval import chart_fit, cli, dataset, form, form_start, harte, runner
 from songscribe.types import ChordEvent
 
 CHART = ("C", "Am", "Dm", "G7", "Em", "A7", "Dm", "G7")
@@ -22,14 +22,12 @@ def timeline(labels) -> list[ChordEvent]:
     return [ChordEvent(i * BAR, (i + 1) * BAR, label) for i, label in enumerate(labels)]
 
 
-def anchor_of(labels, chart=CHART, shifts=chroma.ANY_KEY):
-    return chroma.anchor_bar(
-        chroma.chroma_from_events(timeline(labels)),
-        [i * BAR for i in range(len(labels) + 1)],
-        chroma.bar_templates(timeline(chart), len(chart)),
-        min_bars=4,
-        shifts=shifts,
+def anchor_of(labels, chart=CHART, shifts=chart_fit.ANY_KEY):
+    grid = beats.BeatGrid(downbeats=tuple(i * BAR for i in range(len(labels) + 1)))
+    anchor, _ = form_start.locate(
+        timeline(labels), grid, timeline(chart), bars=len(chart), min_bars=4, shifts=shifts
     )
+    return anchor
 
 
 def moved(labels, semitones):
@@ -86,26 +84,23 @@ class TestDemoTransposition:
 class TestAnchorAcrossKeys:
     def test_the_same_key_gives_the_same_answer_as_the_strict_search(self):
         labels = [*JUNK[:3], *CHART, *JUNK, *CHART]
-        strict = anchor_of(labels, shifts=chroma.AS_WRITTEN)
+        strict = anchor_of(labels, shifts=chart_fit.AS_WRITTEN)
         free = anchor_of(labels)
-        # Pinned: the strict numbers are the ones before keys were searched.
         assert (strict.bar_index, strict.shift) == (3, 0)
-        assert strict.mean_agreement == pytest.approx(0.968, abs=1e-3)
-        assert strict.runner_up == pytest.approx(0.320, abs=1e-3)
         assert (free.bar_index, free.shift) == (3, 0)
-        assert free.mean_agreement == pytest.approx(strict.mean_agreement)
+        assert free.label_agreement == pytest.approx(strict.label_agreement)
         assert free.refusal() is None
 
     @pytest.mark.parametrize("shift", range(-5, 7))
     def test_a_whole_take_in_any_key_is_found_with_its_shift(self, shift):
         anchor = anchor_of(moved([*JUNK[:3], *CHART * 3], shift))
         assert (anchor.bar_index, anchor.shift) == (3, shift)
-        assert anchor.mean_agreement > 0.85
-        assert anchor.margin > 0.3
+        assert anchor.label_agreement > 0.85
+        assert anchor.label_agreement - anchor.chance > form_start.ANCHOR_MIN_EXCESS
         assert anchor.refusal() is None
 
     def test_the_strict_search_refuses_a_take_in_another_key(self):
-        anchor = anchor_of(moved(CHART * 3, 2), shifts=chroma.AS_WRITTEN)
+        anchor = anchor_of(moved(CHART * 3, 2), shifts=chart_fit.AS_WRITTEN)
         assert anchor.refusal() is not None
 
     def test_a_chart_that_is_not_the_take_is_refused_in_every_key(self):
@@ -128,26 +123,30 @@ class TestAnchorAcrossKeys:
         # A take exactly one chorus long has no other phase to be told from.
         assert anchor_of(list(CHART)).refusal() is not None
 
-    def test_more_keys_raise_the_agreement_gate(self):
-        weak = chroma.Anchor(0, 0.0, 0.6, 0.2, 0.4, keys=12)
-        assert weak.refusal() is not None
-        assert chroma.Anchor(0, 0.0, 0.6, 0.2, 0.4, keys=1).refusal() is None
+    def test_the_chance_level_of_the_search_sets_the_bar_the_fit_has_to_clear(self):
+        low = form_start.Anchor(0, 0.0, 0.6, 0.2, 0.4, chance=0.3)
+        high = form_start.Anchor(0, 0.0, 0.6, 0.2, 0.4, chance=0.58)
+        assert low.refusal() is None
+        assert "under" in high.refusal()
 
 
 class TestScoredAcrossKeys:
     def evaluate(
         self, tmp_path, performance, estimate, transpose="auto", dropped_bar=None, chart=None
     ):
+        # The start is found on the chords played, whatever estimate is scored.
         audio = tmp_path / "audio"
         audio.mkdir(parents=True, exist_ok=True)
         sf.write(audio / "song.wav", performance.audio, SAMPLE_RATE)
         beats_dir, estimates = tmp_path / "beats", tmp_path / "est"
+        anchors = tmp_path / "anchors"
         beat_events = performance.beat_events()
         if dropped_bar is not None:
             lost = performance.downbeats[dropped_bar]
             beat_events = [b for b in beat_events if b.time != lost]
         lab.write_beats(beats_dir / "song.beats", beat_events)
         lab.write(estimates / "song.lab", estimate)
+        lab.write(anchors / "song.lab", performance.events)
         lab.write(tmp_path / "ann" / "song.lab", chart or performance.reference)
         manifest = tmp_path / "m.json"
         entry = {"id": "song", "reference": "song.lab", "audio": "song.wav", "bars": len(CHART)}
@@ -157,6 +156,7 @@ class TestScoredAcrossKeys:
             loaded,
             estimates_dir=estimates,
             beats_dir=beats_dir,
+            anchor_dir=anchors,
             check_alignment=False,
             transpose=transpose,
         )
@@ -274,7 +274,7 @@ class TestCommands:
 
     def run_form(self, files, capsys, *extra):
         argv = ["form", str(files["reference"]), "--bars", "8", "--beats", str(files["beats"])]
-        code = cli.main([*argv, "--audio", str(files["audio"]), *extra])
+        code = cli.main([*argv, "--estimate", str(files["estimate"]), *extra])
         return code, capsys.readouterr().out
 
     def test_the_form_table_has_a_key_column(self, files, capsys):
@@ -301,11 +301,15 @@ class TestCommands:
         estimates = tmp_path / "est"
         estimates.mkdir()
         (estimates / "song.lab").write_text(files["estimate"].read_text(encoding="utf-8"))
+        anchors = tmp_path / "anchors"
+        anchors.mkdir()
+        (anchors / "song.lab").write_text(files["estimate"].read_text(encoding="utf-8"))
         beats_dir = tmp_path / "beats"
         beats_dir.mkdir()
         (beats_dir / "song.beats").write_text(files["beats"].read_text(encoding="utf-8"))
         output = tmp_path / "out.json"
         argv = ["score", str(manifest), "--estimates", str(estimates), "--beats", str(beats_dir)]
+        argv += ["--anchor-estimates", str(anchors)]
         argv += ["--audio", str(tmp_path), "--annotations", str(tmp_path), "--per-chorus"]
         assert cli.main([*argv, "--json", str(output)]) == 0
         out = capsys.readouterr().out

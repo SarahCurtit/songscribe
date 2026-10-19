@@ -43,8 +43,9 @@ src/songscribe/
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
     metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
-    chroma.py     chart-vs-recording chroma fit, the chart-match start (numpy)
-    recurrence.py the stretch that repeats one form later: head, intro, pickup (numpy)
+    labels.py     chord labels -> one rough symbol per beat, and how well two agree (numpy)
+    chart_fit.py  the chart's labels against an estimate from a start, with its chance level (numpy)
+    recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
     form_start.py recurrence first, chart as check and fallback -> the form's start (numpy)
     form.py       splits a recording into choruses, on the chart's timeline (pure Python)
     dataset.py    manifests and path resolution                (pure Python)
@@ -128,11 +129,14 @@ songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-t
 ```
 
 A recording of the chart played several times (manifest track with `"bars"`) is scored per
-chorus with `score --beats DIR --per-chorus`; `songscribe-eval form` prints the detected
-grid, anchor and choruses first and exits 2 if the start is not clear (no key gives a clear
-fit). A take in another key is handled by default: one key is assumed for the whole take,
-and every chorus is scored against the chart transposed to it (`--transpose none` turns the
-key search off). See `EVALUATION.md`.
+chorus with `score --beats DIR --per-chorus`. Its form starts where a chord estimate of the
+recording repeats one form later: from `--anchor-backend` (default madmom, run on the full
+mix and cached under `--cache`, so a later scoring run reuses it) or from `--anchor-estimates
+DIR`. Anchoring on the backend being scored warns, since the start found can be the one that
+flatters it. `songscribe-eval form` prints the detected grid, anchor and choruses first and
+exits 2 if the start is not clear (no key gives a clear fit). A take in another key is
+handled by default: one key is assumed for the whole take, and every chorus is scored against
+the chart transposed to it (`--transpose none` turns the key search off). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in

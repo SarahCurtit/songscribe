@@ -2,7 +2,7 @@
 
 A recording is usually an intro, the chart played several times, sometimes a
 shorter last pass, and an ending. Starting from the anchor bar (the bar where
-the first chorus begins, see ``chroma.anchor_bar``), the recording's bars are
+the first chorus begins, see ``form_start.locate``), the recording's bars are
 cut into blocks of the chart's length. Each block's times are then converted
 to the chart's timeline, so the existing metrics can score it unchanged.
 """

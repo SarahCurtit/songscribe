@@ -8,7 +8,7 @@ import soundfile as sf
 from songscribe import beats, lab
 from songscribe.beats import BeatGrid
 from songscribe.demo import synthesise_performance
-from songscribe.eval import chroma, dataset, form, runner
+from songscribe.eval import dataset, form, form_start, runner
 from songscribe.types import ChordEvent
 
 CHART = ("C", "Am", "Dm", "G7", "Em", "A7", "Dm", "G7")
@@ -27,9 +27,9 @@ def track_for(tmp_path, performance):
     return dataset.Track(id="song", reference=reference, bars=len(CHART))
 
 
-def sure(performance) -> chroma.Anchor:
+def sure(performance) -> form_start.Anchor:
     """An anchor at the first bar, for tests that do not test anchor finding."""
-    return chroma.Anchor(0, performance.downbeats[0], 0.9, 0.4, 0.5)
+    return form_start.Anchor(0, performance.downbeats[0], 0.9, 0.4, 0.5, chance=0.3)
 
 
 def score(tmp_path, performance, estimated, **kwargs):
@@ -146,7 +146,7 @@ class TestScorePerformance:
 
     def test_a_refused_anchor_raises_rather_than_scoring_a_guess(self, tmp_path):
         performance = take()
-        weak = chroma.Anchor(0, performance.downbeats[0], 0.9, 0.88, 0.02)
+        weak = form_start.Anchor(0, performance.downbeats[0], 0.9, 0.88, 0.02, chance=0.3)
         with pytest.raises(ValueError, match="not clear"):
             runner.score_performance(
                 track_for(tmp_path, performance),
@@ -182,7 +182,7 @@ class TestSingleChorusIsUnchanged:
             estimate,
             grid=BeatGrid(downbeats=tuple(float(i) for i in range(len(CHART) + 1))),
             bars_per_chorus=len(CHART),
-            anchor=chroma.Anchor(0, 0.0, 1.0, 0.0, 1.0),
+            anchor=form_start.Anchor(0, 0.0, 1.0, 0.0, 1.0, chance=0.3),
         )
         assert framed.scores == plain.scores
         assert framed.segmentation == plain.segmentation
@@ -200,9 +200,10 @@ class TestEvaluateWithABarGrid:
         audio = tmp_path / "audio"
         audio.mkdir()
         sf.write(audio / "song.wav", performance.audio, SAMPLE_RATE)
-        grids, estimates = tmp_path / "beats", tmp_path / "est"
+        grids, estimates, anchors = tmp_path / "beats", tmp_path / "est", tmp_path / "anchors"
         lab.write_beats(grids / "song.beats", performance.beat_events())
         lab.write(estimates / "song.lab", wrong_fifth_bar(performance.events))
+        lab.write(anchors / "song.lab", performance.events)
         lab.write(tmp_path / "ann" / "song.lab", performance.reference)
         manifest = tmp_path / "m.json"
         dataset.write_manifest(
@@ -213,12 +214,16 @@ class TestEvaluateWithABarGrid:
             ),
         )
         loaded = dataset.load_manifest(manifest, audio_root=audio, annotation_root=tmp_path / "ann")
-        return performance, loaded, grids, estimates
+        return performance, loaded, grids, estimates, anchors
 
-    def test_the_form_is_found_in_the_audio_and_scored_per_chorus(self, setup):
-        _, loaded, grids, estimates = setup
+    def test_the_form_is_found_in_the_anchor_estimate_and_scored_per_chorus(self, setup):
+        _, loaded, grids, estimates, anchors = setup
         report = runner.evaluate(
-            loaded, estimates_dir=estimates, beats_dir=grids, check_alignment=False
+            loaded,
+            estimates_dir=estimates,
+            beats_dir=grids,
+            anchor_dir=anchors,
+            check_alignment=False,
         )
         (result,) = report.results
         assert result.anchor.bar_index == 0
@@ -228,54 +233,184 @@ class TestEvaluateWithABarGrid:
         assert report.mean_bar() == pytest.approx(7 / 8)
         assert report.chorus_count() == 3
         assert result.unscored_seconds == pytest.approx(0.75, abs=1e-3)
+        assert report.anchor == f"estimates:{anchors}"
+
+    def test_the_start_is_found_on_the_anchor_even_when_the_scored_estimate_is_poor(self, setup):
+        _, loaded, grids, estimates, anchors = setup
+        lab.write(estimates / "song.lab", [ChordEvent(0.0, 24.0, "F#")])
+        report = runner.evaluate(
+            loaded,
+            estimates_dir=estimates,
+            beats_dir=grids,
+            anchor_dir=anchors,
+            check_alignment=False,
+        )
+        (result,) = report.results
+        assert result.anchor.bar_index == 0
+        assert result.scores["majmin"].wcsr == pytest.approx(0.0)
+
+    def test_a_backend_estimate_is_cached_and_reused_by_the_scored_run(self, setup, tmp_path):
+        _, loaded, grids, _, _ = setup
+        cache = tmp_path / "cache"
+        report = runner.evaluate(
+            loaded,
+            backend="template",
+            beats_dir=grids,
+            anchor_backend="template",
+            cache_dir=cache,
+            check_alignment=False,
+        )
+        assert (cache / "template" / "song.lab").exists()
+        assert report.anchor == "template"
+        assert report.skipped == ()
+
+    def test_anchoring_on_the_backend_being_scored_warns(self, setup, tmp_path, caplog):
+        _, loaded, grids, _, _ = setup
+        with caplog.at_level("WARNING", logger="songscribe"):
+            runner.evaluate(
+                loaded,
+                backend="template",
+                beats_dir=grids,
+                anchor_backend="template",
+                cache_dir=tmp_path / "cache",
+                check_alignment=False,
+            )
+        assert "being scored (template)" in caplog.text
+
+    def test_anchoring_on_the_estimates_being_scored_warns(self, setup, caplog):
+        _, loaded, grids, estimates, _ = setup
+        with caplog.at_level("WARNING", logger="songscribe"):
+            runner.evaluate(
+                loaded,
+                estimates_dir=estimates,
+                beats_dir=grids,
+                anchor_dir=estimates,
+                check_alignment=False,
+            )
+        assert "being scored" in caplog.text
+
+    def test_a_different_anchor_does_not_warn(self, setup, caplog):
+        _, loaded, grids, estimates, anchors = setup
+        with caplog.at_level("WARNING", logger="songscribe"):
+            runner.evaluate(
+                loaded,
+                estimates_dir=estimates,
+                beats_dir=grids,
+                anchor_dir=anchors,
+                check_alignment=False,
+            )
+        assert "being scored" not in caplog.text
+
+    def test_an_unknown_anchor_backend_aborts_rather_than_falling_back(self, setup):
+        _, loaded, grids, estimates, _ = setup
+        with pytest.raises(ValueError, match="nope"):
+            runner.evaluate(loaded, estimates_dir=estimates, beats_dir=grids, anchor_backend="nope")
+
+    def test_a_backend_and_a_directory_of_anchors_together_are_a_mistake(self, setup):
+        _, loaded, grids, estimates, anchors = setup
+        with pytest.raises(ValueError, match="at most one"):
+            runner.evaluate(
+                loaded,
+                estimates_dir=estimates,
+                beats_dir=grids,
+                anchor_backend="template",
+                anchor_dir=anchors,
+            )
+
+    def test_a_missing_anchor_estimate_skips_the_track(self, setup, tmp_path):
+        _, loaded, grids, estimates, _ = setup
+        empty = tmp_path / "nowhere"
+        empty.mkdir()
+        report = runner.evaluate(loaded, estimates_dir=estimates, beats_dir=grids, anchor_dir=empty)
+        assert report.skipped == ("song",)
 
     def test_a_manifest_track_without_bars_is_skipped_and_named(self, setup):
-        _, loaded, grids, estimates = setup
+        _, loaded, grids, estimates, anchors = setup
         bare = dataset.Dataset(
             name="x",
             tracks=tuple(
                 dataset.Track(id=t.id, reference=t.reference, audio=t.audio) for t in loaded.tracks
             ),
         )
-        report = runner.evaluate(bare, estimates_dir=estimates, beats_dir=grids)
+        report = runner.evaluate(bare, estimates_dir=estimates, beats_dir=grids, anchor_dir=anchors)
         assert report.skipped == ("song",)
         assert not report.results
 
     def test_a_missing_beats_file_skips_the_track(self, setup, tmp_path):
-        _, loaded, _, estimates = setup
+        _, loaded, _, estimates, anchors = setup
         empty = tmp_path / "nowhere"
         empty.mkdir()
-        report = runner.evaluate(loaded, estimates_dir=estimates, beats_dir=empty)
+        report = runner.evaluate(
+            loaded, estimates_dir=estimates, beats_dir=empty, anchor_dir=anchors
+        )
         assert report.skipped == ("song",)
 
     def test_a_recording_that_is_not_the_chart_is_refused_not_scored(self, setup, tmp_path):
-        _, loaded, grids, estimates = setup
+        _, loaded, grids, estimates, anchors = setup
         other = ["F#", "Bb", "Eb", "B", "Ab", "D", "F#", "Bb"]
         stranger = take(progression=other, repeats=3, pickup_beats=3)
-        sf.write(loaded.tracks[0].audio, stranger.audio, SAMPLE_RATE)
-        report = runner.evaluate(loaded, estimates_dir=estimates, beats_dir=grids)
+        lab.write(anchors / "song.lab", stranger.events)
+        report = runner.evaluate(
+            loaded, estimates_dir=estimates, beats_dir=grids, anchor_dir=anchors
+        )
         assert report.skipped == ("song",)
 
     def test_a_beats_dir_and_a_backend_together_are_a_mistake(self, setup, tmp_path):
-        _, loaded, grids, estimates = setup
+        _, loaded, grids, estimates, _ = setup
         with pytest.raises(ValueError, match="at most one"):
             runner.evaluate(
                 loaded, estimates_dir=estimates, beats_dir=grids, beat_backend="librosa"
             )
 
     def test_an_unknown_beat_backend_aborts_rather_than_skipping_every_track(self, setup):
-        _, loaded, _, estimates = setup
+        _, loaded, _, estimates, _ = setup
         with pytest.raises(ValueError):
             runner.evaluate(loaded, estimates_dir=estimates, beat_backend="nope")
 
     def test_without_a_bar_grid_nothing_changes(self, setup):
-        _, loaded, _, estimates = setup
+        _, loaded, _, estimates, _ = setup
         report = runner.evaluate(loaded, estimates_dir=estimates)
         (result,) = report.results
         assert result.choruses == ()
         assert result.anchor is None
+        assert report.anchor is None
         assert isnan(result.bar)
         assert isnan(report.mean_bar())
+
+
+class TestAnchorEstimate:
+    @pytest.fixture
+    def track(self, tmp_path):
+        performance = take(repeats=3)
+        sf.write(tmp_path / "song.wav", performance.audio, SAMPLE_RATE)
+        lab.write(tmp_path / "ref.lab", performance.reference)
+        return dataset.Track(
+            id="song", reference=tmp_path / "ref.lab", audio=tmp_path / "song.wav", bars=8
+        )
+
+    def test_a_given_estimate_is_read_as_it_is(self, track, tmp_path):
+        events = [ChordEvent(0.0, 1.0, "C")]
+        lab.write(tmp_path / "given" / "song.lab", events)
+        got = runner.anchor_estimate(track, estimates_dir=tmp_path / "given")
+        assert [(e.start, e.end, e.label) for e in got] == [(0.0, 1.0, "C")]
+
+    def test_a_missing_given_estimate_is_an_error_not_a_reason_to_run_a_model(
+        self, track, tmp_path
+    ):
+        (tmp_path / "none").mkdir()
+        with pytest.raises(FileNotFoundError, match="anchor estimate"):
+            runner.anchor_estimate(track, "template", estimates_dir=tmp_path / "none")
+
+    def test_a_backends_estimate_is_cached_where_the_scored_run_looks(self, track, tmp_path):
+        cache = tmp_path / "cache"
+        events = runner.anchor_estimate(track, "template", cache)
+        cached = lab.read(runner.cache_path(cache, "template", "song", False))
+        assert [e.label for e in cached] == [e.label for e in events]
+
+    def test_an_unknown_backend_raises_instead_of_using_another_model(self, track, tmp_path):
+        with pytest.raises(ValueError, match="nope"):
+            runner.anchor_estimate(track, "nope", tmp_path / "cache")
+        assert not (tmp_path / "cache").exists()
 
 
 class TestManifestBars:
