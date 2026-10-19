@@ -506,7 +506,7 @@ class TestBackendSettings:
 
 
 def _capture(monkeypatch, backend):
-    """Swap ``backend`` for a fake that records its settings, keeping its rules."""
+    """Swap ``backend`` for a fake that records its settings."""
     seen = {}
 
     def fake(audio, sample_rate, beats_per_bar=beats.DEFAULT_METRE, hop_length=512):
@@ -654,13 +654,8 @@ class TestBackendSettingValues:
         with pytest.raises(ValueError, match="must be a whole number of beats to the bar"):
             beats.track(self.AUDIO, 44_100, backend=backend, beats_per_bar=flag)
 
-    def test_every_rule_guards_a_setting_its_backend_declares(self):
-        # A renamed parameter must not leave its rule on a dead name.
-        for backend, rules in beats.SETTING_RULES.items():
-            assert set(rules) <= beats.backend_options(backend), backend
-
     def test_every_metre_setting_has_a_rule(self):
         # The metre is the one setting every backend shares, so it is the one
         # a caller moves between them; each backend has to vet it.
         for backend in beats.BACKENDS:
-            assert "beats_per_bar" in beats.SETTING_RULES.get(backend, {}), backend
+            assert "beats_per_bar" in beats._REGISTRY.rules(backend), backend

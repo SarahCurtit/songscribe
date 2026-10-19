@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from numbers import Integral
 
 import numpy as np
 
-from .registry import Registry, SettingRule
+from .registry import Registry, setting_rules, whole_number
 from .types import ChordEvent
 
 log = logging.getLogger(__name__)
@@ -102,6 +101,13 @@ def _recognise_btc(
     )
 
 
+# Rules are checked in the registry so a bad value fails before dispatch and before any
+# model import.
+@setting_rules(
+    hop_length=whole_number("samples"),
+    # 0 is allowed: _smooth_labels treats any width up to 1 as "off".
+    smoothing=whole_number("frames", floor=0),
+)
 def _recognise_template(
     audio: np.ndarray,
     sample_rate: int,
@@ -140,29 +146,6 @@ BACKEND_SAMPLE_RATES = {
 }
 
 
-def _whole_at_least(value: object, unit: str, floor: int) -> str | None:
-    # Integral so np.int64 passes. A fractional count is refused, not rounded.
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        return f"must be a whole number of {unit}, got {value!r}"
-    if value < floor:
-        return f"must be at least {floor}, got {value!r}"
-    return None
-
-
-def _whole_positive(value: object, unit: str) -> str | None:
-    return _whole_at_least(value, unit, 1)
-
-
-# Checked in the registry so a bad value fails before dispatch and before any model import.
-SETTING_RULES: dict[str, dict[str, SettingRule]] = {
-    "template": {
-        "hop_length": lambda value: _whole_positive(value, "samples"),
-        # 0 is allowed: _smooth_labels treats any width up to 1 as "off".
-        "smoothing": lambda value: _whole_at_least(value, "frames", 0),
-    },
-}
-
-
 def normalise_label(label: str) -> str:
     """Convert a Harte-notation chord label to compact chart shorthand.
 
@@ -184,7 +167,7 @@ def normalise_label(label: str) -> str:
     return label
 
 
-_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES, SETTING_RULES)
+_REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES)
 
 # The checks live in :mod:`songscribe.registry`, shared with the beat stage; these
 # are this module's public names for them.

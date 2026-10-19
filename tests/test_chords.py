@@ -271,7 +271,6 @@ class TestBackendSettingValues:
             seen.update(hop_length=hop_length, smoothing=smoothing)
             return []
 
-        # Rules are keyed by backend name, so they still apply to the fake.
         monkeypatch.setitem(chords.BACKENDS, "template", fake)
         return seen
 
@@ -299,11 +298,6 @@ class TestBackendSettingValues:
     def test_smooth_labels_takes_a_numpy_width(self):
         flicker = np.array([0, 0, 0, 1, 0, 0, 0])
         np.testing.assert_array_equal(_smooth_labels(flicker, np.int64(3)), np.zeros(7))
-
-    def test_every_rule_guards_a_setting_its_backend_declares(self):
-        # A renamed parameter must not leave its rule on a dead name.
-        for backend, rules in chords.SETTING_RULES.items():
-            assert set(rules) <= backend_options(backend), backend
 
 
 class TestEstimateKey:
