@@ -2,7 +2,7 @@
 
 A manifest holds track ids and *relative* paths, never content, so it is publishable while
 the corpus stays local. Roots resolve from the explicit argument, then the
-``SONGSCRIBE_EVAL_*`` env vars, then the manifest's directory. Corpora and licences are in
+``SONGSCRIBE_EVAL_*`` env vars, then the manifest's directory. Setup is in
 ``EVALUATION.md``.
 """
 
