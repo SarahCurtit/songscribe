@@ -78,6 +78,46 @@ class TestSynthesisePerformance:
         assert beats[-1].time == take.downbeats[-1]
         assert sum(b.position == 1 for b in beats) == len(take.downbeats)
 
+    def test_an_intro_precedes_the_head_and_is_not_in_the_chart(self):
+        take = self.take(intro=("Dm", "Em"))
+        assert take.intro_bars == 2
+        assert take.head_start == pytest.approx(4.0)
+        assert [e.label for e in take.events[:3]] == ["Dm", "Em", "C"]
+        assert [e.label for e in take.reference] == list(PROGRESSION)
+        assert len(take.downbeats) == 2 + 3 * 4 + 1
+
+    def test_with_an_intro_the_pickup_is_the_last_beats_of_its_final_bar(self):
+        take = self.take(intro=("Dm", "Em"), pickup_beats=2)
+        assert take.head_start == pytest.approx(4.0)
+        assert [(e.start, e.label) for e in take.events[:4]] == [
+            (0.0, "Dm"),
+            (2.0, "Em"),
+            (3.0, PROGRESSION[-1]),
+            (4.0, PROGRESSION[0]),
+        ]
+        # A pickup inside the intro adds no stub before bar 0.
+        beats = take.beat_events()
+        assert [b.position for b in beats[:5]] == [1, 2, 3, 4, 1]
+
+    def test_colour_adds_notes_to_one_chorus_only(self):
+        plain, coloured = self.take(), self.take(colour={1: [10, 14]})
+        chorus = 4 * SR * 2
+
+        def likeness(a, b):
+            return float(np.corrcoef(a, b)[0, 1])
+
+        # The whole take is rescaled together, so compare shapes, not samples.
+        assert likeness(plain.audio[:chorus], coloured.audio[:chorus]) > 0.999
+        middle = slice(chorus, 2 * chorus)
+        assert likeness(plain.audio[middle], coloured.audio[middle]) < 0.99
+        assert coloured.events == plain.events
+
+    def test_a_tracker_phase_moves_the_downbeat_labels_not_the_beat_times(self):
+        take = self.take()
+        right, off = take.beat_events(), take.beat_events(tracker_phase=1)
+        assert [b.time for b in right] == [b.time for b in off]
+        assert [b.position for b in off[:5]] == [2, 3, 4, 1, 2]
+
     @pytest.mark.parametrize(
         "kwargs",
         [
