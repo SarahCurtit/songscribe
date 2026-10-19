@@ -268,37 +268,3 @@ def anchor_bar(
         shift=key,
         keys=len(shifts),
     )
-
-
-def chorus_shifts(
-    chroma: Chromagram,
-    downbeats: Sequence[float],
-    templates: Sequence[np.ndarray],
-    blocks: Sequence[tuple[int, int]],
-    *,
-    start: int = 0,
-    shifts: Sequence[int] = AS_WRITTEN,
-) -> list[int]:
-    """The key of each ``(first bar, bar count)`` block, in the order given.
-
-    A key holds until another beats it clearly: the best key must fit well and
-    lead every other, the current one included, by the anchor's margin. A
-    reharmonised chorus fits no key clearly, so it stays in the key it was in
-    rather than being moved on noise, which would score it against a wrong chart.
-    """
-    by_shift = keyed_agreement(chroma, downbeats, templates, shifts)
-    gate = _agreement_gate(len(shifts))
-    current = start
-    found: list[int] = []
-    for first, count in blocks:
-        rows = np.arange(first, min(first + count, len(downbeats) - 1))
-        fits = {
-            k: float(by_shift[k][rows, rows - first].mean()) if len(rows) else 0.0 for k in shifts
-        }
-        ranked = sorted(fits, key=lambda k: fits[k], reverse=True)
-        best = ranked[0]
-        lead = fits[best] - fits[ranked[1]] if len(ranked) > 1 else 0.0
-        if best != current and fits[best] >= gate and lead >= ANCHOR_MIN_MARGIN:
-            current = best
-        found.append(current)
-    return found

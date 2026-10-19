@@ -426,17 +426,16 @@ first. The pieces, and what each refuses to do:
   `ANCHOR_MIN_MARGIN`, or whose agreement is under `ANCHOR_MIN_AGREEMENT`, is **refused**: the
   track is skipped and named, not scored against a guess. Both gates are provisional (a
   cosine of standardised chroma, checked only on synthetic takes).
-- **Key** (`--transpose auto`, the default): a tune is often played in another key, or
-  modulates between choruses, so the chart is also tried in each of the twelve keys. A rival
-  is any other phase in any key, or the chosen start in any other key, so more keys cannot make
-  a wrong chart fit; because twelve keys are twelve chances to fit by luck, the agreement gate
-  is `ANCHOR_MIN_AGREEMENT_ANY_KEY` (0.65). Each chorus then takes its own key (a key holds
-  until another beats it by the margin, so a reharmonised chorus is not moved on noise), and is
-  scored against the chart transposed to it; the estimate is never altered. `form` and
-  `--per-chorus` show it as `key` (`+2` a tone up), the JSON as `shift`. A chart is refused
-  when *no* key gives a clear fit. `--transpose none` insists on the written key and
-  refuses a transposed take as before. Keys the chart's own chords share (relative major and
-  minor) are close calls: a modulation to one is kept in the old key rather than guessed.
+- **Key** (`--transpose auto`, the default): a tune is often played in another key, so the
+  chart is also tried in each of the twelve keys. A rival is any other phase in any key, or the
+  chosen start in any other key, so more keys cannot make a wrong chart fit; because twelve
+  keys are twelve chances to fit by luck, the agreement gate is
+  `ANCHOR_MIN_AGREEMENT_ANY_KEY` (0.65). One key is assumed for the whole take: the anchor's
+  shift applies to every chorus, which is scored against the chart transposed by it; the
+  estimate is never altered. `form` and `--per-chorus` show it as `key` (`+2` a tone up), the
+  JSON as `shift`. A chart is refused when no key gives a clear fit. `--transpose none` insists
+  on the written key and refuses a transposed take as before. A song that changes key partway
+  is not supported.
 - **Choruses** (`eval/form.py`): contiguous blocks of the chart's bar count from the anchor.
   `intro`, `head` (first and last full chorus), `chorus`, `partial` (at least four bars),
   `tail` (shorter: an ending), `unaligned`. A bar far from its own block's median length

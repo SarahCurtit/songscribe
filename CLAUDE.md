@@ -128,9 +128,9 @@ songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-t
 A recording of the chart played several times (manifest track with `"bars"`) is scored per
 chorus with `score --beats DIR --per-chorus`; `songscribe-eval form` prints the detected
 grid, anchor and choruses first and exits 2 if the start is not clear (no key gives a clear
-fit). A take in another key, or modulating between choruses, is handled by default: each
-chorus is scored against the chart transposed to its key (`--transpose none` turns the key
-search off). See `EVALUATION.md`.
+fit). A take in another key is handled by default: one key is assumed for the whole take,
+and every chorus is scored against the chart transposed to it (`--transpose none` turns the
+key search off). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in

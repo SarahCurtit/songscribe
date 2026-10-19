@@ -73,29 +73,14 @@ class TestDemoTransposition:
         assert [e.label for e in take.events[:3]] == ["D", "Bm", "Em"]
         assert [e.label for e in take.reference[:3]] == ["C", "Am", "Dm"]
 
-    def test_a_modulation_moves_one_chorus_further(self):
-        take = synthesise_performance(
-            CHART, repeats=3, sample_rate=SAMPLE_RATE, transpose=1, modulations={1: 2}
-        )
-        firsts = [take.events[i * 8].label for i in range(3)]
-        assert firsts == ["C#", "D#", "C#"]
-
-    def test_a_modulation_outside_the_take_is_an_error(self):
-        with pytest.raises(ValueError, match="modulation"):
-            synthesise_performance(CHART, repeats=2, sample_rate=SAMPLE_RATE, modulations={2: 1})
-
     def test_the_cli_flags_reach_the_synthesis(self, tmp_path):
         out = tmp_path / "take.wav"
         argv = ["-o", str(out), "-p", *CHART, "-r", "3", "--sample-rate", "8000"]
-        argv += ["--transpose-take", "3", "--modulate", "1=2"]
+        argv += ["--transpose-take", "3"]
         assert demo.main(argv) == 0
         events = lab.read(tmp_path / "take.lab")
-        assert [events[i * 8].label for i in range(3)] == ["D#", "F", "D#"]
+        assert [events[i * 8].label for i in range(3)] == ["D#"] * 3
         assert lab.read(tmp_path / "take.reference.lab")[0].label == "C"
-
-    def test_a_malformed_modulation_is_an_error(self, capsys):
-        assert demo.main(["--modulate", "x", "--sample-rate", "8000"]) == 1
-        assert "--modulate wants" in capsys.readouterr().err
 
 
 class TestAnchorAcrossKeys:
@@ -147,32 +132,6 @@ class TestAnchorAcrossKeys:
         weak = chroma.Anchor(0, 0.0, 0.6, 0.2, 0.4, keys=12)
         assert weak.refusal() is not None
         assert chroma.Anchor(0, 0.0, 0.6, 0.2, 0.4, keys=1).refusal() is None
-
-
-class TestChorusShifts:
-    def labels(self, shifts):
-        return [label for shift in shifts for label in moved(CHART, shift)]
-
-    def keys(self, labels, **kwargs):
-        blocks = [(i * 8, 8) for i in range(len(labels) // 8)]
-        return chroma.chorus_shifts(
-            chroma.chroma_from_events(timeline(labels)),
-            [i * BAR for i in range(len(labels) + 1)],
-            chroma.bar_templates(timeline(CHART), 8),
-            blocks,
-            shifts=chroma.ANY_KEY,
-            **kwargs,
-        )
-
-    def test_each_chorus_gets_its_own_key(self):
-        assert self.keys(self.labels([0, 2, 2, -3])) == [0, 2, 2, -3]
-
-    def test_a_reharmonised_chorus_keeps_the_key_it_was_in(self):
-        labels = [*moved(CHART, 4), *JUNK, *moved(CHART, 4)]
-        assert self.keys(labels, start=4) == [4, 4, 4]
-
-    def test_an_unclear_start_key_is_not_replaced_by_noise(self):
-        assert self.keys([*JUNK, *JUNK], start=0) == [0, 0]
 
 
 class TestScoredAcrossKeys:
@@ -239,25 +198,17 @@ class TestScoredAcrossKeys:
         assert result.anchor.shift == 2
         assert result.bar == 0.0
 
-    def test_a_modulation_between_choruses_is_scored_chorus_by_chorus(self, tmp_path):
-        performance = self.take(repeats=4, modulations={1: 2, 2: 2})
-        wrong = self.wrong_fifth_bar(performance.events)
-        (result,) = self.evaluate(tmp_path, performance, wrong).results
-        assert [c.chorus.shift for c in result.choruses] == [0, 2, 2, 0]
-        assert [c.chorus.kind for c in result.choruses] == ["head", "chorus", "chorus", "head"]
-        assert [c.bar for c in result.choruses] == pytest.approx([7 / 8] * 4)
-
-    def test_a_modulation_to_the_far_key_and_back(self, tmp_path):
-        performance = self.take(repeats=3, transpose=-3, modulations={1: 5})
+    def test_one_key_holds_for_every_chorus_even_when_one_is_reharmonised(self, tmp_path):
+        performance = self.take(repeats=4, transpose=2, substitutions={1: {0: "F#", 1: "D"}})
         (result,) = self.evaluate(tmp_path, performance, performance.events).results
-        assert [c.chorus.shift for c in result.choruses] == [-3, 2, -3]
-        assert result.bar == 1.0
+        assert [c.chorus.shift for c in result.choruses] == [2, 2, 2, 2]
+        # Two bars of one chorus differ from the chart, and only those two are wrong.
+        assert [c.bar for c in result.choruses] == pytest.approx([1.0, 0.75, 1.0, 1.0])
 
-    def test_a_modulation_does_not_save_a_chorus_that_lost_the_count(self, tmp_path):
-        performance = self.take(repeats=4, modulations={1: 2, 3: 2})
+    def test_a_dropped_bar_still_leaves_out_the_lost_chorus_in_a_transposed_take(self, tmp_path):
+        performance = self.take(repeats=4, transpose=2)
         (result,) = self.evaluate(tmp_path, performance, performance.events, dropped_bar=27).results
-        # The damaged last chorus is left out although it modulated, as it always was.
-        assert [c.chorus.shift for c in result.choruses] == [0, 2, 0]
+        assert [c.chorus.shift for c in result.choruses] == [2, 2, 2]
         assert [c.chorus.kind for c in result.choruses] == ["head", "chorus", "head"]
         assert result.unscored_seconds == pytest.approx(3.0 + 8.0)
 
@@ -296,7 +247,6 @@ class TestCommands:
             sample_rate=SAMPLE_RATE,
             lead_in_seconds=3.0,
             transpose=-2,
-            modulations={1: 4},
         )
         paths = {
             "reference": tmp_path / "reference.lab",
@@ -323,7 +273,7 @@ class TestCommands:
         assert [(row[1], row[-1]) for row in rows] == [
             ("intro", "--"),
             ("head", "-2"),
-            ("chorus", "+2"),
+            ("chorus", "-2"),
             ("head", "-2"),
         ]
 
@@ -332,7 +282,7 @@ class TestCommands:
         assert code == 2
         assert "REFUSED" in out
 
-    def test_score_reports_the_key_per_chorus_and_in_the_json(self, files, tmp_path, capsys):
+    def test_score_reports_the_key_on_every_chorus_and_in_the_json(self, files, tmp_path, capsys):
         entry = {"id": "song", "reference": "reference.lab", "audio": "song.wav", "bars": 8}
         manifest = tmp_path / "m.json"
         dataset.write_manifest(manifest, dataset.build("take", [entry]))
@@ -347,9 +297,9 @@ class TestCommands:
         argv += ["--audio", str(tmp_path), "--annotations", str(tmp_path), "--per-chorus"]
         assert cli.main([*argv, "--json", str(output)]) == 0
         out = capsys.readouterr().out
-        assert [line.split()[-1] for line in out.splitlines() if " #" in line] == ["-2", "+2", "-2"]
+        assert [line.split()[-1] for line in out.splitlines() if " #" in line] == ["-2"] * 3
         (track,) = json.loads(output.read_text(encoding="utf-8"))["tracks"]
-        assert [c["shift"] for c in track["choruses"]] == [-2, 2, -2]
+        assert [c["shift"] for c in track["choruses"]] == [-2] * 3
         assert track["anchor"]["shift"] == -2
         assert track["bar"] == 1.0
 

@@ -197,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=TRANSPOSE_MODES,
         default="auto",
         help=(
-            "keys a take may be played in: auto searches all twelve for each chorus and "
+            "keys a take may be played in: auto searches all twelve for the whole take and "
             "scores against the chart moved to it; none insists on the chart's own "
             "(default: %(default)s)"
         ),
@@ -266,7 +266,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=TRANSPOSE_MODES,
         default="auto",
         help=(
-            "keys a take may be played in: auto searches all twelve for each chorus and "
+            "keys a take may be played in: auto searches all twelve for the whole take and "
             "scores against the chart moved to it; none insists on the chart's own "
             "(default: %(default)s)"
         ),
@@ -376,6 +376,7 @@ def _form(args: argparse.Namespace) -> int:
     from .. import beats, lab
     from . import chroma, form, runner
     from .dataset import Track
+    from .metrics import extent
 
     if (args.audio is None) == (args.estimate is None):
         print("songscribe-eval: pass exactly one of --audio or --estimate", file=sys.stderr)
@@ -406,11 +407,12 @@ def _form(args: argparse.Namespace) -> int:
             min_bars=form.CHORUS_MIN_BARS,
             shifts=shifts,
         )
-        blocks = (
-            ()
-            if found is None or found.refusal()
-            else runner.keyed_choruses(evidence, grid, reference, args.bars, found, shifts)
-        )
+        blocks = ()
+        if found is not None and not found.refusal():
+            start, end = extent(reference)
+            blocks = form.in_key(
+                form.choruses(grid, args.bars, found.bar_index, end - start), found.shift
+            )
     except (OSError, ValueError, runner.AudioDecodeError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1

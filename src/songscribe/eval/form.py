@@ -9,7 +9,7 @@ every existing metric scores it unchanged.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite, nan
 from statistics import median
 
@@ -26,7 +26,7 @@ HEAD_CHORUSES = (0, -1)
 #: against a thirty-two-bar chart gives a confident number about nothing.
 CHORUS_MIN_BARS = 4
 
-#: How a take's key is decided: ``auto`` per chorus, ``none`` the chart's own.
+#: How a take's key is decided: ``auto`` searches all twelve, ``none`` keeps the chart's own.
 TRANSPOSE_MODES = ("auto", "none")
 
 #: Kinds whose time is scored.
@@ -197,3 +197,8 @@ def truncate_reference(
 def transpose_events(events: Sequence[ChordEvent], semitones: int) -> list[ChordEvent]:
     """The chart moved to the key a chorus is played in; the estimate is never moved."""
     return [ChordEvent(e.start, e.end, transpose_label(e.label, semitones)) for e in events]
+
+
+def in_key(blocks: Sequence[Chorus], shift: int) -> list[Chorus]:
+    """``blocks`` with every scored one played ``shift`` semitones above the chart."""
+    return [replace(c, shift=shift) if c.is_scored else c for c in blocks]
