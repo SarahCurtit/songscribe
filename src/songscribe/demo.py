@@ -168,12 +168,10 @@ def synthesise(
 class Performance:
     """A synthetic recording of the chart played several times, with its ground truth.
 
-    ``events`` are the chords of the whole recording, in seconds from the start
-    of ``audio``. ``reference`` is one chorus of the chart, starting at 0 and
-    at the requested tempo, like a lead sheet. ``downbeats`` are the start
-    times of all bars, plus the end time of the last bar. The first one is bar 0, after the
-    ``pickup_beats`` of the chart's last chord that open the take (``events`` and
-    ``beat_events`` include them; ``reference`` does not).
+    ``events`` are the chords of the whole recording, in seconds from the start of ``audio``.
+    ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
+    ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
+    A pickup is in ``events`` and ``beat_events()``, not in ``reference``.
     """
 
     audio: np.ndarray
