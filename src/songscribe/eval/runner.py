@@ -14,14 +14,10 @@ from pathlib import Path
 
 from ..beats import BeatGrid
 from ..types import ChordEvent
-from . import chroma, form, form_start, metrics
+from . import form, form_start, metrics
 from .dataset import Dataset, Track
 
 log = logging.getLogger(__name__)
-
-#: Sample rate the audio is loaded at for the chromagram. The chromagram only
-#: uses frequencies up to about 1.7 kHz, so a higher rate is not needed.
-CHROMA_SAMPLE_RATE = 22_050
 
 #: Cache filenames are derived from the track id, which contains directory
 #: separators. Flattening them keeps the cache one directory deep and avoids
@@ -78,7 +74,7 @@ class TrackResult:
     #: choruses among them.
     choruses: tuple[ChorusResult, ...] = ()
     bar: float = nan
-    anchor: chroma.Anchor | None = None
+    anchor: form_start.Anchor | None = None
     #: Seconds of the recording not in any scored block (intro, tail, unaligned).
     unscored_seconds: float = 0.0
 
@@ -99,6 +95,8 @@ class Report:
     #: Scored tracks that ran on the full mix although separation was asked
     #: for (demucs missing). Without it a fallback leaves no trace in the output.
     fallbacks: int = 0
+    #: With a bar grid: whose estimate the form's start was found on.
+    anchor: str | None = None
 
     def mean(self, vocabulary: str) -> float:
         """Unweighted mean of per-track WCSR, skipping unscoreable tracks."""
@@ -366,7 +364,7 @@ def score_performance(
     *,
     grid: BeatGrid,
     bars_per_chorus: int,
-    anchor: chroma.Anchor,
+    anchor: form_start.Anchor,
     vocabularies: tuple[str, ...] = metrics.DEFAULT_VOCABULARIES,
     check_alignment: bool = True,
     reference: list[ChordEvent] | None = None,
@@ -459,19 +457,6 @@ def score_performance(
     )
 
 
-def chroma_of(track: Track) -> chroma.Chromagram:
-    """Load the track's audio and compute its chromagram."""
-    from .. import audio
-
-    if track.audio is None or not track.audio.exists():
-        raise FileNotFoundError(f"{track.id}: no audio file to compute the chroma from")
-    try:
-        samples, rate = audio.load(track.audio, CHROMA_SAMPLE_RATE)
-    except Exception as error:
-        raise AudioDecodeError(f"cannot decode {track.audio}: {error!r}") from error
-    return chroma.chromagram(samples, rate)
-
-
 def bar_grid(
     track: Track, beats_dir: Path | None, beat_backend: str | None, cache_dir: Path | None
 ) -> BeatGrid:
@@ -506,6 +491,59 @@ def bar_grid(
     return beats.grid(tracked)
 
 
+def anchor_estimate(
+    track: Track,
+    backend: str | None = None,
+    cache_dir: Path | None = None,
+    estimates_dir: Path | None = None,
+    refresh: bool = False,
+) -> list[ChordEvent]:
+    """The chord estimate the form's start is found on: a given ``.lab`` or a backend's.
+
+    The backend is fixed by the caller (default ``chords.DEFAULT_BACKEND``), run on the full
+    mix and cached like any estimate, so the scored run reuses it. It need not be the backend
+    being scored, and it should not be: a start found on the estimate under test can be the
+    one that flatters it. An unknown backend raises; nothing falls back to another model.
+    """
+    from .. import chords
+
+    if estimates_dir is not None:
+        found = read_estimate(estimates_dir, track.id)
+        if found is None:
+            raise FileNotFoundError(f"{track.id}: no anchor estimate under {estimates_dir}")
+        return found
+    backend = backend or chords.DEFAULT_BACKEND
+    chords.sample_rate_for(backend)  # raises on a name no backend has
+    return estimate(track, backend, cache_dir, False, refresh)
+
+
+def _check_anchor(
+    backend: str | None,
+    estimates_dir: Path | None,
+    anchor_backend: str | None,
+    anchor_dir: Path | None,
+) -> str:
+    """Name the anchoring estimate; warn if it is the one under test; unknown backends raise."""
+    from .. import chords
+
+    if anchor_backend is not None and anchor_dir is not None:
+        raise ValueError("pass at most one of anchor_backend= or anchor_dir=")
+    if anchor_dir is not None:
+        same = estimates_dir is not None and anchor_dir.resolve() == estimates_dir.resolve()
+        name = f"estimates:{anchor_dir}"
+    else:
+        name = anchor_backend or chords.DEFAULT_BACKEND
+        chords.sample_rate_for(name)
+        same = backend == name
+    if same:
+        log.warning(
+            "the form's start is found on the estimate being scored (%s): it can pick the start "
+            "that flatters it. Use a different --anchor-backend or --anchor-estimates.",
+            name,
+        )
+    return name
+
+
 def _score_form(
     track: Track,
     estimated: list[ChordEvent],
@@ -515,14 +553,18 @@ def _score_form(
     beats_dir: Path | None,
     beat_backend: str | None,
     cache_dir: Path | None,
+    anchor_backend: str | None,
+    anchor_dir: Path | None,
+    refresh: bool,
 ) -> TrackResult:
     if track.bars is None:
         raise ValueError(f"{track.id}: the manifest gives no 'bars' for this track")
     grid = bar_grid(track, beats_dir, beat_backend, cache_dir)
     found, grid = form_start.locate(
-        chroma_of(track),
+        anchor_estimate(track, anchor_backend, cache_dir, anchor_dir, refresh),
         grid,
-        chroma.bar_templates(reference, track.bars),
+        reference,
+        bars=track.bars,
         min_bars=form.CHORUS_MIN_BARS,
     )
     if found is None:
@@ -552,14 +594,16 @@ def evaluate(
     check_alignment: bool = True,
     beats_dir: Path | None = None,
     beat_backend: str | None = None,
+    anchor_backend: str | None = None,
+    anchor_dir: Path | None = None,
 ) -> Report:
     """Score every usable track in ``dataset``.
 
-    Exactly one source of estimates is required: ``backend`` runs a model,
-    ``estimates_dir`` reads ``.lab`` files somebody else produced. A track
-    whose reference or estimate is missing is skipped and named, not scored as
-    zero. With ``beats_dir`` or ``beat_backend``, tracks are scored per chorus
-    (see :func:`score_performance`).
+    Exactly one source of estimates is required: ``backend`` runs a model, ``estimates_dir``
+    reads ``.lab`` files somebody else produced. A track whose reference or estimate is
+    missing is skipped and named, not scored as zero. With ``beats_dir`` or ``beat_backend``,
+    tracks are scored per chorus from a start found on an anchor estimate (``anchor_dir`` or
+    ``anchor_backend``, see :func:`anchor_estimate`).
     """
     import subprocess
 
@@ -575,6 +619,10 @@ def evaluate(
     # unknown backend would otherwise skip every track instead of aborting.
     if backend is not None:
         chords.sample_rate_for(backend)
+    per_chorus = beats_dir is not None or beat_backend is not None
+    anchor_name = (
+        _check_anchor(backend, estimates_dir, anchor_backend, anchor_dir) if per_chorus else None
+    )
     for vocabulary in vocabularies:
         if vocabulary not in metrics.VOCABULARIES:
             raise ValueError(
@@ -652,6 +700,9 @@ def evaluate(
                     beats_dir,
                     beat_backend,
                     cache_dir,
+                    anchor_backend,
+                    anchor_dir,
+                    refresh,
                 )
         # If the form cannot be found for this track, skip it and list it in the report.
         except (OSError, ValueError, AudioDecodeError) as error:
@@ -670,4 +721,5 @@ def evaluate(
         skipped=tuple(skipped),
         separated=None if estimates_dir is not None else use_separation,
         fallbacks=fallbacks,
+        anchor=anchor_name,
     )
