@@ -20,7 +20,7 @@ def take(progression=CHART):
         bpm=240.0,
         repeats=3,
         sample_rate=SAMPLE_RATE,
-        lead_in_seconds=3.0,
+        pickup_beats=3,
         substitutions={1: {2: "Bb"}},
     )
 
@@ -54,10 +54,10 @@ class TestFormCommand:
         code, out = run_form(files, capsys, "--audio", str(files["audio"]))
         assert code == 0
         assert "bar grid  24 bars, median 1.000 s (240.0 bpm in 4 beats)" in out.out
-        assert "anchor    bar 0 at 3.00 s" in out.out
+        assert "anchor    bar 0 at 0.75 s" in out.out
         kinds = [line.split()[1] for line in out.out.splitlines() if line[:3].strip().isdigit()]
         assert kinds == ["intro", "head", "chorus", "head"]
-        assert "3.0 s not scored" in out.out
+        assert "0.8 s not scored" in out.out
 
     def test_anchoring_on_an_estimate_says_it_is_not_for_scoring(self, files, capsys):
         code, out = run_form(files, capsys, "--estimate", str(files["estimate"]))

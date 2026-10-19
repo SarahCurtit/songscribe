@@ -144,26 +144,47 @@ class TestAnchorBar:
 
 
 class TestChromagram:
-    def test_audio_chroma_anchors_a_synthetic_take(self):
+    @pytest.mark.parametrize("pickup_beats", [0, 3])
+    @pytest.mark.parametrize("chart", [CHART, (*CHART[:-1], CHART[0])], ids=["plain", "ends-on-c"])
+    def test_audio_chroma_anchors_a_synthetic_take(self, chart, pickup_beats):
+        # The second chart ends on its first chord, so the pickup (the last chord) sounds
+        # like the start of a chorus.
         sample_rate = 11_025
         performance = synthesise_performance(
-            progression=CHART,
+            progression=chart,
             bpm=240.0,
             repeats=3,
             sample_rate=sample_rate,
-            lead_in_seconds=3.0,
+            pickup_beats=pickup_beats,
             tempo_drift=0.03,
             substitutions={1: {0: "Gm", 1: "Bb", 2: "Eb", 5: "C"}},
         )
         spectrum = chroma.chromagram(performance.audio, sample_rate)
         # Use the demo's exact bar lines, so no beat tracker is needed.
         grid = list(performance.downbeats)
-        # Add three extra bar lines in the lead-in, as a beat tracker might.
-        lead = [grid[0] - 3 * 1.0 + i * 1.0 for i in range(3)]
-        full = lead + grid
+        templates = chroma.bar_templates(performance.reference, 8)
+        anchor = chroma.anchor_bar(spectrum, grid, templates, min_bars=4)
+        assert anchor is not None
+        assert anchor.bar_index == 0
+        assert anchor.start == pytest.approx(grid[0])
+        assert anchor.refusal() is None
+
+    @pytest.mark.parametrize("last", ["G7", "C"])
+    def test_a_tracker_that_counts_the_pickup_as_a_bar_does_not_shift_the_anchor(self, last):
+        sample_rate = 11_025
+        performance = synthesise_performance(
+            progression=(*CHART[:-1], last),
+            bpm=240.0,
+            repeats=3,
+            sample_rate=sample_rate,
+            pickup_beats=3,
+            substitutions={1: {0: "Gm", 1: "Bb", 2: "Eb", 5: "C"}},
+        )
+        # A short bar line at the start of the pickup.
+        full = [0.0, *performance.downbeats]
+        spectrum = chroma.chromagram(performance.audio, sample_rate)
         templates = chroma.bar_templates(performance.reference, 8)
         anchor = chroma.anchor_bar(spectrum, full, templates, min_bars=4)
         assert anchor is not None
-        assert anchor.bar_index == 3
-        assert anchor.start == pytest.approx(grid[0])
+        assert anchor.start == pytest.approx(performance.downbeats[0])
         assert anchor.refusal() is None
