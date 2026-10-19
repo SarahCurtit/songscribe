@@ -8,7 +8,7 @@ import soundfile as sf
 from songscribe import beats, lab
 from songscribe.beats import BeatGrid
 from songscribe.demo import synthesise_performance
-from songscribe.eval import chroma, dataset, runner
+from songscribe.eval import chroma, dataset, form, runner
 from songscribe.types import ChordEvent
 
 CHART = ("C", "Am", "Dm", "G7", "Em", "A7", "Dm", "G7")
@@ -53,17 +53,19 @@ def wrong_fifth_bar(events):
 
 class TestScorePerformance:
     def test_each_chorus_is_scored_on_its_own(self, tmp_path):
-        performance = take(lead_in_seconds=3.0)
+        performance = take(pickup_beats=3)
         result = score(tmp_path, performance, performance.events)
         assert [c.chorus.kind for c in result.choruses] == ["head", "chorus", "chorus", "head"]
         assert all(c.bar == 1.0 for c in result.choruses)
         assert result.scores["majmin"].wcsr == pytest.approx(1.0)
         assert result.bar == 1.0
 
-    def test_the_lead_in_is_unscored_time(self, tmp_path):
-        performance = take(lead_in_seconds=3.0)
+    def test_the_pickup_is_an_unscored_intro(self, tmp_path):
+        performance = take(pickup_beats=3)
         result = score(tmp_path, performance, performance.events)
-        assert result.unscored_seconds == pytest.approx(3.0)
+        assert result.unscored_seconds == pytest.approx(0.75, abs=1e-3)
+        assert result.choruses[0].chorus.first_bar == 0
+        assert result.choruses[0].chorus.start == pytest.approx(0.75, abs=1e-3)
 
     def test_a_chorus_that_goes_wrong_is_seen_in_its_own_row(self, tmp_path):
         performance = take()
@@ -74,21 +76,29 @@ class TestScorePerformance:
         result = score(tmp_path, performance, wrong)
         assert [c.bar for c in result.choruses] == [1.0, 0.0, 1.0, 1.0]
         # The track score combines all four choruses. It is not the best chorus's score.
-        assert result.bar == pytest.approx(0.75)
+        assert result.bar == pytest.approx(0.75, abs=1e-3)
         assert result.scores["majmin"].wcsr == pytest.approx(0.75, abs=0.02)
 
-    def test_junk_before_the_form_changes_no_score(self, tmp_path):
-        short, long = take(lead_in_seconds=3.0), take(lead_in_seconds=40.0)
-        # Forty bars with wrong chords before the chart starts. They must not be scored.
-        junk = [ChordEvent(i, i + 1.0, "B") for i in range(40)]
-        near = score(tmp_path, short, wrong_fifth_bar(short.events))
-        far = score(tmp_path, long, [*junk, *wrong_fifth_bar(long.events)])
+    def test_a_pickup_with_tempo_drift_is_an_intro_and_the_rest_scores_exactly(self, tmp_path):
+        performance = take(pickup_beats=3, tempo_drift=0.05)
+        grid = beats.grid(performance.beat_events())
+        found = form.choruses(grid, len(CHART), 0, len(CHART) * 1.0)
+        assert [(c.kind, c.bars) for c in found][:2] == [("intro", 0), ("head", 8)]
+        assert found[0].end == pytest.approx(found[1].start) == pytest.approx(0.75, abs=1e-3)
+        result = score(tmp_path, performance, wrong_fifth_bar(performance.events))
+        assert result.bar == pytest.approx(7 / 8)
+
+    def test_a_wrong_pickup_changes_no_score(self, tmp_path):
+        plain, picked = take(), take(pickup_beats=3)
+        near = score(tmp_path, plain, wrong_fifth_bar(plain.events))
+        events = [ChordEvent(0.0, picked.downbeats[0], "B"), *picked.events[1:]]
+        far = score(tmp_path, picked, wrong_fifth_bar(events))
         assert far.bar == pytest.approx(near.bar)
         for name, expected in near.scores.items():
             assert far.scores[name].correct == pytest.approx(expected.correct)
             assert far.scores[name].compared == pytest.approx(expected.compared)
         assert far.chart == pytest.approx(near.chart)
-        assert far.unscored_seconds == pytest.approx(40.0)
+        assert far.unscored_seconds == pytest.approx(0.75, abs=1e-3)
 
     def test_tempo_drift_leaves_the_bar_score_exact(self, tmp_path):
         performance = take(tempo_drift=0.05)
@@ -184,7 +194,7 @@ class TestSingleChorusIsUnchanged:
 class TestEvaluateWithABarGrid:
     @pytest.fixture
     def setup(self, tmp_path):
-        performance = take(repeats=3, lead_in_seconds=3.0, tempo_drift=0.02)
+        performance = take(repeats=3, pickup_beats=3, tempo_drift=0.02)
         audio = tmp_path / "audio"
         audio.mkdir()
         sf.write(audio / "song.wav", performance.audio, SAMPLE_RATE)
@@ -215,7 +225,7 @@ class TestEvaluateWithABarGrid:
         assert result.bar == pytest.approx(7 / 8)
         assert report.mean_bar() == pytest.approx(7 / 8)
         assert report.chorus_count() == 3
-        assert result.unscored_seconds == pytest.approx(3.0)
+        assert result.unscored_seconds == pytest.approx(0.75, abs=1e-3)
 
     def test_a_manifest_track_without_bars_is_skipped_and_named(self, setup):
         _, loaded, grids, estimates = setup
@@ -239,7 +249,7 @@ class TestEvaluateWithABarGrid:
     def test_a_recording_that_is_not_the_chart_is_refused_not_scored(self, setup, tmp_path):
         _, loaded, grids, estimates = setup
         other = ["F#", "Bb", "Eb", "B", "Ab", "D", "F#", "Bb"]
-        stranger = take(progression=other, repeats=3, lead_in_seconds=3.0)
+        stranger = take(progression=other, repeats=3, pickup_beats=3)
         sf.write(loaded.tracks[0].audio, stranger.audio, SAMPLE_RATE)
         report = runner.evaluate(loaded, estimates_dir=estimates, beats_dir=grids)
         assert report.skipped == ("song",)
