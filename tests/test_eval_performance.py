@@ -108,25 +108,22 @@ class TestScorePerformance:
         assert result.bar == pytest.approx(7 / 8)
         assert result.scores["majmin"].wcsr == pytest.approx(7 / 8, abs=0.03)
 
-    def test_a_chord_that_arrives_early_or_late_is_judged_by_the_bar_it_mostly_fills(
-        self, tmp_path
-    ):
+    def test_a_shifted_chord_costs_a_bar_only_past_half_of_it(self, tmp_path):
         performance = take()
         vocabularies = ("majmin",)
         shifted = [ChordEvent(e.start - 0.25, e.end - 0.25, e.label) for e in performance.events]
         result = score(tmp_path, performance, shifted, vocabularies=vocabularies)
         assert result.bar == 1.0
-        # Past half a bar, the next chord is the one that fills the bar.
+        # Past half a bar the next chord wins the bar.
         shifted = [ChordEvent(e.start - 0.6, e.end - 0.6, e.label) for e in performance.events]
         result = score(tmp_path, performance, shifted, vocabularies=vocabularies)
         assert result.bar < 0.2
 
-    def test_the_bar_score_is_reported_for_each_vocabulary_with_a_class(self, tmp_path):
+    def test_bar_score_is_reported_per_vocabulary(self, tmp_path):
         performance = take()
-        # Sevenths flattened to their triads: the root and the triad are right everywhere.
+        # Sevenths flattened to triads: root and majmin stay right.
         flat = [ChordEvent(e.start, e.end, e.label.removesuffix("7")) for e in performance.events]
         result = score(tmp_path, performance, flat)
-        # mirex has no class to vote for; it is a pairwise overlap.
         assert set(result.bar_by_vocabulary) == {"root", "majmin", "sevenths"}
         assert result.bar_by_vocabulary["root"] == 1.0
         assert result.bar_by_vocabulary["majmin"] == result.bar == 1.0

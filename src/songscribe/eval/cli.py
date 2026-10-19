@@ -690,7 +690,6 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
     """
     header_written = False
 
-    # mirex has no per-bar class, so a bar score exists for the other vocabularies only.
     bar_vocabularies = tuple(v for v in vocabularies if v != "mirex")
 
     def row(label: str, scores, segmentation, bars: dict[str, float] | None, key: str = "") -> None:
@@ -764,8 +763,6 @@ def format_report(report) -> str:
             f"{'bar':<12}{_percent(report.mean_bar()):>10}"
             f"{'':>10}   bars with the right chord (independent of tempo and offset)"
         )
-        # Each bar is judged by the chord that sounds longest in it, so an anticipated or
-        # late chord only costs a bar when it fills most of that bar.
         lines += [
             f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
             f"{'':>10}   same, comparing chords as {v}"

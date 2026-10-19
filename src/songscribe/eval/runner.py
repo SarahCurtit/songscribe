@@ -43,7 +43,7 @@ class ChorusResult:
     grid: float = nan
     #: Fraction of bars with the right chord (``metrics.bar_score``).
     bar: float = nan
-    #: The same score under each scored vocabulary. ``bar`` is the majmin one.
+    #: ``bar`` per scored vocabulary; ``bar`` itself is the majmin entry.
     bar_by_vocabulary: dict[str, float] = field(default_factory=dict)
     alignment: metrics.Alignment | None = None
 
@@ -139,7 +139,7 @@ class Report:
     def mean_bar(self, vocabulary: str | None = None) -> float:
         """Unweighted mean of the per-track bar score, ignoring tracks without one.
 
-        Majmin unless ``vocabulary`` names another of the scored ones.
+        ``vocabulary`` picks an entry of ``bar_by_vocabulary``; the default is majmin.
         """
         values = [
             r.bar if vocabulary is None else r.bar_by_vocabulary.get(vocabulary, nan)
@@ -398,7 +398,7 @@ def score_performance(
     # One key for the whole take; a tune that modulates is not handled.
     blocks = form.in_key(found, anchor.shift)
     reference_bar = (end - start) / bars_per_chorus
-    # mirex compares pitch overlap between two chords, so a bar has no mirex class to vote for.
+    # mirex scores pairs of chords, so a bar has no mirex class.
     bar_vocabularies = tuple(name for name in vocabularies if name != "mirex")
 
     results: list[ChorusResult] = []
