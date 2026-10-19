@@ -419,22 +419,30 @@ such a recording, give the manifest track `"bars"` (the number of bars in the ch
 pass `--beats DIR` (or `--beat-backend`). `songscribe-eval form` prints what was detected
 without scoring. The steps are:
 
-- **Start** (`eval/recurrence.py`, `eval/form_start.py`): the recording's own repetition
-  finds where the form starts; the chart does not. Each bar-long window of chroma is compared
-  with the one a form later (the chart gives only the length in bars; it is not searched for,
-  since self-similarity alone returns half of it). The stretch where that holds begins at the
-  head, or at the pickup into it, so the bars before it are the intro and the beats just
-  before the head that also recur are the pickup. The chords' timing says which beat the bar
-  lines fall on, so a tracker whose downbeats are a few beats off is moved. A run counts only
-  if it beats every other lag as a null and spans three quarters of a form (`MIN_RUN_FORMS`):
-  that held for every shuffled and unrelated control, and the tolerance for choruses that
-  differ is the step limit of the run. The chart's pitch classes are then compared at the
-  start (`eval/chroma.py`) as a check; they choose between starts within a form of the opening
-  and put the head a pass earlier when it differs from the solos. If nothing recurs (one
-  chorus) the chart match alone is used, as before, and `form` says which evidence found the
-  start. If the chart fits the recurring start below `ANCHOR_MIN_AGREEMENT`, or fits another
-  bar clearly better, the start is rejected or moved. The anchor thresholds are guesses,
-  checked only on synthetic takes and one real recording.
+- **Start** (`eval/recurrence.py`, `eval/chart_fit.py`, `eval/form_start.py`): a chord
+  estimate of the recording finds where the form starts; the chart does not. The estimate is
+  one symbol per beat (root and third, so `C`, `C7` and `Cmaj7` agree and flicker or an
+  anticipated change is outvoted within the beat), and each bar is compared with the bar a form
+  later (the chart gives only the length in bars; it is not searched for, since self-similarity
+  alone returns half of it). The stretch where that holds begins at the head, or at the pickup
+  into it, so the bars before it are the intro and the beats just before the head that also
+  recur are the pickup. Where the chords change says which beat the bar lines fall on, so a
+  tracker whose downbeats are a few beats off is moved. A run counts only if it beats every
+  other lag as a null and spans three quarters of a form (`MIN_RUN_FORMS`); the tolerance for
+  choruses that differ is the step limit of the run. The chart's labels are then compared with
+  the estimate from the start, beat by beat, in the key asked for (the chart transposed, never
+  the estimate). That fraction is read against the best that bar-shuffled copies of the chart
+  reach over the same starts and keys (`Anchor.chance`): the chart has to beat it by
+  `ANCHOR_MIN_EXCESS`, so a vamp or a loop, where the shuffles agree as well, is refused.
+  The chart chooses between starts within a form of the opening (an intro that echoes the
+  tune; a head that differs from the solos) and, if nothing recurs (one chorus), finds the
+  start alone. `form` says which evidence found the start. The thresholds come from synthetic
+  takes (shuffled, unrelated, one-chord and looped controls under three levels of perturbed
+  estimates), never from a real recording.
+  The estimate is a model's output, so the start can be the one that suits it: anchor on a
+  different backend from the one scored (`--anchor-backend`, default `madmom`; `score` warns
+  when it is the same one) or on pre-computed `.lab` files (`--anchor-estimates`, `form
+  --estimate`).
 - **Choruses** (`eval/form.py`): cut the recording from the anchor into blocks of the chart's
   bar count. A block is one of `intro`, `head` (the first and last full chorus), `chorus`,
   `partial` (a shorter last block of at least four bars), `tail` (a shorter block, treated as
