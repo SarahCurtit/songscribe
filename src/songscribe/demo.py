@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -79,11 +79,16 @@ def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
     )
 
 
-def chord_frequencies(label: str, octave: int = ROOT_OCTAVE) -> list[float]:
-    """Frequencies in Hz for the notes of ``label``, voiced from ``octave``."""
+def chord_frequencies(
+    label: str, octave: int = ROOT_OCTAVE, extra: Sequence[int] = ()
+) -> list[float]:
+    """Frequencies in Hz for the notes of ``label``, voiced from ``octave``.
+
+    ``extra`` adds notes, as semitones above the root, to the chord's own.
+    """
     pitch_class, intervals = parse_chord(label)
     midi_root = 12 * (octave + 1) + pitch_class
-    return [440.0 * 2 ** ((midi_root + i - 69) / 12) for i in intervals]
+    return [440.0 * 2 ** ((midi_root + i - 69) / 12) for i in (*intervals, *extra)]
 
 
 def _envelope(length: int, sample_rate: int) -> np.ndarray:
@@ -105,11 +110,11 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
     )[:length]
 
 
-def _voices(label: str, t: np.ndarray) -> np.ndarray:
+def _voices(label: str, t: np.ndarray, extra: Sequence[int] = ()) -> np.ndarray:
     """Sum the sine tones of one chord at times ``t`` (in seconds), scaled to a peak of 1."""
     voices = sum(
         amplitude * np.sin(2 * np.pi * freq * harmonic * t)
-        for freq in chord_frequencies(label)
+        for freq in chord_frequencies(label, extra=extra)
         for harmonic, amplitude in enumerate(HARMONICS, start=1)
     )
     return voices / np.max(np.abs(voices))
@@ -172,6 +177,7 @@ class Performance:
     ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
     ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
     A pickup is in ``events`` and ``beat_events()``, not in ``reference``.
+    The first ``intro_bars`` bars of ``downbeats`` are an intro; the head opens at the next.
     """
 
     audio: np.ndarray
@@ -182,22 +188,37 @@ class Performance:
     beats_per_bar: int
     bars_per_chorus: int
     pickup_beats: int = 0
+    intro_bars: int = 0
 
-    def beat_events(self) -> list[BeatEvent]:
-        """The beats of the recording, in the format a beat tracker returns."""
+    @property
+    def head_start(self) -> float:
+        """When the head's first bar begins, after any intro."""
+        return self.downbeats[self.intro_bars]
+
+    def beat_events(self, tracker_phase: int = 0) -> list[BeatEvent]:
+        """The beats of the recording, in the format a beat tracker returns.
+
+        ``tracker_phase`` moves every beat's position that many places on, as a tracker
+        whose downbeats are off by that many beats would report them.
+        """
+        stub = self.pickup_beats if self.intro_bars == 0 else 0
         pickup = [
             BeatEvent(
-                time=self.downbeats[0] * k / self.pickup_beats,
-                position=self.beats_per_bar - self.pickup_beats + k + 1,
+                time=self.downbeats[0] * k / stub,
+                position=self.beats_per_bar - stub + k + 1,
             )
-            for k in range(self.pickup_beats)
+            for k in range(stub)
         ]
         beats = [
             BeatEvent(time=a + (b - a) * k / self.beats_per_bar, position=k + 1)
             for a, b in pairwise(self.downbeats)
             for k in range(self.beats_per_bar)
         ]
-        return [*pickup, *beats, BeatEvent(time=self.downbeats[-1], position=1)]
+        every = [*pickup, *beats, BeatEvent(time=self.downbeats[-1], position=1)]
+        return [
+            BeatEvent(e.time, (e.position - 1 + tracker_phase) % self.beats_per_bar + 1)
+            for e in every
+        ]
 
 
 def synthesise_performance(
@@ -211,11 +232,16 @@ def synthesise_performance(
     pickup_beats: int = 0,
     tempo_drift: float = 0.0,
     substitutions: Mapping[int, Mapping[int, str]] | None = None,
+    intro: Sequence[str] = (),
+    colour: Mapping[int, Sequence[int]] | None = None,
 ) -> Performance:
     """Synthesise ``repeats`` choruses of ``progression``, one chord per bar.
 
-    ``pickup_beats`` beats of the chart's last chord are played before bar 0, at the first bar's
-    tempo, as a jazz take starts on the tune's last beats; they are not a bar of the grid.
+    ``pickup_beats`` beats of the chart's last chord are played before the head, at the first
+    bar's tempo, as a jazz take starts on the tune's last beats. With an ``intro`` they are
+    the last beats of its final bar; without one they are a stub before bar 0, not a bar.
+    ``intro`` is one chord per bar played before the head. ``colour[repeat]`` adds notes
+    (semitones above each chord's root) to a whole chorus, as a soloist's voicings would.
     ``tempo_drift`` is the relative tempo change from first to last bar (0.03 = 3% faster).
     ``substitutions[repeat][bar]`` replaces one bar's chord in one chorus; both count from 0.
     """
@@ -234,25 +260,42 @@ def synthesise_performance(
             raise ValueError(f"substitution outside the {repeats} x {len(progression)} take")
 
     rng = np.random.default_rng(seed)
+    colour = colour or {}
     total = len(progression) * repeats
     pieces: list[np.ndarray] = []
     events: list[ChordEvent] = []
-    cursor = round(pickup_beats * 60.0 / bpm * sample_rate)
-    if cursor:
-        t = np.arange(cursor) / sample_rate
-        pieces.append(_voices(progression[-1], t) * _envelope(cursor, sample_rate))
-        events.append(ChordEvent(0.0, cursor / sample_rate, progression[-1]))
-    downbeats = [cursor / sample_rate]
+    beat_samples = 60.0 / bpm * sample_rate
+    stub = round(pickup_beats * beat_samples) if not intro else 0
+    cursor = 0
+    last = progression[-1]
 
-    for index in range(total):
-        repeat, bar = divmod(index, len(progression))
-        label = substitutions.get(repeat, {}).get(bar, progression[bar])
-        ramp = tempo_drift * index / (total - 1) if total > 1 else 0.0
-        length = round(beats_per_bar * 60.0 / (bpm * (1 + ramp)) * sample_rate)
+    def play(label: str, length: int, extra: Sequence[int] = ()) -> None:
+        nonlocal cursor
         t = np.arange(length) / sample_rate
-        pieces.append(_voices(label, t) * _envelope(length, sample_rate))
+        pieces.append(_voices(label, t, extra) * _envelope(length, sample_rate))
         events.append(ChordEvent(cursor / sample_rate, (cursor + length) / sample_rate, label))
         cursor += length
+
+    if stub:
+        play(last, stub)
+    downbeats = [cursor / sample_rate]
+
+    bar = round(beats_per_bar * beat_samples)
+    for k, label in enumerate(intro):
+        if pickup_beats and k == len(intro) - 1:
+            held = round((beats_per_bar - pickup_beats) * beat_samples)
+            play(label, held)
+            play(last, bar - held)
+        else:
+            play(label, bar)
+        downbeats.append(cursor / sample_rate)
+
+    for index in range(total):
+        repeat, position = divmod(index, len(progression))
+        label = substitutions.get(repeat, {}).get(position, progression[position])
+        ramp = tempo_drift * index / (total - 1) if total > 1 else 0.0
+        length = round(beats_per_bar * 60.0 / (bpm * (1 + ramp)) * sample_rate)
+        play(label, length, colour.get(repeat, ()))
         downbeats.append(cursor / sample_rate)
 
     audio = np.concatenate(pieces)
@@ -274,6 +317,7 @@ def synthesise_performance(
         beats_per_bar=beats_per_bar,
         bars_per_chorus=len(progression),
         pickup_beats=pickup_beats,
+        intro_bars=len(intro),
     )
 
 
@@ -353,9 +397,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace the chord of one bar in one chorus (both counted from 0); repeatable",
     )
     parser.add_argument(
+        "--intro",
+        nargs="+",
+        default=[],
+        metavar="CHORD",
+        help="chords, one per bar, played before the head; a pickup is the last beats of the last",
+    )
+    parser.add_argument(
+        "--colour",
+        action="append",
+        default=[],
+        metavar="REPEAT=SEMITONES",
+        help="add notes, e.g. 1=10,14 (semitones above each root), to one whole chorus; repeatable",
+    )
+    parser.add_argument(
+        "--tracker-phase",
+        type=int,
+        default=0,
+        metavar="BEATS",
+        help="write a .beats file whose downbeats are this many beats off, like a bad tracker",
+    )
+    parser.add_argument(
         "--no-annotation", action="store_true", help="skip writing the .lab ground truth"
     )
     return parser
+
+
+def _parse_colour(texts: list[str]) -> dict[int, list[int]]:
+    colour: dict[int, list[int]] = {}
+    for text in texts:
+        try:
+            repeat, notes = text.split("=", 1)
+            colour[int(repeat)] = [int(n) for n in notes.split(",")]
+        except ValueError:
+            raise ValueError(f"--colour wants REPEAT=SEMITONES, got {text!r}") from None
+    return colour
 
 
 def _parse_variation(texts: list[str]) -> dict[int, dict[int, str]]:
@@ -384,6 +460,8 @@ def _write_performance(args: argparse.Namespace) -> int:
         pickup_beats=args.pickup_beats,
         tempo_drift=args.tempo_drift,
         substitutions=_parse_variation(args.vary),
+        intro=args.intro,
+        colour=_parse_colour(args.colour),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     sf.write(args.output, performance.audio, args.sample_rate)
@@ -394,7 +472,7 @@ def _write_performance(args: argparse.Namespace) -> int:
     for suffix, write, content in (
         (".lab", write_annotation, performance.events),
         (".reference.lab", write_annotation, performance.reference),
-        (".beats", lab.write_beats, performance.beat_events()),
+        (".beats", lab.write_beats, performance.beat_events(args.tracker_phase)),
     ):
         path = stem.with_name(stem.name + suffix)
         write(path, content)
@@ -406,7 +484,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        if args.pickup_beats or args.tempo_drift or args.vary:
+        if (
+            args.pickup_beats
+            or args.tempo_drift
+            or args.vary
+            or args.intro
+            or args.colour
+            or args.tracker_phase
+        ):
             return _write_performance(args)
         audio, events = synthesise(
             progression=args.progression,
