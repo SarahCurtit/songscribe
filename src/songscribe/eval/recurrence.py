@@ -33,7 +33,9 @@ LEVEL_SIGMAS = 1.0
 MIN_STRENGTH_RATIO = 1.0
 MIN_RUN_FORMS = 0.75
 #: A beat other than the tracker's downbeat takes over only if the chroma changes into it more
-#: than into the tracker's, bar after bar, with a paired t at least this large.
+#: than into the tracker's, bar after bar, with a paired t at least this large. Correct
+#: trackers gave a best rival at -9 or lower (24 synthetic takes, one real); ones off by
+#: 1-3 beats gave 20 or more (18 takes).
 PHASE_MIN_T = 3.0
 
 
@@ -41,13 +43,10 @@ PHASE_MIN_T = 3.0
 class Recurrence:
     """Where the recording repeats itself one form later.
 
-    Beats are indices into ``beat_times`` (the bar grid cut into beats, with up to a bar
-    extrapolated before the first downbeat). ``first_beat`` opens the first stretch that
-    recurs, ``end_beat`` is one past the last beat that still has a later copy. The music
-    that recurs ends ``form_beats`` after ``end_beat``. ``strength`` is the run's summed
-    similarity over the threshold; ``null_best`` the strongest run at any other lag.
-    ``profiles`` are the beats' chroma and ``beat_similarity[b]`` compares beat ``b`` with
-    the one a form later; it counts as recurring above ``beat_level``.
+    Beats index ``beat_times`` (the bar grid cut into beats). ``first_beat`` opens the first
+    stretch that recurs; ``end_beat`` is one past the last beat with a later copy.
+    ``strength`` is the run's summed similarity over the level, ``null_best`` the strongest
+    run at any other lag; ``beat_similarity[b]`` recurs above ``beat_level``.
     """
 
     beat_times: np.ndarray

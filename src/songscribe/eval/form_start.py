@@ -2,10 +2,9 @@
 
 ``recurrence.measure`` finds the stretch of the audio that repeats one form later and
 where it opens, which is the pickup into the head or the head itself. The chart then
-checks it and settles what the recurrence cannot: which bar within a form of the opening
-is the head (an intro can echo the tune, a head can differ from the solos), and, with the
-chords' timing, which beat is the downbeat when the tracker's bar lines are off. With no
-recurrence it is the chart match alone.
+checks it and settles which bar within a form of the opening is the head (an intro can
+echo the tune, a head can differ from the solos). The chords' timing moves bar lines the
+tracker has a few beats off. With no recurrence it is the chart match alone.
 """
 
 from __future__ import annotations
