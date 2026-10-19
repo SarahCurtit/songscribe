@@ -3,7 +3,7 @@
 A compact re-implementation of the network in https://github.com/jayg996/BTC-ISMIR19
 (MIT, (c) 2019 Jonggwon Park), written so the published checkpoint loads unchanged. The
 checkpoint is fetched on first use from a pinned upstream commit and checked against a
-SHA-256, then cached; it is never stored in this repository. ``chords._recognise_btc`` is
+SHA-256, then cached; it is not kept in this repository. ``chords._recognise_btc`` is
 the only caller, so ``torch`` is imported only when that backend runs.
 """
 
@@ -200,7 +200,7 @@ def checkpoint_path(cache_dir: Path | None = None) -> Path:
     digest = hashlib.sha256(data).hexdigest()
     if digest != CHECKPOINT_SHA256:
         raise RuntimeError(f"BTC checkpoint has SHA-256 {digest}, expected {CHECKPOINT_SHA256}")
-    # Written whole under another name first, so an interrupted download is never cached.
+    # Written whole under another name first, so an interrupted download is not mistaken for a cached one.
     partial = path.with_suffix(".part")
     partial.write_bytes(data)
     partial.replace(path)
