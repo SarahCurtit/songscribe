@@ -15,7 +15,7 @@ BAR = 2.0
 
 
 def grid_of(intro: int, choruses: int, tail: int, lead: float = 3.0, bar: float = BAR):
-    """Bar lines for a take: ``lead`` seconds of nothing, an intro, choruses, a last pass."""
+    """Bar lines for a recording: ``lead`` seconds without bars, then intro, choruses, tail."""
     count = intro + choruses * BARS + tail
     return BeatGrid(downbeats=tuple(lead + i * bar for i in range(count + 1)))
 
@@ -43,7 +43,7 @@ class TestChoruses:
         for earlier, later in pairwise(found[1:]):
             assert earlier.end == later.start
 
-    def test_intro_time_is_unscored_and_includes_the_lead_in(self):
+    def test_intro_time_is_unscored_and_includes_time_before_the_first_bar_line(self):
         grid = grid_of(intro=7, choruses=2, tail=0)
         found = split(grid, anchor=7)
         assert found[0].start == 0.0
@@ -54,7 +54,7 @@ class TestChoruses:
         found = split(grid_of(intro=0, choruses=2, tail=0, lead=0.0), anchor=0)
         assert [c.kind for c in found] == ["head", "head"]
 
-    def test_a_lead_in_before_bar_one_is_still_an_intro(self):
+    def test_time_before_bar_one_is_still_an_intro(self):
         found = split(grid_of(intro=0, choruses=2, tail=0), anchor=0)
         assert (found[0].kind, found[0].bars) == ("intro", 0)
 
@@ -85,7 +85,7 @@ class TestChoruses:
 
     def test_a_dropped_bar_makes_that_chorus_unaligned_and_names_it(self):
         base = grid_of(intro=0, choruses=2, tail=0, lead=0.0)
-        # The tracker missed one downbeat inside the second chorus.
+        # Remove one downbeat from the second chorus, as if the beat tracker missed it.
         downbeats = tuple(d for i, d in enumerate(base.downbeats) if i != BARS + 10)
         found = split(BeatGrid(downbeats=downbeats), anchor=0)
         assert [c.kind for c in found] == ["head", "unaligned"]

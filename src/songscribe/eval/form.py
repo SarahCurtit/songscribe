@@ -1,9 +1,10 @@
-"""Split a performance into choruses, each mapped back onto the chart's clock.
+"""Split a recording into choruses and convert their times to the chart's timeline.
 
-A recording is an intro, the chart played several times, perhaps a short last
-pass, and an ending. Once the first chorus is anchored, the chart's bar count
-tiles the bar grid; each block then maps onto the reference's own timeline, so
-every existing metric scores it unchanged.
+A recording is usually an intro, the chart played several times, sometimes a
+shorter last pass, and an ending. Starting from the anchor bar (the bar where
+the first chorus begins, see ``chroma.anchor_bar``), the recording's bars are
+cut into blocks of the chart's length. Each block's times are then converted
+to the chart's timeline, so the existing metrics can score it unchanged.
 """
 
 from __future__ import annotations
@@ -18,12 +19,14 @@ from ..types import ChordEvent
 from .harte import transpose_label
 from .metrics import MIN_SEGMENT, extent
 
-#: Which full choruses are the head. In jazz the head is stated first and
-#: played out last, with improvisation between; negative counts from the end.
+#: Which full choruses count as the head, by position (negative counts from
+#: the end). In jazz the head (the tune itself) is played first and last, with
+#: improvised choruses in between.
 HEAD_CHORUSES = (0, -1)
 
-#: A shorter last block is an ending, not a partial chorus: scoring two bars
-#: against a thirty-two-bar chart gives a confident number about nothing.
+#: A last block shorter than a chorus is scored as a partial chorus only if it
+#: has at least this many bars. Otherwise it is treated as an ending and not
+#: scored, since a score over two bars of a 32-bar chart is not meaningful.
 CHORUS_MIN_BARS = 4
 
 #: How a take's key is decided: ``auto`` searches all twelve, ``none`` keeps the chart's own.
@@ -35,7 +38,7 @@ SCORED_KINDS = ("head", "chorus", "partial")
 
 @dataclass(frozen=True, slots=True)
 class Chorus:
-    """One block of the performance, on the recording's clock.
+    """One block of the recording; ``start``/``end`` are recording seconds.
 
     ``kind`` is ``intro``, ``head``, ``chorus``, ``partial``, ``tail`` or
     ``unaligned`` (a block whose bars do not tile evenly). ``scale`` is the
@@ -71,12 +74,11 @@ def choruses(
     head_choruses: Sequence[int] = HEAD_CHORUSES,
     drift_tolerance: float = BAR_DRIFT_TOLERANCE,
 ) -> tuple[Chorus, ...]:
-    """Tile the grid from ``anchor_bar`` in blocks of the chart's bar count.
+    """Cut the bar grid into blocks of ``bars_per_chorus`` bars from ``anchor_bar``.
 
-    Bars before the anchor are the intro. A block holding a bar far from its
-    own median length (and every block after it, the count being lost), or
-    whose mean bar length is far from the other choruses', is ``unaligned``:
-    named and left out, not scored as wrong.
+    A block is ``unaligned`` (kept, not scored) if a bar's length is off the block's median by
+    more than ``drift_tolerance`` (a bar was added or dropped, so all later blocks are
+    ``unaligned`` too), or if its mean bar length is off the median of the full choruses.
     """
     if bars_per_chorus < 1:
         raise ValueError(f"bars_per_chorus must be at least 1, got {bars_per_chorus}")
@@ -106,6 +108,7 @@ def choruses(
     heads = {h if h >= 0 else len(full) + h for h in head_choruses}
 
     found: list[Chorus] = []
+    # The intro is the bars before the anchor, plus any time before the first bar line.
     if anchor_bar > 0 or downbeats[0] > MIN_SEGMENT:
         found.append(Chorus(0, 0.0, downbeats[anchor_bar], 0, anchor_bar, nan, "intro"))
 
@@ -114,8 +117,8 @@ def choruses(
         start, count = block
         scale = scale_of(block)
         if _has_faulty_bar(grid.bar_lengths[start : start + count], drift_tolerance):
-            # A bar added or dropped loses the count, so every later block would
-            # be a bar out: refuse them too rather than score a shifted chart.
+            # After an added or dropped bar, every later block is shifted by a
+            # bar, so mark them all unaligned instead of scoring them shifted.
             lost = True
         if lost or (isfinite(typical) and abs(scale / typical - 1) > drift_tolerance):
             kind = "unaligned"
@@ -139,16 +142,17 @@ def choruses(
 
 
 def _has_faulty_bar(lengths: Sequence[float], tolerance: float) -> bool:
-    """Whether a bar is far from its own block's median length.
+    """Return whether any bar differs from the median bar length of ``lengths``.
 
-    Against the block, not the take: a whole chorus at another tempo is no fault.
+    The median is taken over the block only, so a chorus played at a different
+    tempo from the others is not flagged here.
     """
     typical = median(lengths)
     return any(abs(length / typical - 1) > tolerance for length in lengths)
 
 
 def unscored_seconds(found: Sequence[Chorus]) -> float:
-    """Time in blocks no score covers: the intro, an ending, unaligned choruses."""
+    """Total seconds in blocks that are not scored (intro, tail, unaligned)."""
     return sum(c.duration for c in found if not c.is_scored)
 
 
@@ -163,11 +167,12 @@ def _clip(events: Sequence[ChordEvent], low: float, high: float) -> list[ChordEv
 def project_estimate(
     events: Sequence[ChordEvent], chorus: Chorus, origin: float = 0.0
 ) -> list[ChordEvent]:
-    """The part of ``events`` inside ``chorus``, moved onto the reference's clock.
+    """Keep the events inside ``chorus`` and convert their times to the chart's timeline.
 
-    ``origin`` is where the reference starts. Afterwards the block looks like a
-    single-chorus track: estimate time outside it is gone, and reference time
-    the estimate never reached will score as no chord.
+    Times are shifted to the chorus start and divided by ``chorus.scale``.
+    ``origin`` is the time the chart starts at. Events outside the chorus are
+    dropped, and events crossing its edges are cut. Parts of the chart with
+    no event left are scored as no chord.
     """
     if not chorus.is_scored:
         raise ValueError(f"a {chorus.kind} block has no mapping onto the chart")
@@ -184,9 +189,10 @@ def project_estimate(
 def truncate_reference(
     reference: Sequence[ChordEvent], bars_per_chorus: int, bars: int
 ) -> list[ChordEvent]:
-    """The first ``bars`` bars of the chart, for scoring a partial last chorus.
+    """Return the first ``bars`` bars of the chart, to score against a partial chorus.
 
-    Exact because the chart is bar-indexed: its bars are equal slices of its span.
+    The chart's bars are all the same length, so the cut is
+    ``bars / bars_per_chorus`` of its total duration.
     """
     start, end = extent(list(reference))
     if not 0 < bars <= bars_per_chorus:

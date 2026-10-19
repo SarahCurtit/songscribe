@@ -55,10 +55,6 @@ ROOT_OCTAVE = 3
 # like a pure tone, which is unrealistically easy for a chord model.
 HARMONICS = (1.0, 0.5, 0.33, 0.25)
 
-#: Standard deviation of the noise before bar 1, against a chord's peak of 1:
-#: loud enough to be junk a tracker must see past, too flat to carry a chord.
-LEAD_IN_LEVEL = 0.3
-
 
 def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
     """Split a chord label into its root pitch class and interval set.
@@ -118,7 +114,7 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
 
 
 def _voices(label: str, t: np.ndarray) -> np.ndarray:
-    """One chord's additive tones over times ``t``, scaled to a peak of 1."""
+    """Sum the sine tones of one chord at times ``t`` (in seconds), scaled to a peak of 1."""
     voices = sum(
         amplitude * np.sin(2 * np.pi * freq * harmonic * t)
         for freq in chord_frequencies(label)
@@ -178,11 +174,12 @@ def synthesise(
 
 @dataclass(frozen=True, slots=True)
 class Performance:
-    """A multi-chorus take: its audio, true chords, and true bar lines.
+    """A synthetic recording of the chart played several times, with its ground truth.
 
-    ``events`` is the whole take on the audio's clock; ``reference`` is the
-    chart alone -- one chorus from 0 at the nominal tempo -- as a lead sheet
-    would supply it. ``downbeats`` ends with the close of the last bar.
+    ``events`` are the chords of the whole recording, in seconds from the start of ``audio``.
+    ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
+    ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
+    A pickup is in ``events`` and ``beat_events()``, not in ``reference``.
     """
 
     audio: np.ndarray
@@ -192,15 +189,23 @@ class Performance:
     downbeats: tuple[float, ...]
     beats_per_bar: int
     bars_per_chorus: int
+    pickup_beats: int = 0
 
     def beat_events(self) -> list[BeatEvent]:
-        """The true beats, as a tracker would hand them over."""
+        """The beats of the recording, in the format a beat tracker returns."""
+        pickup = [
+            BeatEvent(
+                time=self.downbeats[0] * k / self.pickup_beats,
+                position=self.beats_per_bar - self.pickup_beats + k + 1,
+            )
+            for k in range(self.pickup_beats)
+        ]
         beats = [
             BeatEvent(time=a + (b - a) * k / self.beats_per_bar, position=k + 1)
             for a, b in pairwise(self.downbeats)
             for k in range(self.beats_per_bar)
         ]
-        return [*beats, BeatEvent(time=self.downbeats[-1], position=1)]
+        return [*pickup, *beats, BeatEvent(time=self.downbeats[-1], position=1)]
 
 
 def synthesise_performance(
@@ -211,25 +216,26 @@ def synthesise_performance(
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     noise: float = 0.0,
     seed: int = 0,
-    lead_in_seconds: float = 0.0,
+    pickup_beats: int = 0,
     tempo_drift: float = 0.0,
     substitutions: Mapping[int, Mapping[int, str]] | None = None,
     transpose: int = 0,
 ) -> Performance:
-    """Render ``repeats`` choruses the way a band plays them, not a loop.
+    """Synthesise ``repeats`` choruses of ``progression``, one chord per bar.
 
-    ``lead_in_seconds`` of noise precede bar 1 (no chord there, no bar line);
-    ``tempo_drift`` is the fractional tempo change from first bar to last;
-    ``substitutions[repeat][bar]`` swaps one bar's chord in one chorus.
-    The whole take is played ``transpose`` semitones above the chart, which
+    ``pickup_beats`` beats of the chart's last chord are played before bar 0, at the first bar's
+    tempo, as a jazz take starts on the tune's last beats; they are not a bar of the grid.
+    ``tempo_drift`` is the relative tempo change from first to last bar (0.03 = 3% faster).
+    ``substitutions[repeat][bar]`` replaces one bar's chord in one chorus; both count from 0.
+    The whole take, pickup included, is played ``transpose`` semitones above the chart, which
     ``reference`` keeps as written.
     """
     if not progression:
         raise ValueError("progression is empty")
     if bpm <= 0 or beats_per_bar < 1 or repeats < 1 or sample_rate < 1 or noise < 0:
         raise ValueError("bpm, beats_per_bar, repeats, sample_rate must be positive; noise >= 0")
-    if lead_in_seconds < 0:
-        raise ValueError(f"lead_in_seconds must not be negative, got {lead_in_seconds}")
+    if not 0 <= pickup_beats < beats_per_bar:
+        raise ValueError(f"pickup_beats must be 0..{beats_per_bar - 1}, got {pickup_beats}")
     if tempo_drift <= -1:
         raise ValueError(f"tempo_drift must exceed -1, got {tempo_drift}")
 
@@ -240,11 +246,15 @@ def synthesise_performance(
 
     rng = np.random.default_rng(seed)
     total = len(progression) * repeats
-    lead = round(lead_in_seconds * sample_rate)
-    pieces: list[np.ndarray] = [rng.normal(0.0, LEAD_IN_LEVEL, lead)]
+    pieces: list[np.ndarray] = []
     events: list[ChordEvent] = []
-    downbeats = [lead / sample_rate]
-    cursor = lead
+    cursor = round(pickup_beats * 60.0 / bpm * sample_rate)
+    if cursor:
+        last = transpose_chord(progression[-1], transpose)
+        t = np.arange(cursor) / sample_rate
+        pieces.append(_voices(last, t) * _envelope(cursor, sample_rate))
+        events.append(ChordEvent(0.0, cursor / sample_rate, last))
+    downbeats = [cursor / sample_rate]
 
     for index in range(total):
         repeat, bar = divmod(index, len(progression))
@@ -276,6 +286,7 @@ def synthesise_performance(
         downbeats=tuple(downbeats),
         beats_per_bar=beats_per_bar,
         bars_per_chorus=len(progression),
+        pickup_beats=pickup_beats,
     )
 
 
@@ -336,23 +347,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="add white noise at this amplitude, e.g. 0.01, to make it less pristine",
     )
     parser.add_argument(
-        "--lead-in-seconds",
-        type=float,
-        default=0.0,
-        help="noise before bar 1, like a count-in or stage noise (default: %(default)s)",
+        "--pickup-beats",
+        type=int,
+        default=0,
+        help="beats of the last chord played before bar 1, as a pickup (default: %(default)s)",
     )
     parser.add_argument(
         "--tempo-drift",
         type=float,
         default=0.0,
-        help="fractional tempo change from first bar to last, e.g. 0.03",
+        help="relative tempo change between the first and last bar, e.g. 0.03 for 3%% faster",
     )
     parser.add_argument(
         "--vary",
         action="append",
         default=[],
         metavar="REPEAT:BAR=CHORD",
-        help="swap one bar's chord in one chorus, counting from 0; repeatable",
+        help="replace the chord of one bar in one chorus (both counted from 0); repeatable",
     )
     parser.add_argument(
         "--transpose-take",
@@ -380,7 +391,7 @@ def _parse_variation(texts: list[str]) -> dict[int, dict[int, str]]:
 
 
 def _write_performance(args: argparse.Namespace) -> int:
-    """The multi-chorus take: audio, full timeline, chart, and true bar lines."""
+    """Write the audio plus the ``.lab``, ``.reference.lab`` and ``.beats`` ground truth."""
     import soundfile as sf
 
     performance = synthesise_performance(
@@ -390,7 +401,7 @@ def _write_performance(args: argparse.Namespace) -> int:
         repeats=args.repeats,
         sample_rate=args.sample_rate,
         noise=args.noise,
-        lead_in_seconds=args.lead_in_seconds,
+        pickup_beats=args.pickup_beats,
         tempo_drift=args.tempo_drift,
         substitutions=_parse_variation(args.vary),
         transpose=args.transpose_take,
@@ -416,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        if args.lead_in_seconds or args.tempo_drift or args.vary or args.transpose_take:
+        if args.pickup_beats or args.tempo_drift or args.vary or args.transpose_take:
             return _write_performance(args)
         audio, events = synthesise(
             progression=args.progression,

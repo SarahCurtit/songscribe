@@ -168,14 +168,16 @@ class TestScoredAcrossKeys:
             "bpm": 240.0,
             "sample_rate": SAMPLE_RATE,
             "repeats": 3,
-            "lead_in_seconds": 3.0,
+            "pickup_beats": 3,
         }
         return synthesise_performance(**{**defaults, **kwargs})
 
     @staticmethod
     def wrong_fifth_bar(events):
+        # A pickup is one event before bar 0, so it is skipped when counting bars.
+        pickup = len(events) % len(CHART)
         return [
-            ChordEvent(e.start, e.end, "A#" if i % len(CHART) == 4 else e.label)
+            ChordEvent(e.start, e.end, "A#" if (i - pickup) % len(CHART) == 4 else e.label)
             for i, e in enumerate(events)
         ]
 
@@ -189,6 +191,16 @@ class TestScoredAcrossKeys:
         assert away.bar == pytest.approx(home.bar) == pytest.approx(7 / 8)
         assert away.scores["majmin"].wcsr == pytest.approx(home.scores["majmin"].wcsr)
         assert away.chart == pytest.approx(home.chart)
+
+    def test_the_pickup_of_a_transposed_take_is_an_unscored_intro_in_the_take_key(self, tmp_path):
+        up = self.take(transpose=3)
+        # The chart's last chord, G7, a minor third up.
+        assert (up.events[0].start, up.events[0].label) == (0.0, "A#7")
+        (result,) = self.evaluate(tmp_path, up, up.events).results
+        assert (result.anchor.bar_index, result.anchor.shift) == (0, 3)
+        assert result.anchor.start == pytest.approx(0.75, abs=1e-3)
+        assert result.unscored_seconds == pytest.approx(0.75, abs=1e-3)
+        assert result.bar == 1.0
 
     def test_the_estimate_is_never_moved(self, tmp_path):
         # An estimate in the written key against a take that is a tone up is wrong everywhere.
@@ -210,7 +222,7 @@ class TestScoredAcrossKeys:
         (result,) = self.evaluate(tmp_path, performance, performance.events, dropped_bar=27).results
         assert [c.chorus.shift for c in result.choruses] == [2, 2, 2]
         assert [c.chorus.kind for c in result.choruses] == ["head", "chorus", "head"]
-        assert result.unscored_seconds == pytest.approx(3.0 + 8.0)
+        assert result.unscored_seconds == pytest.approx(0.75 + 8.0, abs=1e-3)
 
     def test_without_the_key_search_a_transposed_take_is_skipped_as_before(self, tmp_path):
         up = self.take(transpose=3)
@@ -245,7 +257,7 @@ class TestCommands:
             bpm=240.0,
             repeats=3,
             sample_rate=SAMPLE_RATE,
-            lead_in_seconds=3.0,
+            pickup_beats=3,
             transpose=-2,
         )
         paths = {
@@ -280,7 +292,7 @@ class TestCommands:
     def test_the_strict_form_refuses_with_exit_two(self, files, capsys):
         code, out = self.run_form(files, capsys, "--transpose", "none")
         assert code == 2
-        assert "REFUSED" in out
+        assert "NOT CLEAR" in out
 
     def test_score_reports_the_key_on_every_chorus_and_in_the_json(self, files, tmp_path, capsys):
         entry = {"id": "song", "reference": "reference.lab", "audio": "song.wav", "bars": 8}

@@ -19,7 +19,8 @@ from .dataset import Dataset, Track
 
 log = logging.getLogger(__name__)
 
-#: Rate the chroma is computed at: the pitch classes below 2 kHz are all it uses.
+#: Sample rate the audio is loaded at for the chromagram. The chromagram only
+#: uses frequencies up to about 1.7 kHz, so a higher rate is not needed.
 CHROMA_SAMPLE_RATE = 22_050
 
 #: Cache filenames are derived from the track id, which contains directory
@@ -37,14 +38,14 @@ class AudioDecodeError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class ChorusResult:
-    """Scores for one scored block of a performance, on the chart's own clock."""
+    """Scores for one scored block (see ``form.Chorus``) of a recording."""
 
     chorus: form.Chorus
     scores: dict[str, metrics.Score]
     segmentation: metrics.Segmentation
     chart: float = nan
     grid: float = nan
-    #: Right chord in the right bar, read against the recording's own bar lines.
+    #: Fraction of bars with the right chord (``metrics.bar_score``).
     bar: float = nan
     alignment: metrics.Alignment | None = None
 
@@ -72,12 +73,13 @@ class TrackResult:
     #: not fall on a grid -- see metrics.HarmonicRhythm.is_reliable.
     grid: float = nan
     harmonic: metrics.HarmonicRhythm | None = None
-    #: A performance of the chart several times through: every scored block, the
-    #: track-level numbers above being their aggregate over the full choruses.
+    #: For a recording of the chart played several times: the results for each
+    #: scored block. The track-level scores above are computed from the full
+    #: choruses among them.
     choruses: tuple[ChorusResult, ...] = ()
     bar: float = nan
     anchor: chroma.Anchor | None = None
-    #: Recording time in no scored block: intro, ending, unaligned choruses.
+    #: Seconds of the recording not in any scored block (intro, tail, unaligned).
     unscored_seconds: float = 0.0
 
 
@@ -134,12 +136,12 @@ class Report:
         return sum(1 for r in self.results if not isnan(r.grid))
 
     def mean_bar(self) -> float:
-        """Unweighted mean of the per-track right-chord-in-the-right-bar score."""
+        """Unweighted mean of the per-track bar score, ignoring tracks without one."""
         values = [r.bar for r in self.results if not isnan(r.bar)]
         return sum(values) / len(values) if values else nan
 
     def chorus_count(self) -> int:
-        """How many choruses were scored across all tracks."""
+        """Number of scored choruses over all tracks."""
         return sum(len(r.choruses) for r in self.results)
 
     def mean_chart(self) -> float:
@@ -302,9 +304,10 @@ def score_track(
 ) -> TrackResult:
     """Score one track's estimate against its reference annotation.
 
-    ``check_alignment`` also sweeps a time offset as a diagnostic only, out to
-    ``alignment_search`` seconds; the score itself is never shifted. ``reference``
-    takes an already-parsed annotation; otherwise it is read from ``track.reference``.
+    ``check_alignment`` also tries time offsets of up to ``alignment_search``
+    seconds, to report the best one. The score itself is not shifted.
+    ``reference`` is an already-parsed annotation; if not given, it is read
+    from ``track.reference``.
     """
     from .. import lab
 
@@ -404,7 +407,8 @@ def score_performance(
             vocabularies,
             check_alignment,
             reference=part,
-            # One bar either way: further and a repetitive form finds spurious fits.
+            # Limit the offset search to one bar. A longer search can find
+            # false matches in a form with repeating chords.
             alignment_search=reference_bar,
         )
         chart_lines = [start + k * reference_bar for k in range(chorus.bars + 1)]
@@ -460,11 +464,11 @@ def score_performance(
 
 
 def chroma_of(track: Track) -> chroma.Chromagram:
-    """The recording's chroma: the evidence the form is anchored on, never the estimate."""
+    """Load the track's audio and compute its chromagram."""
     from .. import audio
 
     if track.audio is None or not track.audio.exists():
-        raise FileNotFoundError(f"{track.id}: the form needs the audio, and there is none")
+        raise FileNotFoundError(f"{track.id}: no audio file to compute the chroma from")
     try:
         samples, rate = audio.load(track.audio, CHROMA_SAMPLE_RATE)
     except Exception as error:
@@ -475,7 +479,12 @@ def chroma_of(track: Track) -> chroma.Chromagram:
 def bar_grid(
     track: Track, beats_dir: Path | None, beat_backend: str | None, cache_dir: Path | None
 ) -> BeatGrid:
-    """The recording's bar lines, from ``.beats`` files or a tracker (cached)."""
+    """Get the bar grid of the recording, either from a ``.beats`` file or a beat tracker.
+
+    With ``beats_dir``, read ``<track>.beats`` from that directory. Otherwise
+    run ``beat_backend`` on the audio, and cache the result in ``cache_dir``
+    if given.
+    """
     from .. import audio, beats, lab
 
     if beats_dir is not None:
@@ -665,7 +674,7 @@ def evaluate(
                     cache_dir,
                     shifts,
                 )
-        # A form that cannot be found is one track's problem, named and skipped.
+        # If the form cannot be found for this track, skip it and list it in the report.
         except (OSError, ValueError, AudioDecodeError) as error:
             log.warning("%s: %s", track.id, error)
             skipped.append(track.id)

@@ -43,8 +43,8 @@ src/songscribe/
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
     metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
-    chroma.py     anchors the chart's first bar on the audio's chroma (numpy)
-    form.py       bar grid + anchor -> choruses, mapped onto the chart's clock (pure Python)
+    chroma.py     finds the recording's bar that starts the chart, using chroma (numpy)
+    form.py       splits a recording into choruses, on the chart's timeline (pure Python)
     dataset.py    manifests and path resolution                (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed

@@ -1,4 +1,4 @@
-"""Where the form starts: the chart's pitch content against a recording's chroma.
+"""Find which bar of a recording is the first bar of the chart.
 
 Self-similarity finds the harmonic period but never the phase, and a widened
 offset sweep finds spurious fits in repetitive changes. This slides the chart's
@@ -20,19 +20,22 @@ from ..types import ChordEvent
 from .harte import parse
 from .metrics import MIN_SEGMENT, extent
 
-#: Bass fundamental up to where harmony blurs, in the CQT behind the chromagram.
+#: Frequency range analysed: from 55 Hz (A1, low bass) upward over 5 octaves
+#: (about 1.7 kHz). Higher partials are ignored.
 CHROMA_FMIN = 55.0
 CHROMA_OCTAVES = 5
 
-#: The CQT needs a hop that is a multiple of 2**(CHROMA_OCTAVES - 1) samples.
+#: librosa's constant-Q transform needs a hop length that is a multiple of
+#: 2**(CHROMA_OCTAVES - 1) samples.
 _HOP_MULTIPLE = 2 ** (CHROMA_OCTAVES - 1)
 CHROMA_HOP_SECONDS = 0.023
 
-#: Gates on a start the fit may stand behind. The margin is the one that
-#: matters: it is how far the best phase beats the best *other* phase, and a
-#: shuffled or wrongly keyed chart can still clear a bare agreement bar.
-#: Agreement here is a cosine of standardised chroma, so these are provisional
-#: until measured on real recordings.
+#: An anchor is only reported as clear if both thresholds are met. The margin
+#: is the difference between the best starting bar and the best starting bar
+#: that falls at a different position in the form. It is needed because a
+#: chart in the wrong key, or with its bars shuffled, can still reach the
+#: minimum agreement. Agreement is the cosine similarity of standardised
+#: chroma. Both values are guesses, not yet checked on real recordings.
 ANCHOR_MIN_AGREEMENT = 0.50
 ANCHOR_MIN_MARGIN = 0.08
 #: Twelve keys are twelve chances to fit by luck: random 8-bar charts cleared 0.50
@@ -47,25 +50,33 @@ ANY_KEY = tuple(range(-5, 7))
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Chromagram:
-    """Pitch-class energy over time: ``values`` is 12 x frames, C first."""
+    """Energy per pitch class over time.
+
+    ``values`` has shape (12, frames), with row 0 = C. ``hop`` is the time
+    between frames, in seconds.
+    """
 
     values: np.ndarray
     hop: float
 
     def standardised(self) -> np.ndarray:
-        """Each pitch class scaled to zero mean, unit spread over the recording.
+        """Rescale each pitch class to mean 0 and standard deviation 1.
 
-        Without this every lag of a compressed master scores alike, because a
-        pitch class that is always loud tells nothing about which bar it is.
+        Heavily compressed recordings have every pitch class loud all the time,
+        so without this every candidate start scores about the same.
         """
         centred = self.values - self.values.mean(axis=1, keepdims=True)
         spread = self.values.std(axis=1, keepdims=True)
-        # A pitch class that never moves carries no evidence either way.
+        # A pitch class with no variation stays at 0 (avoids dividing by zero).
         return np.divide(centred, spread, out=np.zeros_like(centred), where=spread > 1e-9)
 
 
 def chromagram(audio: np.ndarray, sample_rate: int, hop: float = CHROMA_HOP_SECONDS) -> Chromagram:
-    """Constant-Q chroma of mono ``audio``; the hop snaps to what the CQT allows."""
+    """Compute the chromagram of mono ``audio`` with librosa's constant-Q chroma.
+
+    ``hop`` is rounded to the nearest length the transform accepts, so the
+    returned ``Chromagram.hop`` can differ slightly from the one requested.
+    """
     import librosa
 
     hop_length = max(_HOP_MULTIPLE, round(hop * sample_rate / _HOP_MULTIPLE) * _HOP_MULTIPLE)
@@ -78,10 +89,10 @@ def chromagram(audio: np.ndarray, sample_rate: int, hop: float = CHROMA_HOP_SECO
 def chroma_from_events(
     events: Sequence[ChordEvent], hop: float = CHROMA_HOP_SECONDS, duration: float | None = None
 ) -> Chromagram:
-    """The chroma a chord timeline would give, for diagnostics without audio.
+    """Build a chromagram from chord events: 1 for the notes of the chord, else 0.
 
-    Anchoring on an estimate fits the start to the model's own output; use it
-    to look at a form, never to score one.
+    This is for inspecting a chart without audio. Do not use it to anchor an
+    evaluation: the start found would be the one that suits the estimate.
     """
     end = max((e.end for e in events), default=0.0) if duration is None else duration
     values = np.zeros((12, max(1, ceil(end / hop))))
@@ -96,10 +107,11 @@ def chroma_from_events(
 
 
 def bar_templates(reference: Sequence[ChordEvent], bars: int) -> tuple[np.ndarray, ...]:
-    """The chart's pitch classes in each of its ``bars`` equal bars, time-weighted.
+    """Split the chart into ``bars`` equal bars and return 12 pitch-class weights for each.
 
-    A bar holding two chords gets both, in proportion; an unreadable label or
-    ``N`` contributes nothing, so a bar of nothing matches nothing.
+    Each note of a chord is weighted by how long the chord sounds in the bar.
+    A bar with two chords therefore contains the notes of both. Labels that
+    cannot be parsed, and ``N`` (no chord), add nothing.
     """
     if bars < 1:
         raise ValueError(f"bars must be at least 1, got {bars}")
@@ -126,10 +138,12 @@ def bar_templates(reference: Sequence[ChordEvent], bars: int) -> tuple[np.ndarra
 def bar_agreement(
     chroma: Chromagram, downbeats: Sequence[float], templates: Sequence[np.ndarray]
 ) -> np.ndarray:
-    """Cosine of every recorded bar's chroma with every template: bars x templates.
+    """Compare each bar of the recording with each template bar.
 
-    The cosine of centred vectors, so it runs from -1 to 1 and a flat chroma
-    scores 0 against anything. A bar outside the recording scores 0.
+    Returns an array of shape (recording bars, templates). Each value is the
+    cosine between the bar's mean standardised chroma and the template with
+    its own mean subtracted. It ranges from -1 to 1, and is 0 when the bar's
+    chroma is flat or the bar lies outside the recording.
     """
     standard = chroma.standardised()
     frames = standard.shape[1]
@@ -171,7 +185,7 @@ def _agreement_gate(keys: int) -> float:
 
 @dataclass(frozen=True, slots=True)
 class Anchor:
-    """The downbeat the chart's first bar sits on, and how clearly it was found.
+    """The recording's bar that matches the first bar of the chart.
 
     ``mean_agreement`` is the fit of the one chorus starting at ``bar_index``
     with the chart ``shift`` semitones up, ``runner_up`` the best fit of any
@@ -195,7 +209,7 @@ class Anchor:
         if min_agreement is None:
             min_agreement = _agreement_gate(self.keys)
         if isnan(self.margin):
-            return "only one candidate phase, so there is nothing to tell it from"
+            return "only one candidate position in the form, nothing to compare it with"
         if self.mean_agreement < min_agreement:
             return f"agreement {self.mean_agreement:.2f} under {min_agreement:.2f}"
         if self.margin < min_margin:
@@ -226,6 +240,7 @@ def anchor_bar(
     every key and the chosen start in every other key, so more keys never make
     a wrong chart look right. The form length is the chart's, never searched.
     """
+    # ``None`` means the recording is too short to compare.
     size = len(templates)
     by_shift = keyed_agreement(chroma, downbeats, templates, shifts)
     bars = len(downbeats) - 1
