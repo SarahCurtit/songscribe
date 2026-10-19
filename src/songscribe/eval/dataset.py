@@ -39,9 +39,9 @@ class Track:
     id: str
     reference: Path
     audio: Path | None = None
-    #: Bars in the reference, for a lead sheet played through several times: the
-    #: form length that splits the recording into choruses. ``None`` for a
-    #: reference that spans the whole recording.
+    #: Number of bars in the reference. Set it when the recording plays the
+    #: chart several times; it is the length used to split the recording into
+    #: choruses. ``None`` when the reference covers the whole recording.
     bars: int | None = None
 
     @property
@@ -151,7 +151,7 @@ def load_manifest(
 
         audio = entry.get("audio")
         bars = entry.get("bars")
-        # bool is an int to Python, and a form of "True" bars is a typo, not a form.
+        # bool is a subclass of int in Python, so reject it explicitly.
         if bars is not None and (not isinstance(bars, int) or isinstance(bars, bool) or bars < 1):
             raise ManifestError(f"{path}: track {track_id!r}: 'bars' must be a positive integer")
         tracks.append(

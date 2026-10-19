@@ -413,31 +413,37 @@ test.
 
 ### A chart played several times: `form`, `bar`, and `--beats`
 
-A real recording is an intro, the chart several times through, and an ending, none of it on
-the reference's clock. Give a manifest track `"bars"` (the chart's bar count) and score it
-with `--beats DIR` (or `--beat-backend`); `songscribe-eval form` shows what was detected
-first. The pieces, and what each refuses to do:
+A real recording usually has an intro, the chart played several times, and an ending. Its
+times do not line up with the reference, which is a single chorus. To score
+such a recording, give the manifest track `"bars"` (the number of bars in the chart) and
+pass `--beats DIR` (or `--beat-backend`). `songscribe-eval form` prints what was detected
+without scoring. The steps are:
 
-- **Anchor** (`eval/chroma.py`): the chart's per-bar pitch classes are slid along the
-  recording's bars, scoring each candidate start on its own chorus. The evidence is the
-  *audio's* chroma, never the estimate: anchoring on the estimate would pick the start that
-  flatters it. The form length is the chart's bar count, not searched; self-similarity
-  returns the half-form. A start whose margin over the next phase is under
-  `ANCHOR_MIN_MARGIN`, or whose agreement is under `ANCHOR_MIN_AGREEMENT`, is **refused**: the
-  track is skipped and named, not scored against a guess. Both gates are provisional (a
-  cosine of standardised chroma, checked only on synthetic takes).
-- **Choruses** (`eval/form.py`): contiguous blocks of the chart's bar count from the anchor.
-  `intro`, `head` (first and last full chorus), `chorus`, `partial` (at least four bars),
-  `tail` (shorter: an ending), `unaligned`. A bar far from its own block's median length
-  loses the count, so that block and every later one is `unaligned`; so is a chorus at
-  another tempo than the rest. Unscored time is reported, never folded in.
-- **Mapping**: each chorus's estimate is moved onto the reference's clock by one affine map
-  (start, scale), so WCSR, `chart`, `grid` and `segmentation` apply unchanged per chorus.
-  The offset sweep per chorus is one bar wide, not three seconds.
-- **`bar`**: the fraction of bars holding the right chord, read against the recording's own
-  bar lines, so tempo, offset and length cannot move it. Lead with it on a real take.
-- **Aggregation**: the track row sums the full choruses. It is never the best chorus, and a
-  partial last pass is reported but left out.
+- **Anchor** (`eval/chroma.py`): find which bar of the recording is the first bar of the
+  chart. Each bar of the chart is turned into its 12 pitch-class weights and compared with the
+  chroma of the recording's bars, at every possible start. Each start is scored on the one
+  chorus that follows it. The comparison uses the chroma of the audio, not the chord estimate,
+  because anchoring on the estimate would pick the start that makes it look best. The length
+  of the form is the chart's bar count and is not searched for (self-similarity returns half
+  the form). If the margin over the best start at another position in the form is below
+  `ANCHOR_MIN_MARGIN`, or the agreement is below `ANCHOR_MIN_AGREEMENT`, the anchor is
+  rejected and the track is skipped and listed in the report. Both thresholds are guesses so
+  far: they have only been checked on synthetic recordings.
+- **Choruses** (`eval/form.py`): cut the recording from the anchor into blocks of the chart's
+  bar count. A block is one of `intro`, `head` (the first and last full chorus), `chorus`,
+  `partial` (a shorter last block of at least four bars), `tail` (a shorter block, treated as
+  an ending) or `unaligned`. A block is `unaligned` if one of its bars is much longer or
+  shorter than the block's median bar, or if its tempo differs from the other choruses'. Once
+  a bar has been added or dropped, all later blocks are `unaligned` as well. The seconds that
+  are not scored are reported.
+- **Mapping**: the estimate in each scored chorus is shifted and scaled to the chart's
+  timeline, so WCSR, `chart`, `grid` and `segmentation` work per chorus without changes. The
+  time offset check per chorus covers one bar, not three seconds.
+- **`bar`**: the fraction of bars that have the right chord. The recording's own bar lines are
+  used, so tempo, offset and length do not affect it. Use it as the main score for a real
+  recording.
+- **Aggregation**: the track row combines all full choruses, not only the best one. A partial
+  last chorus is reported but not included.
 
 ### `placement`: lyric-chord synchronisation, for songs
 

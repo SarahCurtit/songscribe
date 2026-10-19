@@ -25,7 +25,7 @@ class TestSynthesisePerformance:
         return synthesise_performance(**{**defaults, **kwargs})
 
     def test_the_plain_take_matches_synthesise(self):
-        # Same voices, same envelope: the new path must not drift from the old.
+        # With no extra options, synthesise_performance must give the same audio as synthesise.
         audio, _ = synthesise(progression=PROGRESSION, bpm=120.0, repeats=3, sample_rate=SR)
         np.testing.assert_allclose(self.take().audio, audio, atol=1e-6)
 

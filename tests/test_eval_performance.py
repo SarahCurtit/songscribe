@@ -28,7 +28,7 @@ def track_for(tmp_path, performance):
 
 
 def sure(performance) -> chroma.Anchor:
-    """An anchor at the first bar, for tests that are not about finding it."""
+    """An anchor at the first bar, for tests that do not test anchor finding."""
     return chroma.Anchor(0, performance.downbeats[0], 0.9, 0.4, 0.5)
 
 
@@ -44,7 +44,7 @@ def score(tmp_path, performance, estimated, **kwargs):
 
 
 def wrong_fifth_bar(events):
-    """The estimate has the fifth bar of every chorus wrong."""
+    """An estimate that has the wrong chord in the fifth bar of every chorus."""
     return [
         ChordEvent(e.start, e.end, "F#" if i % len(CHART) == 4 else e.label)
         for i, e in enumerate(events)
@@ -73,13 +73,13 @@ class TestScorePerformance:
         ]
         result = score(tmp_path, performance, wrong)
         assert [c.bar for c in result.choruses] == [1.0, 0.0, 1.0, 1.0]
-        # The track number is the aggregate over all four, not the best one.
+        # The track score combines all four choruses. It is not the best chorus's score.
         assert result.bar == pytest.approx(0.75)
         assert result.scores["majmin"].wcsr == pytest.approx(0.75, abs=0.02)
 
     def test_junk_before_the_form_changes_no_score(self, tmp_path):
         short, long = take(lead_in_seconds=3.0), take(lead_in_seconds=40.0)
-        # Forty bars of an estimate that is wrong everywhere before the form starts.
+        # Forty bars with wrong chords before the chart starts. They must not be scored.
         junk = [ChordEvent(i, i + 1.0, "B") for i in range(40)]
         near = score(tmp_path, short, wrong_fifth_bar(short.events))
         far = score(tmp_path, long, [*junk, *wrong_fifth_bar(long.events)])
@@ -106,7 +106,7 @@ class TestScorePerformance:
             bars_per_chorus=len(CHART),
             anchor=sure(performance),
         )
-        # The damaged chorus and the one after it are absent, not scored as zero.
+        # The chorus with the missing bar and the one after it are left out, not scored as 0.
         assert [c.chorus.kind for c in result.choruses] == ["head"]
         assert result.unscored_seconds == pytest.approx(16.0)
         assert result.scores["majmin"].wcsr == pytest.approx(1.0)
@@ -160,7 +160,7 @@ class TestScorePerformance:
 class TestSingleChorusIsUnchanged:
     def test_one_chorus_at_scale_one_scores_exactly_as_score_track_does(self, tmp_path):
         performance = take(repeats=1, tempo_drift=0.0)
-        # The chart's own clock: bar lines every 1.0s from 0, so anchor 0 and scale 1.
+        # Bar lines every 1.0 s from 0, the same as the chart, so anchor 0 and scale 1.
         estimate = wrong_fifth_bar(performance.reference)
         track = track_for(tmp_path, performance)
         plain = runner.score_track(track, estimate)

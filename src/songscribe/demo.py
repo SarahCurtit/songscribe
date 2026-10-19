@@ -55,8 +55,8 @@ ROOT_OCTAVE = 3
 # like a pure tone, which is unrealistically easy for a chord model.
 HARMONICS = (1.0, 0.5, 0.33, 0.25)
 
-#: Standard deviation of the noise before bar 1, against a chord's peak of 1:
-#: loud enough to be junk a tracker must see past, too flat to carry a chord.
+#: Standard deviation of the white noise played before bar 1. A chord's peak
+#: amplitude is 1, so 0.3 is clearly audible but contains no chord.
 LEAD_IN_LEVEL = 0.3
 
 
@@ -110,7 +110,7 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
 
 
 def _voices(label: str, t: np.ndarray) -> np.ndarray:
-    """One chord's additive tones over times ``t``, scaled to a peak of 1."""
+    """Sum the sine tones of one chord at times ``t`` (in seconds), scaled to a peak of 1."""
     voices = sum(
         amplitude * np.sin(2 * np.pi * freq * harmonic * t)
         for freq in chord_frequencies(label)
@@ -170,11 +170,12 @@ def synthesise(
 
 @dataclass(frozen=True, slots=True)
 class Performance:
-    """A multi-chorus take: its audio, true chords, and true bar lines.
+    """A synthetic recording of the chart played several times, with its ground truth.
 
-    ``events`` is the whole take on the audio's clock; ``reference`` is the
-    chart alone -- one chorus from 0 at the nominal tempo -- as a lead sheet
-    would supply it. ``downbeats`` ends with the close of the last bar.
+    ``events`` are the chords of the whole recording, in seconds from the start
+    of ``audio``. ``reference`` is one chorus of the chart, starting at 0 and
+    at the requested tempo, like a lead sheet. ``downbeats`` are the start
+    times of all bars, plus the end time of the last bar.
     """
 
     audio: np.ndarray
@@ -186,7 +187,7 @@ class Performance:
     bars_per_chorus: int
 
     def beat_events(self) -> list[BeatEvent]:
-        """The true beats, as a tracker would hand them over."""
+        """The beats of the recording, in the format a beat tracker returns."""
         beats = [
             BeatEvent(time=a + (b - a) * k / self.beats_per_bar, position=k + 1)
             for a, b in pairwise(self.downbeats)
@@ -207,11 +208,11 @@ def synthesise_performance(
     tempo_drift: float = 0.0,
     substitutions: Mapping[int, Mapping[int, str]] | None = None,
 ) -> Performance:
-    """Render ``repeats`` choruses the way a band plays them, not a loop.
+    """Synthesise ``repeats`` choruses of ``progression``, one chord per bar.
 
-    ``lead_in_seconds`` of noise precede bar 1 (no chord there, no bar line);
-    ``tempo_drift`` is the fractional tempo change from first bar to last;
-    ``substitutions[repeat][bar]`` swaps one bar's chord in one chorus.
+    ``lead_in_seconds`` of noise precede bar 1 (no chord, no bar line). ``tempo_drift`` is the
+    relative tempo change from first to last bar (0.03 = 3% faster). ``substitutions[repeat][bar]``
+    replaces one bar's chord in one chorus; both indices count from 0.
     """
     if not progression:
         raise ValueError("progression is empty")
@@ -327,20 +328,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--lead-in-seconds",
         type=float,
         default=0.0,
-        help="noise before bar 1, like a count-in or stage noise (default: %(default)s)",
+        help="seconds of noise before bar 1, to imitate a count-in (default: %(default)s)",
     )
     parser.add_argument(
         "--tempo-drift",
         type=float,
         default=0.0,
-        help="fractional tempo change from first bar to last, e.g. 0.03",
+        help="relative tempo change between the first and last bar, e.g. 0.03 for 3%% faster",
     )
     parser.add_argument(
         "--vary",
         action="append",
         default=[],
         metavar="REPEAT:BAR=CHORD",
-        help="swap one bar's chord in one chorus, counting from 0; repeatable",
+        help="replace the chord of one bar in one chorus (both counted from 0); repeatable",
     )
     parser.add_argument(
         "--no-annotation", action="store_true", help="skip writing the .lab ground truth"
@@ -361,7 +362,7 @@ def _parse_variation(texts: list[str]) -> dict[int, dict[int, str]]:
 
 
 def _write_performance(args: argparse.Namespace) -> int:
-    """The multi-chorus take: audio, full timeline, chart, and true bar lines."""
+    """Write the audio plus the ``.lab``, ``.reference.lab`` and ``.beats`` ground truth."""
     import soundfile as sf
 
     performance = synthesise_performance(

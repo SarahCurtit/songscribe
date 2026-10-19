@@ -15,7 +15,7 @@ BAR = 2.0
 
 
 def grid_of(intro: int, choruses: int, tail: int, lead: float = 3.0, bar: float = BAR):
-    """Bar lines for a take: ``lead`` seconds of nothing, an intro, choruses, a last pass."""
+    """Bar lines for a recording: ``lead`` seconds without bars, then intro, choruses, tail."""
     count = intro + choruses * BARS + tail
     return BeatGrid(downbeats=tuple(lead + i * bar for i in range(count + 1)))
 
@@ -85,7 +85,7 @@ class TestChoruses:
 
     def test_a_dropped_bar_makes_that_chorus_unaligned_and_names_it(self):
         base = grid_of(intro=0, choruses=2, tail=0, lead=0.0)
-        # The tracker missed one downbeat inside the second chorus.
+        # Remove one downbeat from the second chorus, as if the beat tracker missed it.
         downbeats = tuple(d for i, d in enumerate(base.downbeats) if i != BARS + 10)
         found = split(BeatGrid(downbeats=downbeats), anchor=0)
         assert [c.kind for c in found] == ["head", "unaligned"]

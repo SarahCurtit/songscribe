@@ -427,20 +427,24 @@ def _content_label(chord: Chord) -> str:
 
 
 def _class_label(label: str, vocabulary: str) -> str:
-    """A chord label as its class in ``vocabulary``, or something stable if it has none."""
+    """Map a chord label to its class in ``vocabulary``.
+
+    A chord the vocabulary cannot express keeps a label of its own, built from
+    its pitch content, so that spellings such as `B:dim` and `Bdim` still
+    compare equal. A label that cannot be parsed, and `X`, are returned as
+    they are.
+    """
     chord = parse(label)
     projected = None if chord is None else project(chord, vocabulary)
     if projected is not None:
         return projected
-    # A chord the vocabulary cannot express is kept rather than dropped:
-    # dropping it would quietly shorten the sequence and let a wrong chord
-    # disappear. It is keyed by its pitch content, not its spelling, so
-    # `B:dim` and `Bdim` still match; only an unparseable label (or `X`)
-    # falls back to its raw text. A reference `X` thus stays in the sequence
-    # as a token no backend emits, unlike WCSR, which skips it: dropping it
-    # would merge its neighbours. One that prints costs a backend something,
-    # depending on what the backend put there and on the chords around it,
-    # and can tip a close comparison; see EVALUATION.md, "What gets excluded".
+    # Chords outside the vocabulary are kept, not dropped. Dropping them would
+    # shorten the sequence, and a wrong chord would disappear from the
+    # comparison. A reference `X` stays in the sequence as a label no backend
+    # outputs (WCSR skips it instead, but skipping here would merge the chords
+    # on either side of it). Whether a backend loses points on an `X` depends on
+    # what it outputs there and on the neighbouring chords, and can decide a
+    # close comparison. See EVALUATION.md, "What gets excluded".
     return label if chord is None or chord.unknown else _content_label(chord)
 
 
@@ -678,10 +682,10 @@ def bar_sequence(
     downbeats: Sequence[float],
     vocabulary: str = "majmin",
 ) -> tuple[tuple[int, str], ...]:
-    """One ``(bar, label)`` per complete bar: the label held longest inside it.
+    """Return ``(bar, label)`` for each bar between consecutive ``downbeats``.
 
-    Time no event covers counts as ``N``, so a bar nothing was played in reads
-    ``N`` rather than vanishing from the sequence.
+    The label is the chord that sounds longest in the bar. Time not covered by
+    any event counts as ``N``, so a bar with no events is labelled ``N``.
     """
     sequence: list[tuple[int, str]] = []
     for bar, (low, high) in enumerate(pairwise(downbeats)):
@@ -695,7 +699,7 @@ def bar_sequence(
                 covered += overlap
         if high - low - covered > MIN_SEGMENT:
             held[NO_CHORD_LABEL] = held.get(NO_CHORD_LABEL, 0.0) + (high - low - covered)
-        # max() keeps the first of equal durations, so a tie goes to the earlier label.
+        # On a tie, max() returns the label that was added first.
         sequence.append((bar, max(held, key=lambda label: held[label])))
     return tuple(sequence)
 
@@ -707,13 +711,13 @@ def bar_score(
     vocabulary: str = "majmin",
     estimate_downbeats: Sequence[float] | None = None,
 ) -> float:
-    """Fraction of bars holding the right chord: right chord, right bar.
+    """Fraction of bars whose chord matches the reference's chord for the same bar.
 
-    Offset, tempo and total length cannot move it, because bars are counted
-    rather than timed. The reference's bars are ``downbeats``; the estimate's
-    are ``estimate_downbeats`` when its clock differs, so each side is read
-    against its own bar lines. A reference bar marked ``X`` is skipped, as WCSR
-    skips it; ``nan`` when no bar can be scored.
+    Bars are compared by index, not by time, so time offset, tempo and total
+    length do not change the score. The reference is split into bars at
+    ``downbeats`` and the estimate at ``estimate_downbeats``, or also at
+    ``downbeats`` if that is not given. Reference bars labelled ``X`` are
+    skipped, as in WCSR. Returns ``nan`` if no bar can be compared.
     """
     mine = bar_sequence(reference, downbeats, vocabulary)
     theirs = dict(bar_sequence(estimate, estimate_downbeats or downbeats, vocabulary))
