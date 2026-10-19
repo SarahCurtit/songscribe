@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isnan, nan
 from pathlib import Path
 
@@ -43,6 +43,8 @@ class ChorusResult:
     grid: float = nan
     #: Fraction of bars with the right chord (``metrics.bar_score``).
     bar: float = nan
+    #: The same score under each scored vocabulary. ``bar`` is the majmin one.
+    bar_by_vocabulary: dict[str, float] = field(default_factory=dict)
     alignment: metrics.Alignment | None = None
 
 
@@ -74,6 +76,7 @@ class TrackResult:
     #: choruses among them.
     choruses: tuple[ChorusResult, ...] = ()
     bar: float = nan
+    bar_by_vocabulary: dict[str, float] = field(default_factory=dict)
     anchor: form_start.Anchor | None = None
     #: Seconds of the recording not in any scored block (intro, tail, unaligned).
     unscored_seconds: float = 0.0
@@ -133,9 +136,16 @@ class Report:
         """How many tracks the grid score could actually be computed for."""
         return sum(1 for r in self.results if not isnan(r.grid))
 
-    def mean_bar(self) -> float:
-        """Unweighted mean of the per-track bar score, ignoring tracks without one."""
-        values = [r.bar for r in self.results if not isnan(r.bar)]
+    def mean_bar(self, vocabulary: str | None = None) -> float:
+        """Unweighted mean of the per-track bar score, ignoring tracks without one.
+
+        Majmin unless ``vocabulary`` names another of the scored ones.
+        """
+        values = [
+            r.bar if vocabulary is None else r.bar_by_vocabulary.get(vocabulary, nan)
+            for r in self.results
+        ]
+        values = [v for v in values if not isnan(v)]
         return sum(values) / len(values) if values else nan
 
     def chorus_count(self) -> int:
@@ -388,6 +398,8 @@ def score_performance(
     # One key for the whole take; a tune that modulates is not handled.
     blocks = form.in_key(found, anchor.shift)
     reference_bar = (end - start) / bars_per_chorus
+    # mirex compares pitch overlap between two chords, so a bar has no mirex class to vote for.
+    bar_vocabularies = tuple(name for name in vocabularies if name != "mirex")
 
     results: list[ChorusResult] = []
     inner: list[TrackResult] = []
@@ -417,6 +429,10 @@ def score_performance(
                 chart=result.chart,
                 grid=result.grid,
                 bar=metrics.bar_score(part, estimated, chart_lines, "majmin", played_lines),
+                bar_by_vocabulary={
+                    name: metrics.bar_score(part, estimated, chart_lines, name, played_lines)
+                    for name in bar_vocabularies
+                },
                 alignment=result.alignment,
             )
         )
@@ -454,6 +470,9 @@ def score_performance(
         harmonic=first.harmonic,
         choruses=tuple(results),
         bar=_mean([c.bar for c in chosen]),
+        bar_by_vocabulary={
+            name: _mean([c.bar_by_vocabulary[name] for c in chosen]) for name in bar_vocabularies
+        },
         anchor=anchor,
         unscored_seconds=form.unscored_seconds(blocks),
     )

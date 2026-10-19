@@ -431,7 +431,10 @@ when the start is not clear. How the start is found is described in
 - Each chorus is mapped onto the reference timeline, so WCSR, `chart`, `grid` and
   `segmentation` work per chorus unchanged.
 - `bar` is the fraction of bars with the right chord, independent of tempo, offset and
-  length; use it as the main score for a real recording.
+  length; use it as the main score for a real recording. Each bar is judged by the chord that
+  sounds longest in it. It is reported for every vocabulary with a class per chord (`root`,
+  `majmin`, `triads`, `sevenths`; not `mirex`): `bar` is the majmin one, `--per-chorus` adds a
+  `bar-<vocabulary>` column for each, and `--json` carries `bar_by_vocabulary`.
 - The track row combines all full choruses; a partial last chorus is reported but not
   included.
 

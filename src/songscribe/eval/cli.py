@@ -690,19 +690,26 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
     """
     header_written = False
 
-    def row(label: str, scores, segmentation, bar: float | None, key: str = "") -> None:
+    # mirex has no per-bar class, so a bar score exists for the other vocabularies only.
+    bar_vocabularies = tuple(v for v in vocabularies if v != "mirex")
+
+    def row(label: str, scores, segmentation, bars: dict[str, float] | None, key: str = "") -> None:
         nonlocal header_written
         if not header_written:
             columns = "".join(f"{name:>10}" for name in vocabularies)
+            bar_columns = "".join(f"{'bar-' + v:>14}" for v in bar_vocabularies)
             print(
                 f"{'track':<{_ID_WIDTH}}{columns}{'seg':>10}"
-                + (f"{'bar':>10}{'key':>6}" if per_chorus else "")
+                + (f"{bar_columns}{'key':>6}" if per_chorus else "")
             )
             header_written = True
         cells = "".join(f"{_percent(scores[v].wcsr):>10}" for v in vocabularies)
         line = f"{label:<{_ID_WIDTH}}{cells}{_percent(segmentation.score):>10}"
         if per_chorus:
-            line += f"{'' if bar is None else _percent(bar):>10}{key:>6}"
+            line += "".join(
+                f"{'' if bars is None else _percent(bars[v]):>14}" for v in bar_vocabularies
+            )
+            line += f"{key:>6}"
         print(line)
 
     def write(result) -> None:
@@ -714,7 +721,7 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
             name = f"{_truncate(result.track_id)[: _ID_WIDTH - 22]} #{chorus.index} {chorus.kind}"
             if chorus.kind == "partial":
                 name += f" ({chorus.bars} bars)"
-            row(name, part.scores, part.segmentation, part.bar, _key(chorus.shift))
+            row(name, part.scores, part.segmentation, part.bar_by_vocabulary, _key(chorus.shift))
 
     return write
 
@@ -757,6 +764,14 @@ def format_report(report) -> str:
             f"{'bar':<12}{_percent(report.mean_bar()):>10}"
             f"{'':>10}   bars with the right chord (independent of tempo and offset)"
         )
+        # Each bar is judged by the chord that sounds longest in it, so an anticipated or
+        # late chord only costs a bar when it fills most of that bar.
+        lines += [
+            f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
+            f"{'':>10}   same, comparing chords as {v}"
+            for v in report.vocabularies
+            if v not in ("majmin", "mirex")
+        ]
     lines += [
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
@@ -859,7 +874,13 @@ def report_to_dict(report) -> dict:
             "graded_tracks": report.graded_grids(),
         },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
-        "bar": {"mean": _jsonable(report.mean_bar()), "choruses": report.chorus_count()},
+        "bar": {
+            "mean": _jsonable(report.mean_bar()),
+            "choruses": report.chorus_count(),
+            "by_vocabulary": {
+                v: _jsonable(report.mean_bar(v)) for v in report.vocabularies if v != "mirex"
+            },
+        },
         "tracks": [
             {
                 "id": result.track_id,
@@ -905,6 +926,7 @@ def report_to_dict(report) -> dict:
                     ),
                 },
                 "bar": _jsonable(result.bar),
+                "bar_by_vocabulary": {k: _jsonable(v) for k, v in result.bar_by_vocabulary.items()},
                 "anchor": None if result.anchor is None else _anchor_to_dict(result.anchor),
                 "unscored_seconds": result.unscored_seconds,
                 "choruses": [_chorus_to_dict(part) for part in result.choruses],
@@ -947,6 +969,7 @@ def _chorus_to_dict(part) -> dict:
         "scale": _jsonable(chorus.scale),
         "shift": chorus.shift,
         "bar": _jsonable(part.bar),
+        "bar_by_vocabulary": {k: _jsonable(v) for k, v in part.bar_by_vocabulary.items()},
         "chart": _jsonable(part.chart),
         "grid": _jsonable(part.grid),
         "segmentation": _jsonable(part.segmentation.score),
