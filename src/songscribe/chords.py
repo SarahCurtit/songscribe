@@ -54,6 +54,7 @@ DEFAULT_BACKEND = "madmom"
 
 # madmom expects 44.1 kHz; it was trained on it. btc is registered at its own rate below.
 MODEL_SAMPLE_RATE = 44_100
+BTC_SAMPLE_RATE = 22_050
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +182,7 @@ BACKENDS: dict[str, Callable[..., list[ChordEvent]]] = {
 #: Sample rate each backend wants its audio in.
 BACKEND_SAMPLE_RATES = {
     "madmom": MODEL_SAMPLE_RATE,
-    "btc": 22_050,  # what its checkpoint was trained on
+    "btc": BTC_SAMPLE_RATE,
     "template": 22_050,
 }
 

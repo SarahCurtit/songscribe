@@ -215,17 +215,6 @@ It is honest about being v0. Realistically today:
 
 Treat the output as a first draft to correct, not a finished chart.
 
-## Roadmap
-
-- [x] BTC backend (sevenths, sixths, sus, no-chord; no inversions)
-- [ ] Beat and downbeat tracking, so chords snap to bars instead of raw frames
-- [ ] Phoneme-level forced alignment to fix held-note drift
-- [x] Evaluation harness against reference annotations (Isophonics; McGill Billboard next)
-- [ ] Section detection (verse/chorus) from repetition structure
-- [ ] Forced alignment of known lyrics, for when you have the words but not the timings
-- [ ] Capo and transposition options
-- [ ] MusicXML / MIDI export
-
 ## Contributing
 
 Issues and PRs welcome.

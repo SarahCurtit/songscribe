@@ -39,7 +39,7 @@ class TestLabels:
 
 class TestRegistration:
     def test_runs_at_the_rate_the_checkpoint_was_trained_on(self):
-        assert chords.sample_rate_for("btc") == 22_050
+        assert chords.sample_rate_for("btc") == chords.BTC_SAMPLE_RATE
 
     def test_a_wrong_sample_rate_is_refused_before_any_model_loads(self):
         pytest.importorskip("torch")
@@ -77,6 +77,7 @@ class TestNetwork:
         assert backward[1, 0] == -np.inf and backward[0, 1] == 0
 
     def test_features_have_one_frame_per_hop(self, btc):
+        assert chords.BTC_SAMPLE_RATE == btc.SAMPLE_RATE
         audio = np.zeros(btc.SAMPLE_RATE * 25, dtype=np.float32)
         feature = btc.features(audio)
         assert feature.shape[1] == btc.N_BINS
