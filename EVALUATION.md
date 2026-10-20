@@ -185,6 +185,43 @@ songscribe-eval score eval/isophonics.json -c template --limit 5
 without it are not comparable, so report which was used. `--json FILE` also writes the full
 results.
 
+## JAAH
+
+The [Jazz Audio-Aligned Harmony](https://github.com/MTG/JAAH) dataset annotates 113 jazz
+recordings (1917–1989, 6.9 hours) with chords that include sevenths, so it is the corpus for
+telling a `sevenths` score apart from a `majmin` one. Like Isophonics it ships no audio.
+
+**1. Annotations.** Extract the repository's `labs.zip` into `data/jaah/` (gitignored) so that
+`labs/` sits directly under it. The repository has no licence file; keep the annotations
+local, as with Isophonics.
+
+**2. Recordings.** Each annotation is timed against one specific recording, which the
+repository's JSON identifies by MusicBrainz id and `duration`. A different release or master
+can start at another offset or run at another speed; see
+[Checking the alignment](#checking-the-alignment).
+
+**3. Survey.** The committed `eval/jaah.json` is references-only:
+
+```bash
+export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/jaah"   # the directory containing labs/
+songscribe-eval survey eval/jaah.json
+```
+
+and `sevenths` 93.3%; the rest is chords those vocabularies have no class for. The most common
+labels are dominant sevenths.
+triad or seventh class covers. The most common labels are dominant sevenths.
+
+**4. Score.** Pair your recordings by naming each after its lab (`giant_steps.flac`) or by
+mirroring the `labs/` tree, then build a manifest and score as for Isophonics:
+
+```bash
+songscribe-eval manifest data/jaah --audio ~/music/jaah --name jaah --output eval/jaah-audio.json
+songscribe-eval score eval/jaah-audio.json -c btc -v majmin -v sevenths --cache .eval-cache
+```
+
+`-c madmom` on the same manifest is the comparison: its `sevenths` score is capped by its
+triad vocabulary.
+
 ### Checking the alignment
 
 Scores are meaningful only if the recording is on the reference's timeline. After scoring,
