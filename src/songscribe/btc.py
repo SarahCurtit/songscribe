@@ -200,7 +200,7 @@ def checkpoint_path(cache_dir: Path | None = None) -> Path:
     digest = hashlib.sha256(data).hexdigest()
     if digest != CHECKPOINT_SHA256:
         raise RuntimeError(f"BTC checkpoint has SHA-256 {digest}, expected {CHECKPOINT_SHA256}")
-    # Written whole under another name first, so an interrupted download is not mistaken for a cached one.
+    # Written whole under another name first, so a partial download is not taken for a cached one.
     partial = path.with_suffix(".part")
     partial.write_bytes(data)
     partial.replace(path)
