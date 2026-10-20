@@ -11,7 +11,7 @@ annotation text.
 pip install -e '.[dev]'    # all backends, pytest, ruff
 ```
 
-The `template` backend needs no model weights. `madmom` and `btc` need the `chords` extra.
+The `template` backend needs no model weights. `madmom` needs the `chords` extra and `btc` the `btc` extra.
 
 ## Metrics
 

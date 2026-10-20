@@ -36,11 +36,12 @@ dependencies = [
 # Note: a direct URL dependency makes this extra ineligible for PyPI upload.
 # Until madmom cuts a release, `[chords]` installs from a source checkout only.
 chords = ["madmom @ git+https://github.com/CPJKU/madmom@27f032e8947204902c675e5e341a3faf5dc86dae"]
+btc = ["torch>=2.0"]
 lyrics = ["faster-whisper>=1.0"]
 separate = ["demucs>=4.0"]
-all = ["songscribe[chords,lyrics,separate]"]
+all = ["songscribe[chords,btc,lyrics,separate]"]
 dev = [
-    "songscribe[chords,lyrics,separate]",
+    "songscribe[chords,btc,lyrics,separate]",
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.6",
