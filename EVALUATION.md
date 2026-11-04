@@ -207,9 +207,9 @@ export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/jaah"   # the directory containing
 songscribe-eval survey eval/jaah.json
 ```
 
-and `sevenths` 93.3%; the rest is chords those vocabularies have no class for. The most common
-labels are dominant sevenths.
-triad or seventh class covers. The most common labels are dominant sevenths.
+It reports that 93.5% of the annotated time is expressible in `majmin` and 93.3% in `sevenths`;
+the rest is chords neither vocabulary has a class for. The most common labels are dominant
+sevenths (`Bb:7`, `F:7`, `Eb:7`).
 
 **4. Score.** Pair your recordings by naming each after its lab (`giant_steps.flac`) or by
 mirroring the `labs/` tree, then build a manifest and score as for Isophonics:
