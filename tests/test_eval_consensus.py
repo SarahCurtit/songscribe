@@ -15,10 +15,9 @@ def one_bar(label: str) -> list[ChordEvent]:
     return timeline((0.0, 4.0, label))
 
 
-#: The bars of Beautiful Love where TheFeelBook's chart prints a small alternate
-#: chord above the big one, as ``chart2chords.py`` recorded them: bars 4 and 20,
-#: 14 and 15. Real source disagreement rather than invented examples, which is
-#: what makes them worth pinning -- see the Stage 4 ticket.
+#: The bars of Beautiful Love where the chart prints a small alternate chord
+#: above the big one: bars 4 and 20, 14 and 15. Real source disagreement rather
+#: than invented pairs, which is why they are worth pinning.
 CHART_ALTERNATES = [
     ("D:min", "D:7"),
     ("B:hdim7(9)", "G:7(#11)"),

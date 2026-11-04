@@ -807,6 +807,20 @@ class TestConsensusReport:
         assert chart["consensus"]["majmin"]["wcsr"] == pytest.approx(1.0)
         assert chart["consensus_theory"]["score"] == pytest.approx(1.0)
 
+    def test_per_track_output_shows_which_track_moved(self, chart_corpus, capsys):
+        from songscribe.eval.cli import _per_track_printer
+
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        printer = _per_track_printer(report.vocabularies)
+        for result in sorted(report.results, key=lambda r: r.track_id):
+            printer(result)
+        lines = capsys.readouterr().out.splitlines()
+        # One consensus line, under the contested track and not the plain one.
+        assert sum(line.startswith("  consensus") for line in lines) == 1
+        assert lines[1].startswith("chart")
+        assert lines[2].startswith("  consensus")
+
     def test_json_omits_the_consensus_keys_on_an_ordinary_corpus(self, corpus):
         data, estimates = corpus
         report = runner.evaluate(data, estimates_dir=estimates)

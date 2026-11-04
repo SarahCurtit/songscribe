@@ -163,6 +163,10 @@ per segment and its numbers do not move. `eval/consensus.py` is the opt-in secon
 alternatives, so an ordinary corpus's table is unchanged. A segment is correct there when *any*
 source's chord matches, and skipped only when no source can be scored at all.
 
+The consensus column covers the WCSR rows and `theory`. `chart`, `grid`, `bar` and
+`segmentation` are built on projected label strings and read the primary chord, so they still
+count a printed alternative wrong.
+
 **Consensus moves a score in both directions**, which is worth understanding before reading one.
 Measured on the Beautiful Love backing track, whose chart prints an alternate over four of its
 32 bars, with `btc` on the full mix:
@@ -195,9 +199,9 @@ sources disagree over 0.1 min, 12.5% of annotated time:
 
 That last line is the point of the whole exercise: a pair no relation explains is either a
 relation `substitution.py` is missing or a chart read wrong on the way in, and telling those
-apart wants a person's eye. It is also the only honest way to settle the credits in the relation
-table. **They are still musical judgement**, and one tune's four bars is not enough to fit them
-— that wants several sheets per tune, which is why the credits have not been touched.
+apart wants a person's eye. This breakdown is also what the relation credits would be fitted
+against. **They are still musical judgement**, and one tune's four bars is not enough to fit
+them — that wants several sheets per tune, which is why the credits have not been touched.
 
 Building a reference that carries alternatives is the annotation side's job and belongs wherever
 the charts live, not here: this repo reads the `|` labels and never writes them.

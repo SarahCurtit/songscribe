@@ -60,6 +60,10 @@ GRID = [
         # "7(*5,b5)" replaces it. Only the second is a note from a hdim7.
         "7(b5)",
         "7(*5,b5)",
+        # hdim7(9) is in the project's own chart, and min7(b5) is a fifth-note
+        # spelling of a half-diminished chord: both reach dim_near_miss.
+        "hdim7(9)",
+        "min7(b5)",
     )
 ]
 
@@ -430,16 +434,19 @@ class TestHighestCreditWins:
         } == {r.name for r in substitution.RELATIONS}
 
 
-#: Every quality pair ``dim_near_miss`` wins, found by sweeping ``GRID``.
-DIM_NEAR_MISS_WINS = [("dim", "min"), ("dim7", "min6"), ("hdim7", "7(*5,b5)")]
+#: The quality pairs ``dim_near_miss`` wins over ``GRID``. Not the whole set it
+#: can reach -- a wider spelling of the diminished family reaches more, and the
+#: rule in ``_dim_near_miss`` is the definition. This is the regression pin.
+DIM_NEAR_MISS_WINS = [
+    ("dim", "min"),
+    ("dim", "min7(b5)"),
+    ("dim7", "min6"),
+    ("hdim7", "7(*5,b5)"),
+]
 
 
 class TestDiminishedNearMiss:
-    """A diminished chord a note from another chord on the same root.
-
-    EVALUATION.md recorded this as a known gap in Stage 4a: the pairs below
-    graded ``none``, which is what a chord sharing no notes at all grades.
-    """
+    """A diminished chord a note from another chord on the same root."""
 
     @pytest.mark.parametrize(("first", "second"), DIM_NEAR_MISS_WINS)
     def test_it_holds_both_ways_round_at_its_stated_credit(self, first, second):
@@ -448,7 +455,7 @@ class TestDiminishedNearMiss:
                 "dim_near_miss", 0.60
             )
 
-    def test_it_wins_for_no_other_quality_pair(self):
+    def test_it_wins_for_no_other_quality_pair_in_the_grid(self):
         # Pinned so that widening the rule shows up here rather than silently
         # paying credit somewhere nobody looked.
         chords = {label: parse(label) for label in GRID}

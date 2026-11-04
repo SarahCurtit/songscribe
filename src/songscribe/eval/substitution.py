@@ -228,31 +228,21 @@ def _seventh_swap(reference: Chord, estimate: Chord) -> bool:
 
 
 def _dim_near_miss(reference: Chord, estimate: Chord) -> bool:
-    """Same root, a diminished chord on at least one side, and one note apart.
+    """A diminished chord against a chord a note away on the same root.
 
-    Three quality pairs reach it and no others: ``C:dim``/``C:min`` and
-    ``C:dim7``/``C:min6``, which differ only in the fifth, and
-    ``C:hdim7``/``C:7(*5,b5)``, only in the third. Each graded zero before --
-    identical to a chord sharing no notes at all -- which made ``theory`` the
-    harshest measure in the harness on the near miss a seventh-capable model
-    makes most often around a diminished chord.
-
-    Note the spelling of that last one. ``C:7(b5)`` *adds* a flat fifth and keeps
-    the natural one, so it is five notes and three away from ``C:hdim7``; the
-    four-note chord is ``C:7(*5,b5)``, which omits the fifth it replaces.
-
-    Confined to the diminished family deliberately. Read as "any two chords on
-    one root a note apart" it would also hold for ``C:maj``/``C:min``, and since
-    :func:`grade` takes the highest credit that would quietly override
-    ``parallel``: major for minor is the signature triad-model error and is meant
-    to score low. ``C:hdim7``/``C:min7`` and ``C:dim7``/``C:hdim7`` are also a
-    note apart but are claimed by ``guide_tones`` and ``seventh_swap``, which
-    describe them better.
+    ``C:dim7``/``C:min6`` and ``C:dim``/``C:min`` differ only in the fifth,
+    ``C:hdim7``/``C:7(*5,b5)`` only in the third. Confined to the diminished
+    family: widened to any pair a note apart it would hold for
+    ``C:maj``/``C:min`` as well, and since :func:`grade` takes the highest
+    credit that would override ``parallel``.
     """
     if reference.root is None or reference.root != estimate.root:
         return False
     if not (_is_diminished(reference) or _is_diminished(estimate)):
         return False
+    # Pitch content, not the symbol: "C:7(b5)" adds a flat fifth and keeps the
+    # natural one, so it is five notes and three from a hdim7, while
+    # "C:7(*5,b5)" omits the fifth it replaces and is one away.
     return len(reference.pitch_classes ^ estimate.pitch_classes) <= _ONE_NOTE_APART
 
 

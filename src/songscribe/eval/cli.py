@@ -817,9 +817,21 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
             line += f"{key:>6}"
         print(line)
 
+    def consensus_row(scores) -> None:
+        """A second line for a track whose reference prints more than one chord.
+
+        Chart choice is a property of the tune, so a run has to show which track
+        the corpus-level gap came from. Printed only where there is one.
+        """
+        if not scores:
+            return
+        cells = "".join(f"{_percent(scores[v].wcsr):>10}" for v in vocabularies)
+        print(f"{'  consensus':<{_ID_WIDTH}}{cells}")
+
     def write(result) -> None:
         if not (per_chorus and result.choruses):
             row(_truncate(result.track_id), result.scores, result.segmentation, None)
+            consensus_row(result.consensus)
             return
         for part in result.choruses:
             chorus = part.chorus
@@ -827,6 +839,7 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
             if chorus.kind == "partial":
                 name += f" ({chorus.bars} bars)"
             row(name, part.scores, part.segmentation, part.bar_by_vocabulary, _key(chorus.shift))
+            consensus_row(part.consensus)
 
     return write
 
