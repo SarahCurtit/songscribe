@@ -1,0 +1,461 @@
+{
+  "version": 1,
+  "dataset": "jaah",
+  "notes": "Chord reference annotations only, not paired with any audio. Paths are relative, and no annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
+  "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
+  "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "tracks": [
+    {
+      "id": "labs/airegin",
+      "reference": "labs/airegin.lab"
+    },
+    {
+      "id": "labs/all_alone",
+      "reference": "labs/all_alone.lab"
+    },
+    {
+      "id": "labs/bags_groove",
+      "reference": "labs/bags_groove.lab"
+    },
+    {
+      "id": "labs/big_butter_and_eggman",
+      "reference": "labs/big_butter_and_eggman.lab"
+    },
+    {
+      "id": "labs/bikini",
+      "reference": "labs/bikini.lab"
+    },
+    {
+      "id": "labs/black_and_tan_fantasy",
+      "reference": "labs/black_and_tan_fantasy.lab"
+    },
+    {
+      "id": "labs/black_bottom_stomp",
+      "reference": "labs/black_bottom_stomp.lab"
+    },
+    {
+      "id": "labs/black_water_blues",
+      "reference": "labs/black_water_blues.lab"
+    },
+    {
+      "id": "labs/blue_7",
+      "reference": "labs/blue_7.lab"
+    },
+    {
+      "id": "labs/blue_horizon",
+      "reference": "labs/blue_horizon.lab"
+    },
+    {
+      "id": "labs/blue_serge",
+      "reference": "labs/blue_serge.lab"
+    },
+    {
+      "id": "labs/blues_for_alice",
+      "reference": "labs/blues_for_alice.lab"
+    },
+    {
+      "id": "labs/blues_in_the_closet",
+      "reference": "labs/blues_in_the_closet.lab"
+    },
+    {
+      "id": "labs/body_and_soul(goodman)",
+      "reference": "labs/body_and_soul(goodman).lab"
+    },
+    {
+      "id": "labs/body_and_soul(hawkins)",
+      "reference": "labs/body_and_soul(hawkins).lab"
+    },
+    {
+      "id": "labs/boplicity",
+      "reference": "labs/boplicity.lab"
+    },
+    {
+      "id": "labs/breakfast_feud",
+      "reference": "labs/breakfast_feud.lab"
+    },
+    {
+      "id": "labs/concerto_for_cootie",
+      "reference": "labs/concerto_for_cootie.lab"
+    },
+    {
+      "id": "labs/cotton_tail",
+      "reference": "labs/cotton_tail.lab"
+    },
+    {
+      "id": "labs/cotton_tail_fitzgerald",
+      "reference": "labs/cotton_tail_fitzgerald.lab"
+    },
+    {
+      "id": "labs/crazeology",
+      "reference": "labs/crazeology.lab"
+    },
+    {
+      "id": "labs/daahoud",
+      "reference": "labs/daahoud.lab"
+    },
+    {
+      "id": "labs/dead_man_blues",
+      "reference": "labs/dead_man_blues.lab"
+    },
+    {
+      "id": "labs/dexter_rides_again",
+      "reference": "labs/dexter_rides_again.lab"
+    },
+    {
+      "id": "labs/diminuendo_and_crescendo_in_blue",
+      "reference": "labs/diminuendo_and_crescendo_in_blue.lab"
+    },
+    {
+      "id": "labs/dinah",
+      "reference": "labs/dinah.lab"
+    },
+    {
+      "id": "labs/dinah_fats_waller",
+      "reference": "labs/dinah_fats_waller.lab"
+    },
+    {
+      "id": "labs/dinah_red_nichols",
+      "reference": "labs/dinah_red_nichols.lab"
+    },
+    {
+      "id": "labs/dippermouth_blues",
+      "reference": "labs/dippermouth_blues.lab"
+    },
+    {
+      "id": "labs/django",
+      "reference": "labs/django.lab"
+    },
+    {
+      "id": "labs/doggin_around",
+      "reference": "labs/doggin_around.lab"
+    },
+    {
+      "id": "labs/east_st_louis",
+      "reference": "labs/east_st_louis.lab"
+    },
+    {
+      "id": "labs/embraceable_you",
+      "reference": "labs/embraceable_you.lab"
+    },
+    {
+      "id": "labs/everybody_loves_my_baby",
+      "reference": "labs/everybody_loves_my_baby.lab"
+    },
+    {
+      "id": "labs/evidence",
+      "reference": "labs/evidence.lab"
+    },
+    {
+      "id": "labs/for_dancers_only",
+      "reference": "labs/for_dancers_only.lab"
+    },
+    {
+      "id": "labs/four_brothers",
+      "reference": "labs/four_brothers.lab"
+    },
+    {
+      "id": "labs/four_or_five_times",
+      "reference": "labs/four_or_five_times.lab"
+    },
+    {
+      "id": "labs/from_monday_on",
+      "reference": "labs/from_monday_on.lab"
+    },
+    {
+      "id": "labs/giant_steps",
+      "reference": "labs/giant_steps.lab"
+    },
+    {
+      "id": "labs/girl_from_ipanema",
+      "reference": "labs/girl_from_ipanema.lab"
+    },
+    {
+      "id": "labs/grandpas_spells",
+      "reference": "labs/grandpas_spells.lab"
+    },
+    {
+      "id": "labs/haig_and_haig",
+      "reference": "labs/haig_and_haig.lab"
+    },
+    {
+      "id": "labs/handful_of_riffs",
+      "reference": "labs/handful_of_riffs.lab"
+    },
+    {
+      "id": "labs/harlem_congo",
+      "reference": "labs/harlem_congo.lab"
+    },
+    {
+      "id": "labs/he_s_funny_that_way",
+      "reference": "labs/he_s_funny_that_way.lab"
+    },
+    {
+      "id": "labs/honeysuckle_rose",
+      "reference": "labs/honeysuckle_rose.lab"
+    },
+    {
+      "id": "labs/honky_tonk_train",
+      "reference": "labs/honky_tonk_train.lab"
+    },
+    {
+      "id": "labs/hotter_than_that",
+      "reference": "labs/hotter_than_that.lab"
+    },
+    {
+      "id": "labs/i_cant_believe_you_are_in_love_with_me",
+      "reference": "labs/i_cant_believe_you_are_in_love_with_me.lab"
+    },
+    {
+      "id": "labs/i_cant_get_started",
+      "reference": "labs/i_cant_get_started.lab"
+    },
+    {
+      "id": "labs/i_found_a_new_baby",
+      "reference": "labs/i_found_a_new_baby.lab"
+    },
+    {
+      "id": "labs/i_got_rhythm",
+      "reference": "labs/i_got_rhythm.lab"
+    },
+    {
+      "id": "labs/i_gotta_right_to_sing_the_blues",
+      "reference": "labs/i_gotta_right_to_sing_the_blues.lab"
+    },
+    {
+      "id": "labs/in_a_mellotone",
+      "reference": "labs/in_a_mellotone.lab"
+    },
+    {
+      "id": "labs/in_gloryland",
+      "reference": "labs/in_gloryland.lab"
+    },
+    {
+      "id": "labs/indiana",
+      "reference": "labs/indiana.lab"
+    },
+    {
+      "id": "labs/isfahan",
+      "reference": "labs/isfahan.lab"
+    },
+    {
+      "id": "labs/king_porter_stomp",
+      "reference": "labs/king_porter_stomp.lab"
+    },
+    {
+      "id": "labs/ko-ko(ellington)",
+      "reference": "labs/ko-ko(ellington).lab"
+    },
+    {
+      "id": "labs/lady_bird",
+      "reference": "labs/lady_bird.lab"
+    },
+    {
+      "id": "labs/lester_leaps_in",
+      "reference": "labs/lester_leaps_in.lab"
+    },
+    {
+      "id": "labs/livery_stable_blues",
+      "reference": "labs/livery_stable_blues.lab"
+    },
+    {
+      "id": "labs/lost_your_head_blues",
+      "reference": "labs/lost_your_head_blues.lab"
+    },
+    {
+      "id": "labs/manteca",
+      "reference": "labs/manteca.lab"
+    },
+    {
+      "id": "labs/maple_leaf_rag(bechet)",
+      "reference": "labs/maple_leaf_rag(bechet).lab"
+    },
+    {
+      "id": "labs/maple_leaf_rag(braxton)",
+      "reference": "labs/maple_leaf_rag(braxton).lab"
+    },
+    {
+      "id": "labs/maple_leaf_rag(hyman)",
+      "reference": "labs/maple_leaf_rag(hyman).lab"
+    },
+    {
+      "id": "labs/mean_to_me",
+      "reference": "labs/mean_to_me.lab"
+    },
+    {
+      "id": "labs/minor_swing",
+      "reference": "labs/minor_swing.lab"
+    },
+    {
+      "id": "labs/misterioso",
+      "reference": "labs/misterioso.lab"
+    },
+    {
+      "id": "labs/moanin",
+      "reference": "labs/moanin.lab"
+    },
+    {
+      "id": "labs/moten_swing",
+      "reference": "labs/moten_swing.lab"
+    },
+    {
+      "id": "labs/my_favorite_things",
+      "reference": "labs/my_favorite_things.lab"
+    },
+    {
+      "id": "labs/new_east_st_louis",
+      "reference": "labs/new_east_st_louis.lab"
+    },
+    {
+      "id": "labs/night_in_tunisia",
+      "reference": "labs/night_in_tunisia.lab"
+    },
+    {
+      "id": "labs/oh_lady_be_good",
+      "reference": "labs/oh_lady_be_good.lab"
+    },
+    {
+      "id": "labs/one_by_one",
+      "reference": "labs/one_by_one.lab"
+    },
+    {
+      "id": "labs/one_oclock_jump",
+      "reference": "labs/one_oclock_jump.lab"
+    },
+    {
+      "id": "labs/organ_grinders_swing",
+      "reference": "labs/organ_grinders_swing.lab"
+    },
+    {
+      "id": "labs/parkers_mood",
+      "reference": "labs/parkers_mood.lab"
+    },
+    {
+      "id": "labs/pentup_house",
+      "reference": "labs/pentup_house.lab"
+    },
+    {
+      "id": "labs/potato_head_blues",
+      "reference": "labs/potato_head_blues.lab"
+    },
+    {
+      "id": "labs/riverboat_shuffle",
+      "reference": "labs/riverboat_shuffle.lab"
+    },
+    {
+      "id": "labs/rockin_chair",
+      "reference": "labs/rockin_chair.lab"
+    },
+    {
+      "id": "labs/september_in_the_rain",
+      "reference": "labs/september_in_the_rain.lab"
+    },
+    {
+      "id": "labs/shaw_nuff",
+      "reference": "labs/shaw_nuff.lab"
+    },
+    {
+      "id": "labs/singin_the_blues",
+      "reference": "labs/singin_the_blues.lab"
+    },
+    {
+      "id": "labs/st_louis_blues",
+      "reference": "labs/st_louis_blues.lab"
+    },
+    {
+      "id": "labs/st_thomas",
+      "reference": "labs/st_thomas.lab"
+    },
+    {
+      "id": "labs/stompin_at_the_savoy",
+      "reference": "labs/stompin_at_the_savoy.lab"
+    },
+    {
+      "id": "labs/struttin_with_some_barbecue",
+      "reference": "labs/struttin_with_some_barbecue.lab"
+    },
+    {
+      "id": "labs/subconscious_lee",
+      "reference": "labs/subconscious_lee.lab"
+    },
+    {
+      "id": "labs/summertime",
+      "reference": "labs/summertime.lab"
+    },
+    {
+      "id": "labs/sweethearts_on_parade",
+      "reference": "labs/sweethearts_on_parade.lab"
+    },
+    {
+      "id": "labs/swing_that_music",
+      "reference": "labs/swing_that_music.lab"
+    },
+    {
+      "id": "labs/thats_a_serious_thing",
+      "reference": "labs/thats_a_serious_thing.lab"
+    },
+    {
+      "id": "labs/the_golden_bullet",
+      "reference": "labs/the_golden_bullet.lab"
+    },
+    {
+      "id": "labs/the_man_i_love",
+      "reference": "labs/the_man_i_love.lab"
+    },
+    {
+      "id": "labs/the_preacher",
+      "reference": "labs/the_preacher.lab"
+    },
+    {
+      "id": "labs/the_stampede",
+      "reference": "labs/the_stampede.lab"
+    },
+    {
+      "id": "labs/these_foolish_things",
+      "reference": "labs/these_foolish_things.lab"
+    },
+    {
+      "id": "labs/tricroism",
+      "reference": "labs/tricroism.lab"
+    },
+    {
+      "id": "labs/walkin_shoes",
+      "reference": "labs/walkin_shoes.lab"
+    },
+    {
+      "id": "labs/watermelon_man",
+      "reference": "labs/watermelon_man.lab"
+    },
+    {
+      "id": "labs/weather_bird",
+      "reference": "labs/weather_bird.lab"
+    },
+    {
+      "id": "labs/west_coast_blues",
+      "reference": "labs/west_coast_blues.lab"
+    },
+    {
+      "id": "labs/west_end_blues",
+      "reference": "labs/west_end_blues.lab"
+    },
+    {
+      "id": "labs/when_lights_are_low",
+      "reference": "labs/when_lights_are_low.lab"
+    },
+    {
+      "id": "labs/work_song",
+      "reference": "labs/work_song.lab"
+    },
+    {
+      "id": "labs/wrap_your_troubles_in_dreams",
+      "reference": "labs/wrap_your_troubles_in_dreams.lab"
+    },
+    {
+      "id": "labs/wrappin_it_up",
+      "reference": "labs/wrappin_it_up.lab"
+    },
+    {
+      "id": "labs/you_d_be_so_nice_to_come_home_to",
+      "reference": "labs/you_d_be_so_nice_to_come_home_to.lab"
+    }
+  ]
+}

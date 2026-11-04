@@ -38,7 +38,7 @@ training framework with it.
 |---|---|---|---|---|---|---|
 | Separation | [Demucs v4](https://github.com/adefossez/demucs) (`htdemucs`) | PyTorch | MIT | Auto-downloaded on first use | not yet | Hybrid transformer; `--two-stems=vocals` is all we need |
 | Chords (default) | [madmom](https://github.com/CPJKU/madmom) CNN + CRF | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0, Py3.11 | Korzeniowski & Widmer; major/minor vocabulary |
-| Chords (planned) | [BTC](https://github.com/jayg996/BTC-ISMIR19) | PyTorch | MIT | Public checkpoint in the repo | n/a | Large vocabulary incl. sevenths/inversions; not wired up yet |
+| Chords (`btc`) | [BTC](https://github.com/jayg996/BTC-ISMIR19) large vocabulary | PyTorch | MIT | Public checkpoint in the upstream repo, downloaded from pinned commit `2682317` and checked against a SHA-256 | **yes** — outputs match upstream exactly; accuracy not yet measured | 170 classes: 14 qualities per root (7ths, 6ths, sus, dim, aug) plus N; no inversions. Network re-implemented in `btc.py` so it loads the checkpoint unchanged; needs the `[btc]` extra |
 | Downbeats (default) | [madmom](https://github.com/CPJKU/madmom) RNN + DBN | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0 | Böck et al.; same install as the chord model, so no new dependency. Trained mostly on pop/rock — on jazz, check it has not locked onto the backbeat |
 | Lyrics | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (Whisper) | CTranslate2 | MIT (code), MIT (weights) | HuggingFace Hub, auto-downloaded | not yet | Word-level timestamps; see the note below |
 
@@ -103,10 +103,8 @@ differently-licensed dependency.
 
 All PyTorch or framework-free, per the policy above.
 
-- **Chord recognition** — [BTC](https://github.com/jayg996/BTC-ISMIR19) (PyTorch, MIT) is the
-  chosen upgrade and is already stubbed in `chords.py`; it needs vendoring, since there is no
-  pip package. Any other candidate must be a PyTorch CRNN/transformer trained with a large
-  vocabulary on McGill Billboard + Isophonics.
+- **Chord recognition** — BTC is in (see the inventory). Any further candidate must be a
+  PyTorch CRNN/transformer trained with a large vocabulary on McGill Billboard + Isophonics.
 - **Beat/downbeat tracking** — [BeatNet](https://github.com/mjhydri/BeatNet) (PyTorch, MIT),
   as a second opinion where madmom's DBN tracker (now the default, in the inventory above)
   mistakes the swung backbeat for the downbeat.
