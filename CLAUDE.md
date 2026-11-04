@@ -50,6 +50,7 @@ src/songscribe/
     form.py       splits a recording into choruses, on the chart's timeline (pure Python)
     README.md     how labels, recurrence, chart_fit, form_start and form fit together
     dataset.py    manifests and path resolution                (pure Python)
+    split.py      train/test manifests, versions of a song kept together (pure Python)
     isophonics.py manifest builder for an Isophonics tree
     survey.py     corpus label/coverage report, no audio or model needed
     reference.py  local word timelines for placement scoring (gitignored data)

@@ -26,6 +26,7 @@ from .metrics import (
     DEFAULT_VOCABULARIES,
     VOCABULARIES,
 )
+from .split import TEST_FRACTION
 from .survey import TOP_LABELS
 
 #: Width of the leading column in the per-track table. Long enough for an
@@ -256,6 +257,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     survey.add_argument("--json", type=Path, help="also write the survey as JSON")
 
+    split = subparsers.add_parser(
+        "split",
+        parents=[common],
+        help="split a manifest into train and test manifests",
+        description=(
+            "Write <name>-train.json and <name>-test.json from a manifest. Recordings of one "
+            "song always land in the same one. Train includes validation."
+        ),
+    )
+    split.add_argument("manifest", type=Path, help="manifest to split")
+    split.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        help="where to write the two manifests (default: next to the input)",
+    )
+    split.add_argument(
+        "--test-fraction",
+        type=float,
+        default=TEST_FRACTION,
+        help="share of songs held out (default: %(default)s); changing it changes the test set",
+    )
+
     form = subparsers.add_parser(
         "form",
         parents=[common],
@@ -321,7 +345,28 @@ def main(argv: list[str] | None = None) -> int:
         return _survey(args)
     if args.command == "form":
         return _form(args)
+    if args.command == "split":
+        return _split(args)
     return _score(args)
+
+
+def _split(args: argparse.Namespace) -> int:
+    from .split import song_key, split_manifest
+
+    try:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        train, test = split_manifest(manifest, args.test_fraction)
+    except (OSError, ValueError, KeyError) as error:
+        print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+
+    directory = args.output_dir or args.manifest.parent
+    for part in (train, test):
+        path = directory / f"{part['dataset']}.json"
+        write_manifest(path, part)
+        songs = {song_key(track["id"]) for track in part["tracks"]}
+        print(f"wrote {path}: {len(part['tracks'])} tracks, {len(songs)} songs")
+    return 0
 
 
 def _manifest(args: argparse.Namespace) -> int:

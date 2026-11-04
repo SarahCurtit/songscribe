@@ -252,6 +252,23 @@ rebuild the manifest with `manifest --audio`, and re-run with a fresh `--cache`,
 estimates are keyed by backend, input variant and track, not by the audio. The sweep takes a
 few seconds per hundred tracks; `--no-alignment-check` skips it.
 
+## Train and test sets
+
+`eval/jaah.json` and `eval/isophonics-beatles.json` each have a train and a test manifest next
+to them, about 20% of the songs held out. Train includes validation: tune on it, and score on
+test once you are done tuning.
+
+```bash
+songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
+```
+
+Recordings of one song always go to the same set: `maple_leaf_rag(bechet)`, the three
+`dinah` recordings, and the Sgt. Pepper title track with its reprise. A song's set comes from
+a hash of its name, so a manifest built locally with audio paths splits the same way as the
+committed one, whatever tracks it holds. When a corpus has versions that the file names do not
+show, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again; a changed grouping
+moves tracks between sets, so do that before tuning.
+
 ## Scoring a chart played several times
 
 A recording with an intro, a chart played several times and an ending does not line up with a
