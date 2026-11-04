@@ -1,16 +1,11 @@
 """How close two chords are musically, rather than whether their symbols match.
 
-A tritone substitution (``G:7`` for ``Db:7``) and a ii written for its V (``D:min7`` for
-``G:7``) miss every vocabulary in :mod:`songscribe.eval.metrics`, and a rootless dominant
-(``B:hdim7`` for ``G:7``) is outside ``majmin`` and ``sevenths``, so that time is dropped
-rather than scored. This module grades the relation between the two chords and gives it
-partial credit: :func:`metrics.compare` reads it as pass/fail for the ``substitutions``
+A tritone substitution (``G:7`` for ``Db:7``) and a ii written for its V (``D:min7``
+for ``G:7``) miss ``majmin``, ``sevenths`` and ``mirex`` alike, so nothing in
+:mod:`songscribe.eval.metrics` scores them as near. This module grades the relation
+instead: :func:`metrics.compare` reads it as pass/fail for the ``substitutions``
 vocabulary, :func:`graded_score` as a duration-weighted score. Neither changes WCSR.
-
-The credits are musical judgement, not measured frequencies, so read
-:attr:`GradedScore.by_relation` to see which relations a score came from.
-:mod:`songscribe.eval.labels` has its own partial credit for locating the form; the two
-are separate and not kept in step.
+The credits are musical judgement; ``EVALUATION.md`` says what that means for reading them.
 """
 
 from __future__ import annotations
@@ -45,16 +40,15 @@ _II_TO_V = 5
 #: A tritone, the root distance of a tritone substitution.
 _TRITONE = 6
 
-#: Where a diminished chord's root can sit relative to the dominant it stands
-#: for: on its b9, 3rd, 5th or b7, which are the four notes left when the
-#: dominant's root is dropped. Without this a dim chord and a dominant sharing
-#: three notes by coincidence -- ``C:13`` against ``D:hdim7`` -- would read as a
-#: rootless voicing of a chord neither contains.
-_ROOTLESS_DISTANCES = (1, 4, 7, 10)
+#: The two ninths a rootless dominant voicing may reach for beyond the notes a
+#: bare dominant label spells. ``B:hdim7`` is ``G:9`` without the G, so its A is
+#: outside ``G:7`` and has to be allowed; ``B:dim7`` needs the flat ninth the
+#: same way.
+_NINTHS = (1, 2)
 
-#: Shared pitch classes a relation needs before it counts as a substitution at
-#: all. Two notes is a coincidence: ``C:maj`` and ``A:min`` share C and E and
-#: are a plain error, which is also what ``mirex`` says about them.
+#: Shared pitch classes the overlap-gated relations below require. Two notes is
+#: a coincidence for chords of this width: ``C:maj`` and ``A:min`` share C and E
+#: and are a plain error, which is what ``mirex`` says about them too.
 _MIN_SHARED = MIREX_MIN_SHARED
 
 
@@ -83,11 +77,10 @@ class Grade:
 
 @dataclass(frozen=True, slots=True)
 class GradedScore:
-    """Partial credit over a timeline, duration-weighted exactly as WCSR is.
+    """Partial credit over a timeline, duration-weighted as WCSR is.
 
     ``by_relation`` holds compared duration per relation name, so it sums to
-    :attr:`compared` and says where the credit came from. That breakdown is the
-    only check on the credit table there is until cross-source frequencies exist.
+    :attr:`compared` and says where the credit came from.
     """
 
     credit: float = 0.0
@@ -200,6 +193,37 @@ def _sus_for_dominant(reference: Chord, estimate: Chord) -> bool:
     )
 
 
+def _sus_for_triad(reference: Chord, estimate: Chord) -> bool:
+    """A suspension against the plain triad on its own root.
+
+    The function is the same and only the third is in question, so this is a
+    near miss rather than a wrong chord -- but it is graded below
+    ``sus_for_dominant``, where the seventh corroborates the reading.
+    """
+    if reference.root != estimate.root:
+        return False
+    for suspended, other in ((reference, estimate), (estimate, reference)):
+        if _is_suspended(suspended) and triad_of(other) in ("maj", "min"):
+            return True
+    return False
+
+
+def _seventh_swap(reference: Chord, estimate: Chord) -> bool:
+    """Same root and triad, but the two name different sevenths.
+
+    ``C:maj7`` against ``C:7`` changes the chord's function, so it fails the
+    ``substitutions`` vocabulary -- but three of its four notes agree, and
+    ``majmin`` and ``mirex`` both call the pair correct, so grading it zero
+    would make this the harshest measure in the harness on a near miss.
+    """
+    if reference.root != estimate.root:
+        return False
+    if triad_of(reference) is None or triad_of(reference) != triad_of(estimate):
+        return False
+    sevenths = (_seventh(reference), _seventh(estimate))
+    return None not in sevenths and sevenths[0] != sevenths[1]
+
+
 def _guide_tones(reference: Chord, estimate: Chord) -> bool:
     """The third and the seventh land on the same pitch classes, in the same roles.
 
@@ -231,16 +255,18 @@ def _dim_for_dominant(reference: Chord, estimate: Chord) -> bool:
     """One side is the other's dominant without its root.
 
     ``B:hdim7`` is ``G:9`` minus the G and ``B:dim7`` is ``G:7(b9)`` minus the
-    G, which is how a player voices them. Shared notes rather than a subset,
-    since a backend emits a bare ``G:7`` with no ninth to contain the A, plus
-    ``_ROOTLESS_DISTANCES`` so the dim chord sits where that root would leave it.
+    G, which is how a player voices them. Dropping the root leaves the third and
+    the seventh, so the diminished chord has to carry both, and the rest of it
+    has to be notes the dominant spells or one of its ninths.
     """
     for dim, dominant in ((reference, estimate), (estimate, reference)):
         if not (_is_diminished(dim) and _is_dominant(dominant)):
             continue
-        if (dim.root - dominant.root) % 12 not in _ROOTLESS_DISTANCES:
+        guide = {_third(dominant), _seventh(dominant)}
+        if not guide <= dim.pitch_classes:
             continue
-        if _shared(dim, dominant) >= _MIN_SHARED:
+        voiced = dominant.pitch_classes | {(dominant.root + ninth) % 12 for ninth in _NINTHS}
+        if dim.pitch_classes <= voiced:
             return True
     return False
 
@@ -259,10 +285,16 @@ def _ii_v_merge(reference: Chord, estimate: Chord) -> bool:
 
 
 def _relative(reference: Chord, estimate: Chord) -> bool:
-    """A relative major and minor sharing most of their notes: ``C:maj6``/``A:min7``."""
+    """A relative major and minor sharing most of their notes: ``C:maj6``/``A:min7``.
+
+    One major and one minor triad a third apart. Without the triad test, any two
+    wide extensions at that distance share three notes and read as relatives.
+    """
     if reference.root is None or estimate.root is None:
         return False
     if (reference.root - estimate.root) % 12 not in _RELATIVE_DISTANCES:
+        return False
+    if {triad_of(reference), triad_of(estimate)} != {"maj", "min"}:
         return False
     return _shared(reference, estimate) >= _MIN_SHARED
 
@@ -275,13 +307,20 @@ def _parallel(reference: Chord, estimate: Chord) -> bool:
     return all(triad in ("maj", "min") for triad in triads) and triads[0] != triads[1]
 
 
+#: An exact match, and the fallback when nothing holds. Named rather than read
+#: off :data:`RELATIONS`, so a caller passing its own table still gets these two.
+SAME = "same"
+NO_RELATION = "none"
+
 #: Every relation, with what a swap of that kind is worth. Ordered by credit for
 #: reading; :func:`grade` picks the highest-credit relation that holds, so the
-#: order carries no meaning beyond breaking a tie between equal credits.
+#: order only breaks a tie between equal credits.
 #:
-#: ``none`` is last and always holds, so a pair is never left ungraded.
+#: The three below ``SUBSTITUTION_MIN_CREDIT`` are near misses rather than
+#: substitutions: they fail the ``substitutions`` vocabulary and carry partial
+#: credit in the graded score alone.
 RELATIONS: tuple[Relation, ...] = (
-    Relation("same", 1.00, _same),
+    Relation(SAME, 1.00, _same),
     Relation("extension", 0.95, _extension),
     Relation("sus_for_dominant", 0.90, _sus_for_dominant),
     Relation("guide_tones", 0.90, _guide_tones),
@@ -289,12 +328,11 @@ RELATIONS: tuple[Relation, ...] = (
     Relation("dim_for_dominant", 0.80, _dim_for_dominant),
     Relation("ii_V_merge", 0.70, _ii_v_merge),
     Relation("relative", 0.70, _relative),
+    Relation("sus_for_triad", 0.70, _sus_for_triad),
+    Relation("seventh_swap", 0.60, _seventh_swap),
     Relation("parallel", 0.40, _parallel),
-    Relation("none", 0.00, lambda reference, estimate: True),
+    Relation(NO_RELATION, 0.00, lambda reference, estimate: True),
 )
-
-#: The relation a pair falls to when nothing better holds.
-NO_RELATION = RELATIONS[-1].name
 
 
 def grade(
@@ -316,7 +354,7 @@ def grade(
     # but no relation applies to it: either the estimate agrees or it does not.
     if reference.is_no_chord:
         if estimate is not None and estimate.is_no_chord:
-            return Grade(relation=RELATIONS[0].name, credit=RELATIONS[0].credit)
+            return Grade(relation=SAME, credit=1.0)
         return Grade(relation=NO_RELATION, credit=0.0)
     if estimate is None or estimate.unknown or estimate.is_no_chord:
         return Grade(relation=NO_RELATION, credit=0.0)

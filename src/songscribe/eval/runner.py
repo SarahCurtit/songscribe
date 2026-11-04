@@ -145,12 +145,7 @@ class Report:
         return credit / compared if compared > metrics.MIN_SEGMENT else nan
 
     def graded_relations(self) -> dict[str, float]:
-        """Compared duration per relation over the corpus, largest share first.
-
-        The only audit there is on the credit table: a run whose credit comes
-        mostly from ``relative`` or ``ii_V_merge`` is one where those two are
-        too loose, not one where the model is doing well.
-        """
+        """Compared duration per relation over the corpus, largest first."""
         totals: dict[str, float] = {}
         for result in self.results:
             if result.graded is None:

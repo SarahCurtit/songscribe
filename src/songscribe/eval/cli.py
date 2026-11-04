@@ -851,12 +851,7 @@ def format_report(report) -> str:
 
 
 def _relation_breakdown(report) -> list[str]:
-    """Where theory's credit came from, as a share of compared time per relation.
-
-    Printed because the credit table is unfitted: a corpus whose credit leans on
-    ``relative`` or ``ii_V_merge`` is one where those two are too generous, and
-    that is invisible in the single ``theory`` number.
-    """
+    """Where theory's credit came from, as a share of compared time per relation."""
     relations = report.graded_relations()
     total = sum(relations.values())
     if total <= 0:

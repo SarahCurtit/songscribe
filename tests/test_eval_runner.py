@@ -628,6 +628,25 @@ class TestGradedReport:
         assert first["score"] == pytest.approx(1.0)
         assert first["by_relation"] == {"same": pytest.approx(1.0)}
 
+    def test_choruses_without_a_graded_score_do_not_sink_the_others(self):
+        from songscribe.eval.substitution import GradedScore
+
+        present = GradedScore(credit=1.8, compared=2.0, ignored=0.5, by_relation={"same": 2.0})
+        assert runner._sum_graded([None, present, None]) == present
+        assert runner._sum_graded([None, None]) is None
+
+    def test_summing_choruses_adds_durations_rather_than_averaging(self):
+        from songscribe.eval.substitution import GradedScore
+
+        parts = [
+            GradedScore(credit=1.0, compared=1.0, ignored=0.0, by_relation={"same": 1.0}),
+            GradedScore(credit=0.0, compared=9.0, ignored=1.0, by_relation={"none": 9.0}),
+        ]
+        total = runner._sum_graded(parts)
+        assert (total.credit, total.compared, total.ignored) == (1.0, 10.0, 1.0)
+        assert total.by_relation == {"same": 1.0, "none": 9.0}
+        assert total.score == pytest.approx(0.1)
+
     def test_an_unscoreable_track_renders_as_a_dash_not_a_zero(self, tmp_path):
         annotations = tmp_path / "ann"
         estimates = tmp_path / "est"

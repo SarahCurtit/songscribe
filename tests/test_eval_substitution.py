@@ -28,6 +28,28 @@ def credit(reference: str, estimate: str) -> float | None:
     return None if result is None else result.credit
 
 
+#: Labels swept pairwise by TestEveryRelationEarnsItsPlace: enough roots to
+#: cover every distance between them, and one quality per family.
+GRID = [
+    f"{root}:{quality}"
+    for root in ("C", "D", "Eb", "E", "F", "G", "A", "Bb", "B")
+    for quality in (
+        "maj",
+        "min",
+        "dim",
+        "aug",
+        "maj7",
+        "min7",
+        "7",
+        "dim7",
+        "hdim7",
+        "minmaj7",
+        "maj6",
+        "sus4",
+        "sus2",
+    )
+]
+
 #: Pairs whose relation must not depend on which side is the reference. The
 #: directional relations are tested separately, in both orders, by their own
 #: classes -- they are symmetric in outcome but not in definition.
@@ -102,9 +124,9 @@ class TestExtension:
         assert credit(reference, estimate) == 0.95
 
     def test_a_seventh_both_sides_name_must_agree(self):
-        # maj7 against a dominant 7 on one root is a change of function -- tonic
-        # against dominant -- so it is graded an error, not an extension.
-        assert relation("C:maj7", "C:7") == "none"
+        # maj7 against a dominant 7 on one root changes the function, so it is
+        # the weaker `seventh_swap` rather than an extension.
+        assert relation("C:maj7", "C:7") == "seventh_swap"
 
     def test_a_different_root_is_not_an_extension(self):
         assert relation("C:7", "D:13") == "none"
@@ -119,10 +141,49 @@ class TestSusForDominant:
         assert relation(reference, estimate) == "sus_for_dominant"
         assert credit(reference, estimate) == 0.90
 
-    def test_a_suspension_against_a_plain_triad_is_not_it(self):
-        # No seventh on the other side, so there is no dominant for the third to
-        # be deferred from.
-        assert relation("C:sus4", "C:maj") == "none"
+    def test_a_suspension_against_a_plain_triad_is_the_weaker_relation(self):
+        # No seventh on the other side to corroborate a dominant reading, so it
+        # is graded below `sus_for_dominant` rather than as one.
+        assert relation("C:sus4", "C:maj") == "sus_for_triad"
+
+
+class TestNearMissesBelowTheThreshold:
+    """Relations that fail `substitutions` but are not graded as plain errors.
+
+    A score that calls a near miss exactly as wrong as an unrelated chord is not
+    measuring closeness, which is the only thing `theory` is for.
+    """
+
+    @pytest.mark.parametrize(
+        ("reference", "estimate", "name"),
+        [
+            ("C:maj7", "C:7", "seventh_swap"),
+            ("C:7", "C:maj7", "seventh_swap"),
+            ("C:13", "C:maj7", "seventh_swap"),
+            ("C:min7", "C:minmaj7", "seventh_swap"),
+            ("C:sus4", "C:maj", "sus_for_triad"),
+            ("C:maj", "C:sus4", "sus_for_triad"),
+            ("C:sus4(b7)", "C:maj", "sus_for_triad"),
+            ("C:sus2", "C:min", "sus_for_triad"),
+        ],
+    )
+    def test_a_near_miss_keeps_partial_credit(self, reference, estimate, name):
+        assert relation(reference, estimate) == name
+        assert 0.0 < credit(reference, estimate) < metrics.SUBSTITUTION_MIN_CREDIT
+
+    @pytest.mark.parametrize(
+        ("reference", "estimate"),
+        [("C:maj7", "C:7"), ("C:sus4", "C:maj"), ("C:maj", "C:min")],
+    )
+    def test_a_near_miss_still_fails_the_vocabulary(self, reference, estimate):
+        assert metrics.compare(parse(reference), parse(estimate), "substitutions") is False
+
+    def test_a_seventh_swap_outscores_an_unrelated_chord(self):
+        # C:maj7 against C:7 agrees on three notes of four and is correct under
+        # both majmin and mirex; C:maj against F#:maj shares none.
+        assert credit("C:maj7", "C:7") > credit("C:maj", "F#:maj")
+        assert metrics.compare(parse("C:maj7"), parse("C:7"), "majmin") is True
+        assert metrics.compare(parse("C:maj7"), parse("C:7"), "mirex") is True
 
 
 class TestGuideTones:
@@ -202,11 +263,21 @@ class TestDimForDominant:
         # "Without its root" means nothing when both name the same root.
         assert relation("C:hdim7", "C:7(b5)") == "none"
 
-    def test_three_shared_notes_at_the_wrong_distance_is_not_rootless(self):
-        # C:13 and D:hdim7 share three notes, but Ab is in neither, so D:hdim7
-        # is not C:13 with a root removed.
+    def test_three_shared_notes_is_not_enough_to_be_rootless(self):
+        # Each shares three notes with the dominant but carries neither its third
+        # nor its seventh, so it is not that chord with the root removed.
         assert len(parse("C:13").pitch_classes & parse("D:hdim7").pitch_classes) == 3
         assert relation("C:13", "D:hdim7") == "none"
+        assert len(parse("C:11").pitch_classes & parse("G:hdim7").pitch_classes) == 3
+        assert relation("C:11", "G:hdim7") == "none"
+
+    def test_the_guide_tones_of_the_dominant_must_survive(self):
+        # Dropping G from G:7 leaves B, D and F: the third and seventh are what
+        # a rootless voicing keeps.
+        assert {substitution._third(parse("G:7")), substitution._seventh(parse("G:7"))} <= parse(
+            "B:hdim7"
+        ).pitch_classes
+        assert relation("B:hdim7", "G:7") == "dim_for_dominant"
 
     def test_an_unrelated_diminished_chord_is_not(self):
         # E:hdim7 is the ii of D minor, not a rootless A7: it shares only two
@@ -250,6 +321,16 @@ class TestRelative:
     def test_a_mediant_is_not_a_relative(self):
         assert relation("C:maj", "E:min") == "none"
 
+    @pytest.mark.parametrize(
+        ("reference", "estimate"),
+        [("C:11", "Eb:11"), ("C:13", "A:sus4"), ("C:maj13", "A:sus2"), ("C:aug", "A:minmaj7")],
+    )
+    def test_wide_chords_a_third_apart_are_not_relatives(self, reference, estimate):
+        # Three shared notes is easy for six-note chords, so the relation needs
+        # one major and one minor triad rather than overlap alone.
+        assert len(parse(reference).pitch_classes & parse(estimate).pitch_classes) >= 3
+        assert relation(reference, estimate) == "none"
+
 
 class TestParallel:
     @pytest.mark.parametrize(
@@ -267,7 +348,7 @@ class TestParallel:
 class TestUnrelated:
     @pytest.mark.parametrize(
         ("reference", "estimate"),
-        [("C:maj", "F#:maj"), ("C:maj", "E:min"), ("C:maj7", "C:7"), ("C:maj", "A:min")],
+        [("C:maj", "F#:maj"), ("C:maj", "E:min"), ("C:maj", "A:min"), ("C:maj", "Db:min")],
     )
     def test_a_wrong_chord_earns_nothing(self, reference, estimate):
         assert graded(reference, estimate) == substitution.Grade("none", 0.0)
@@ -293,8 +374,9 @@ class TestHighestCreditWins:
         credits = [r.credit for r in substitution.RELATIONS]
         assert credits == sorted(credits, reverse=True)
 
-    def test_every_relation_in_the_table_is_reachable(self):
-        reached = {
+    def test_the_documented_examples_each_reach_their_own_relation(self):
+        # The pairs EVALUATION.md's table prints, which must stay accurate.
+        assert {
             relation(reference, estimate)
             for reference, estimate in [
                 ("C:maj", "C:maj"),
@@ -305,11 +387,37 @@ class TestHighestCreditWins:
                 ("B:hdim7", "G:7"),
                 ("D:min7", "G:7"),
                 ("C:maj6", "A:min7"),
+                ("C:sus4", "C:maj"),
+                ("C:maj7", "C:7"),
                 ("C:maj", "C:min"),
                 ("C:maj", "F#:maj"),
             ]
+        } == {r.name for r in substitution.RELATIONS}
+
+
+class TestEveryRelationEarnsItsPlace:
+    """Swept over a grid of labels rather than hand-picked pairs.
+
+    A relation no pair can reach is dead weight in the table, and one that wins
+    for a pair it should not is how the credits stop meaning anything.
+    """
+
+    def test_every_relation_wins_for_some_pair(self):
+        chords = [parse(label) for label in GRID]
+        winners = {
+            substitution.grade(first, second).relation for first in chords for second in chords
         }
-        assert reached == {r.name for r in substitution.RELATIONS}
+        assert winners == {r.name for r in substitution.RELATIONS}
+
+    def test_no_grade_depends_on_which_side_is_the_reference(self):
+        chords = [parse(label) for label in GRID]
+        asymmetric = [
+            (a, b)
+            for a in chords
+            for b in chords
+            if substitution.grade(a, b) != substitution.grade(b, a)
+        ]
+        assert asymmetric == []
 
 
 class TestNoChordAndUnscoreable:
@@ -446,3 +554,29 @@ class TestGradedScore:
         failing = timeline((0.0, 4.0, "C:maj")), timeline((0.0, 4.0, "C:min"))
         assert substitution.graded_score(*failing).score == pytest.approx(0.40)
         assert metrics.score(*failing, "substitutions").wcsr == 0.0
+
+    def test_estimate_time_past_the_reference_is_discarded(self):
+        # The reference defines the evaluated span, as it does for WCSR.
+        reference = timeline((0.0, 2.0, "C:maj"))
+        estimate = timeline((0.0, 2.0, "C:maj"), (2.0, 20.0, "F#:maj"))
+        result = substitution.graded_score(reference, estimate)
+        assert result.compared == pytest.approx(2.0)
+        assert result.score == 1.0
+
+    def test_substitutions_can_score_below_majmin(self):
+        # majmin drops a reference it cannot express; substitutions scores it,
+        # so a wider denominator can put it below on the same timeline.
+        reference = timeline((0.0, 2.0, "C:maj"), (2.0, 4.0, "C:sus4"))
+        estimate = timeline((0.0, 4.0, "C:maj"))
+        assert metrics.score(reference, estimate, "majmin").wcsr == 1.0
+        assert metrics.score(reference, estimate, "substitutions").wcsr == pytest.approx(0.5)
+
+    def test_a_custom_relation_table_is_respected(self):
+        # grade() must read the table it is given, not the module default.
+        only_same = (substitution.RELATIONS[0],)
+        assert substitution.grade(parse("C:7"), parse("C:13"), only_same) == substitution.Grade(
+            "none", 0.0
+        )
+        assert substitution.grade(parse("C:maj"), parse("C:maj"), only_same) == substitution.Grade(
+            "same", 1.00
+        )

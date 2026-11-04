@@ -81,8 +81,9 @@ apart because substitution is correct practice:
 
 - a tritone substitution (`G:7` for `Db:7`) and a ii written for its V (`D:min7` for `G:7`) are
   misses under `majmin`, `sevenths` **and** `mirex` — nothing scores them as near;
-- a rootless dominant (`B:hdim7` for `G:7`) is outside `majmin` and `sevenths` altogether, so
-  that time leaves the denominator and no vocabulary measures it at all;
+- a rootless dominant is scored by one vocabulary and not the others: where the annotation
+  names `B:hdim7`, `majmin` and `sevenths` cannot express it and that time leaves the
+  denominator, while `mirex` calls it an exact match against `G:7`;
 - the four vocabularies disagree so sharply on the rest that "how close was it" takes reading
   all four.
 
@@ -99,8 +100,13 @@ number over the same seconds WCSR uses:
 | `dim_for_dominant` | 0.80 | `B:hdim7` / `G:7` — the dominant without its root |
 | `ii_V_merge` | 0.70 | `D:min7` / `G:7` |
 | `relative` | 0.70 | `C:maj6` / `A:min7` |
+| `sus_for_triad` | 0.70 | `C:sus4` / `C:maj` |
+| `seventh_swap` | 0.60 | `C:maj7` / `C:7` |
 | `parallel` | 0.40 | `C:maj` / `C:min` |
-| `none` | 0.00 | anything else, including anything sharing fewer than 3 pitch classes |
+| `none` | 0.00 | anything else |
+
+The last three are near misses rather than substitutions: they fall below the threshold below,
+so they fail `substitutions` and carry credit only in the `theory` score.
 
 It is reported two ways, and **neither changes WCSR**:
 
