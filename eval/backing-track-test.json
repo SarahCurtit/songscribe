@@ -58,6 +58,10 @@
       "reference": "labs/lucky_southern.lab"
     },
     {
+      "id": "labs/misty(in_ab_concert)",
+      "reference": "labs/misty(in_ab_concert).lab"
+    },
+    {
       "id": "labs/misty(in_eb_concert)",
       "reference": "labs/misty(in_eb_concert).lab"
     },

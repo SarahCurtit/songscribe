@@ -22,6 +22,10 @@
       "reference": "labs/after_youve_gone.lab"
     },
     {
+      "id": "labs/airegin",
+      "reference": "labs/airegin.lab"
+    },
+    {
       "id": "labs/all_blues",
       "reference": "labs/all_blues.lab"
     },
@@ -142,6 +146,10 @@
       "reference": "labs/corcovado.lab"
     },
     {
+      "id": "labs/cry_me_a_river",
+      "reference": "labs/cry_me_a_river.lab"
+    },
+    {
       "id": "labs/darn_that_dream",
       "reference": "labs/darn_that_dream.lab"
     },
@@ -258,6 +266,10 @@
       "reference": "labs/if_i_were_a_bell.lab"
     },
     {
+      "id": "labs/ill_be_seeing_you",
+      "reference": "labs/ill_be_seeing_you.lab"
+    },
+    {
       "id": "labs/ill_remember_april",
       "reference": "labs/ill_remember_april.lab"
     },
@@ -370,8 +382,20 @@
       "reference": "labs/mambo_inn(full_rhythm_section).lab"
     },
     {
+      "id": "labs/mambo_inn(percussion_only)",
+      "reference": "labs/mambo_inn(percussion_only).lab"
+    },
+    {
+      "id": "labs/mambo_inn(without_percussion)",
+      "reference": "labs/mambo_inn(without_percussion).lab"
+    },
+    {
       "id": "labs/mercy_mercy_mercy",
       "reference": "labs/mercy_mercy_mercy.lab"
+    },
+    {
+      "id": "labs/misty(in_ab_concert)",
+      "reference": "labs/misty(in_ab_concert).lab"
     },
     {
       "id": "labs/misty(in_eb_concert)",
@@ -432,6 +456,10 @@
     {
       "id": "labs/nothing_personal",
       "reference": "labs/nothing_personal.lab"
+    },
+    {
+      "id": "labs/nows_the_time",
+      "reference": "labs/nows_the_time.lab"
     },
     {
       "id": "labs/oleo",
@@ -624,6 +652,10 @@
     {
       "id": "labs/windows",
       "reference": "labs/windows.lab"
+    },
+    {
+      "id": "labs/woody_n_you",
+      "reference": "labs/woody_n_you.lab"
     },
     {
       "id": "labs/yes_or_no",
