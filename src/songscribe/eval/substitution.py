@@ -5,7 +5,6 @@ for ``G:7``) miss ``majmin``, ``sevenths`` and ``mirex`` alike, so nothing in
 :mod:`songscribe.eval.metrics` scores them as near. This module grades the relation
 instead: :func:`metrics.compare` reads it as pass/fail for the ``substitutions``
 vocabulary, :func:`graded_score` as a duration-weighted score. Neither changes WCSR.
-The credits are musical judgement; ``EVALUATION.md`` says what that means for reading them.
 """
 
 from __future__ import annotations
@@ -194,16 +193,16 @@ def _sus_for_dominant(reference: Chord, estimate: Chord) -> bool:
 
 
 def _sus_for_triad(reference: Chord, estimate: Chord) -> bool:
-    """A suspension against the plain triad on its own root.
+    """A suspension against the triad on its own root, or against another suspension.
 
     The function is the same and only the third is in question, so this is a
-    near miss rather than a wrong chord -- but it is graded below
-    ``sus_for_dominant``, where the seventh corroborates the reading.
+    near miss rather than a wrong chord. Graded below ``sus_for_dominant``,
+    where a seventh on the other side corroborates the reading.
     """
     if reference.root != estimate.root:
         return False
     for suspended, other in ((reference, estimate), (estimate, reference)):
-        if _is_suspended(suspended) and triad_of(other) in ("maj", "min"):
+        if _is_suspended(suspended) and (triad_of(other) in ("maj", "min") or _is_suspended(other)):
             return True
     return False
 
@@ -307,8 +306,8 @@ def _parallel(reference: Chord, estimate: Chord) -> bool:
     return all(triad in ("maj", "min") for triad in triads) and triads[0] != triads[1]
 
 
-#: An exact match, and the fallback when nothing holds. Named rather than read
-#: off :data:`RELATIONS`, so a caller passing its own table still gets these two.
+#: An exact match, and the fallback when nothing holds. :func:`grade` returns
+#: these two whatever table it is given.
 SAME = "same"
 NO_RELATION = "none"
 
@@ -316,9 +315,8 @@ NO_RELATION = "none"
 #: reading; :func:`grade` picks the highest-credit relation that holds, so the
 #: order only breaks a tie between equal credits.
 #:
-#: The three below ``SUBSTITUTION_MIN_CREDIT`` are near misses rather than
-#: substitutions: they fail the ``substitutions`` vocabulary and carry partial
-#: credit in the graded score alone.
+#: Everything below ``metrics.SUBSTITUTION_MIN_CREDIT`` fails the
+#: ``substitutions`` vocabulary and carries credit in the graded score alone.
 RELATIONS: tuple[Relation, ...] = (
     Relation(SAME, 1.00, _same),
     Relation("extension", 0.95, _extension),

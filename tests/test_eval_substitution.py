@@ -29,7 +29,9 @@ def credit(reference: str, estimate: str) -> float | None:
 
 
 #: Labels swept pairwise by TestEveryRelationEarnsItsPlace: enough roots to
-#: cover every distance between them, and one quality per family.
+#: cover every distance between them, one quality per family, and the wide
+#: chords whose three-note overlap is what makes an overlap-gated relation
+#: too loose.
 GRID = [
     f"{root}:{quality}"
     for root in ("C", "D", "Eb", "E", "F", "G", "A", "Bb", "B")
@@ -45,8 +47,14 @@ GRID = [
         "hdim7",
         "minmaj7",
         "maj6",
+        "min6",
         "sus4",
         "sus2",
+        "sus4(b7)",
+        "9",
+        "11",
+        "13",
+        "7(b9)",
     )
 ]
 
@@ -148,11 +156,7 @@ class TestSusForDominant:
 
 
 class TestNearMissesBelowTheThreshold:
-    """Relations that fail `substitutions` but are not graded as plain errors.
-
-    A score that calls a near miss exactly as wrong as an unrelated chord is not
-    measuring closeness, which is the only thing `theory` is for.
-    """
+    """Relations that fail `substitutions` but are not graded as plain errors."""
 
     @pytest.mark.parametrize(
         ("reference", "estimate", "name"),
@@ -165,6 +169,9 @@ class TestNearMissesBelowTheThreshold:
             ("C:maj", "C:sus4", "sus_for_triad"),
             ("C:sus4(b7)", "C:maj", "sus_for_triad"),
             ("C:sus2", "C:min", "sus_for_triad"),
+            # One suspension against the other: same root, same deferral.
+            ("C:sus4", "C:sus2", "sus_for_triad"),
+            ("C:sus4(b7)", "C:sus2", "sus_for_triad"),
         ],
     )
     def test_a_near_miss_keeps_partial_credit(self, reference, estimate, name):
@@ -374,33 +381,50 @@ class TestHighestCreditWins:
         credits = [r.credit for r in substitution.RELATIONS]
         assert credits == sorted(credits, reverse=True)
 
-    def test_the_documented_examples_each_reach_their_own_relation(self):
-        # The pairs EVALUATION.md's table prints, which must stay accurate.
+    @pytest.mark.parametrize(
+        ("reference", "estimate", "name"),
+        [
+            ("C:maj", "C:maj", "same"),
+            ("C:dim7", "Eb:dim7", "same"),
+            ("C:7", "C:13", "extension"),
+            ("C:sus4(b7)", "C:7", "sus_for_dominant"),
+            ("B:hdim7", "Bb:maj7", "guide_tones"),
+            ("G:7", "Db:7", "tritone_sub"),
+            ("B:hdim7", "G:7", "dim_for_dominant"),
+            ("D:min7", "G:7", "ii_V_merge"),
+            ("C:maj6", "A:min7", "relative"),
+            ("C:sus4", "C:maj", "sus_for_triad"),
+            ("C:maj7", "C:7", "seventh_swap"),
+            ("C:maj", "C:min", "parallel"),
+            ("C:maj", "F#:maj", "none"),
+        ],
+    )
+    def test_each_documented_example_grades_as_printed(self, reference, estimate, name):
+        # The pairs EVALUATION.md's table prints against each relation.
+        assert relation(reference, estimate) == name
+
+    def test_the_documented_examples_cover_every_relation(self):
         assert {
-            relation(reference, estimate)
-            for reference, estimate in [
-                ("C:maj", "C:maj"),
-                ("C:7", "C:13"),
-                ("C:sus4(b7)", "C:7"),
-                ("B:hdim7", "Bb:maj7"),
-                ("G:7", "Db:7"),
-                ("B:hdim7", "G:7"),
-                ("D:min7", "G:7"),
-                ("C:maj6", "A:min7"),
-                ("C:sus4", "C:maj"),
-                ("C:maj7", "C:7"),
-                ("C:maj", "C:min"),
-                ("C:maj", "F#:maj"),
+            name
+            for _, _, name in [
+                ("C:maj", "C:maj", "same"),
+                ("C:7", "C:13", "extension"),
+                ("C:sus4(b7)", "C:7", "sus_for_dominant"),
+                ("B:hdim7", "Bb:maj7", "guide_tones"),
+                ("G:7", "Db:7", "tritone_sub"),
+                ("B:hdim7", "G:7", "dim_for_dominant"),
+                ("D:min7", "G:7", "ii_V_merge"),
+                ("C:maj6", "A:min7", "relative"),
+                ("C:sus4", "C:maj", "sus_for_triad"),
+                ("C:maj7", "C:7", "seventh_swap"),
+                ("C:maj", "C:min", "parallel"),
+                ("C:maj", "F#:maj", "none"),
             ]
         } == {r.name for r in substitution.RELATIONS}
 
 
 class TestEveryRelationEarnsItsPlace:
-    """Swept over a grid of labels rather than hand-picked pairs.
-
-    A relation no pair can reach is dead weight in the table, and one that wins
-    for a pair it should not is how the credits stop meaning anything.
-    """
+    """Swept over ``GRID`` pairwise rather than over hand-picked pairs."""
 
     def test_every_relation_wins_for_some_pair(self):
         chords = [parse(label) for label in GRID]

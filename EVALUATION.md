@@ -81,9 +81,9 @@ apart because substitution is correct practice:
 
 - a tritone substitution (`G:7` for `Db:7`) and a ii written for its V (`D:min7` for `G:7`) are
   misses under `majmin`, `sevenths` **and** `mirex` — nothing scores them as near;
-- a rootless dominant is scored by one vocabulary and not the others: where the annotation
-  names `B:hdim7`, `majmin` and `sevenths` cannot express it and that time leaves the
-  denominator, while `mirex` calls it an exact match against `G:7`;
+- where the annotation names a rootless dominant such as `B:hdim7`, `majmin` and `sevenths`
+  cannot express it and that time leaves their denominator, while `mirex` counts it correct
+  against `G:7` — the two share B, D and F;
 - the four vocabularies disagree so sharply on the rest that "how close was it" takes reading
   all four.
 
@@ -105,17 +105,15 @@ number over the same seconds WCSR uses:
 | `parallel` | 0.40 | `C:maj` / `C:min` |
 | `none` | 0.00 | anything else |
 
-The last three are near misses rather than substitutions: they fall below the threshold below,
-so they fail `substitutions` and carry credit only in the `theory` score.
-
 It is reported two ways, and **neither changes WCSR**:
 
 - the `theory` row, a duration-weighted score over the same merged seconds WCSR uses, with the
   same mean and weighted aggregates;
 - the `substitutions` vocabulary, which turns the credit back into a pass/fail at
-  `metrics.SUBSTITUTION_MIN_CREDIT` (0.75). That threshold sits above `relative` and
-  `ii_V_merge` on purpose: a tritone substitution and a rootless dominant pass, a relative minor
-  and a ii written for its V do not.
+  `metrics.SUBSTITUTION_MIN_CREDIT` (0.75). Everything from `dim_for_dominant` up passes, so a
+  tritone substitution and a rootless dominant count correct; a ii written for its V, a relative
+  minor, a suspension against a plain triad, a seventh swap and a parallel major/minor do not,
+  and carry their credit in the `theory` score alone.
 
 `score` also prints the share of compared time each relation accounted for, and `--json`
 records it per track. That breakdown is the thing to read first: **the credits are musical
@@ -123,6 +121,10 @@ judgement, not measured frequencies.** Nothing here has yet measured how often t
 lead sheets of one tune disagree in each of these ways, so a run whose credit leans on
 `relative` or `ii_V_merge` is evidence those two are too generous rather than evidence the model
 is doing well. Read `theory` as indicative, the way `grid` is.
+
+Coverage of near misses is uneven. A diminished chord against a chord one note away on the same
+root — `C:dim7` against `C:min6`, `C:hdim7` against `C:7(b5)` — grades `none`, although three of
+its four notes agree. Those pairs want a relation the table does not have yet.
 
 `substitutions` and `mirex` compare a *pair* of chords, so neither has a per-chord class.
 `chart`, `grid` and `bar` are built on projected label strings and leave both out; asking for
