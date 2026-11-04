@@ -163,6 +163,72 @@ class TestSurveyFormatting:
         assert "NaN" not in json.dumps(document)
 
 
+class TestDisagreementsInTheSurvey:
+    """What the sources disagree about, from the annotations alone.
+
+    No audio, no model and no estimate: this is a property of the references,
+    and it is what says whether the relation table covers the ways real charts
+    of one tune differ.
+    """
+
+    def test_an_ordinary_corpus_reports_nothing(self, corpus):
+        data = corpus({"a": "0.0 10.0 C:maj\n10.0 20.0 A:min\n"})
+        result = survey(data)
+        assert result.disagreements is None
+        assert "sources disagree" not in format_survey(result)
+
+    def test_a_corpus_with_alternatives_reports_each_pair(self, corpus):
+        data = corpus({"a": "0.0 10.0 D:min|D:7\n10.0 20.0 G:7|Db:7\n"})
+        found = survey(data).disagreements
+        assert {pair.label for pair in found.pairs} == {"D:min|D:7", "G:7|Db:7"}
+        assert found.duration == pytest.approx(20.0)
+
+    def test_the_share_is_taken_of_the_whole_corpus(self, corpus):
+        data = corpus({"a": "0.0 5.0 D:min|D:7\n5.0 20.0 C:maj\n"})
+        found = survey(data).disagreements
+        assert found.annotated == pytest.approx(20.0)
+        assert found.share == pytest.approx(0.25)
+
+    def test_it_accumulates_across_tracks(self, corpus):
+        data = corpus({"a": "0.0 10.0 D:min|D:7\n", "b": "0.0 10.0 D:min|D:7\n"})
+        found = survey(data).disagreements
+        assert len(found.pairs) == 1
+        assert found.pairs[0].segments == 2
+        assert found.pairs[0].duration == pytest.approx(20.0)
+
+    def test_every_label_still_parses_because_parse_reads_the_primary(self, corpus):
+        # survey exits non-zero on an unparseable label, so a reference carrying
+        # alternatives must not look like a gap in harte.py.
+        data = corpus({"a": "0.0 10.0 D:min|D:7\n"})
+        assert survey(data).unparseable == ()
+
+    def test_the_text_report_names_the_relation_and_lists_the_unexplained(self, corpus):
+        data = corpus({"a": "0.0 10.0 G:7|Db:7\n10.0 20.0 C:maj|F#:maj\n"})
+        text = format_survey(survey(data))
+        assert "sources disagree over" in text
+        assert "tritone_sub" in text
+        assert "reach no relation at all" in text
+        assert "C:maj|F#:maj" in text
+
+    def test_the_text_report_says_so_when_the_table_covers_everything(self, corpus):
+        data = corpus({"a": "0.0 10.0 G:7|Db:7\n"})
+        text = format_survey(survey(data))
+        assert "every pair reaches a relation" in text
+
+    def test_json_carries_the_pairs(self, corpus):
+        import json
+
+        data = corpus({"a": "0.0 10.0 D:min|D:7\n"})
+        document = survey_to_dict(survey(data))
+        json.dumps(document)
+        assert document["disagreements"]["pairs"][0]["relation"] == "parallel"
+        assert document["disagreements"]["share"] == pytest.approx(1.0)
+
+    def test_json_is_null_without_alternatives(self, corpus):
+        data = corpus({"a": "0.0 10.0 C:maj\n"})
+        assert survey_to_dict(survey(data))["disagreements"] is None
+
+
 class TestCountArguments:
     # The only tests that drive the eval parser, so they live beside the
     # survey's, which already exercises this CLI's text and JSON output.

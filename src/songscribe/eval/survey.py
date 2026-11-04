@@ -10,8 +10,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
+from ..types import ChordEvent
+from .consensus import Disagreements, disagreements
 from .dataset import Dataset
-from .harte import parse
+from .harte import ALTERNATIVE_SEPARATOR, parse
 from .metrics import DEFAULT_VOCABULARIES, compare
 
 #: Labels reported individually in the summary before the tail is collapsed.
@@ -39,6 +41,9 @@ class Survey:
     labels: tuple[LabelStats, ...]
     scoreable: dict[str, float]
     unreadable: tuple[tuple[str, str], ...] = ()
+    #: What the corpus's sources disagree about, where a label prints more than
+    #: one chord for a bar. Empty for a corpus that prints one chord per segment.
+    disagreements: Disagreements | None = None
 
     @property
     def unparseable(self) -> tuple[LabelStats, ...]:
@@ -65,6 +70,10 @@ def survey(
     segment_counts: Counter[str] = Counter()
     durations: Counter[str] = Counter()
     unreadable: list[tuple[str, str]] = []
+    # Only the segments whose label prints more than one chord are kept, which on
+    # a hand-entered corpus is a few bars a tune, so this stays small where
+    # holding every event would not.
+    contested: list[ChordEvent] = []
     tracks = 0
 
     for track in dataset.tracks:
@@ -77,6 +86,8 @@ def survey(
         for event in events:
             segment_counts[event.label] += 1
             durations[event.label] += event.duration
+            if ALTERNATIVE_SEPARATOR in event.label:
+                contested.append(event)
 
     total = sum(durations.values())
     labels = tuple(
@@ -115,4 +126,5 @@ def survey(
         labels=labels,
         scoreable=scoreable,
         unreadable=tuple(unreadable),
+        disagreements=disagreements(contested, annotated=total) if contested else None,
     )

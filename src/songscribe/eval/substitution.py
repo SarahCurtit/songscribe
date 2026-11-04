@@ -45,6 +45,10 @@ _TRITONE = 6
 #: same way.
 _NINTHS = (1, 2)
 
+#: Largest symmetric difference between two chords' pitch classes that still
+#: counts as one note apart: one note changed on each side.
+_ONE_NOTE_APART = 2
+
 #: Shared pitch classes the overlap-gated relations below require. Two notes is
 #: a coincidence for chords of this width: ``C:maj`` and ``A:min`` share C and E
 #: and are a plain error, which is what ``mirex`` says about them too.
@@ -223,6 +227,35 @@ def _seventh_swap(reference: Chord, estimate: Chord) -> bool:
     return None not in sevenths and sevenths[0] != sevenths[1]
 
 
+def _dim_near_miss(reference: Chord, estimate: Chord) -> bool:
+    """Same root, a diminished chord on at least one side, and one note apart.
+
+    Three quality pairs reach it and no others: ``C:dim``/``C:min`` and
+    ``C:dim7``/``C:min6``, which differ only in the fifth, and
+    ``C:hdim7``/``C:7(*5,b5)``, only in the third. Each graded zero before --
+    identical to a chord sharing no notes at all -- which made ``theory`` the
+    harshest measure in the harness on the near miss a seventh-capable model
+    makes most often around a diminished chord.
+
+    Note the spelling of that last one. ``C:7(b5)`` *adds* a flat fifth and keeps
+    the natural one, so it is five notes and three away from ``C:hdim7``; the
+    four-note chord is ``C:7(*5,b5)``, which omits the fifth it replaces.
+
+    Confined to the diminished family deliberately. Read as "any two chords on
+    one root a note apart" it would also hold for ``C:maj``/``C:min``, and since
+    :func:`grade` takes the highest credit that would quietly override
+    ``parallel``: major for minor is the signature triad-model error and is meant
+    to score low. ``C:hdim7``/``C:min7`` and ``C:dim7``/``C:hdim7`` are also a
+    note apart but are claimed by ``guide_tones`` and ``seventh_swap``, which
+    describe them better.
+    """
+    if reference.root is None or reference.root != estimate.root:
+        return False
+    if not (_is_diminished(reference) or _is_diminished(estimate)):
+        return False
+    return len(reference.pitch_classes ^ estimate.pitch_classes) <= _ONE_NOTE_APART
+
+
 def _guide_tones(reference: Chord, estimate: Chord) -> bool:
     """The third and the seventh land on the same pitch classes, in the same roles.
 
@@ -328,6 +361,7 @@ RELATIONS: tuple[Relation, ...] = (
     Relation("relative", 0.70, _relative),
     Relation("sus_for_triad", 0.70, _sus_for_triad),
     Relation("seventh_swap", 0.60, _seventh_swap),
+    Relation("dim_near_miss", 0.60, _dim_near_miss),
     Relation("parallel", 0.40, _parallel),
     Relation(NO_RELATION, 0.00, lambda reference, estimate: True),
 )

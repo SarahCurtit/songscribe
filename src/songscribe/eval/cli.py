@@ -621,7 +621,46 @@ def format_survey(result, label_limit: int = TOP_LABELS) -> str:
             lines.append(f"  {stats.label!r:20} {stats.duration / 60:7.1f} min  {share}{flag}")
         lines.append("")
 
+    lines += _disagreement_lines(result.disagreements)
     return "\n".join(lines)
+
+
+def _disagreement_lines(found) -> list[str]:
+    """What the corpus's sources disagree about, and which relation explains it.
+
+    Silent on a corpus whose labels print one chord each, which is every corpus
+    without hand-entered alternatives.
+    """
+    if found is None or not found.pairs:
+        return []
+    lines = [
+        f"sources disagree over {found.duration / 60:.1f} min, "
+        f"{found.share:.1%} of annotated time:",
+        "",
+        f"  {'pair':<34}{'relation':<18}{'credit':>7}{'min':>8}",
+    ]
+    for pair in found.pairs:
+        lines.append(
+            f"  {_truncate(pair.label):<34}{pair.relation:<18}"
+            f"{pair.credit:>7.2f}{pair.duration / 60:>8.1f}"
+        )
+    lines.append("")
+    unexplained = found.unexplained
+    if unexplained:
+        lines += [
+            f"{len(unexplained)} of {len(found.pairs)} pairs reach no relation at all. Each is",
+            "either a relation substitution.py is missing or a chart read wrong on the way in,",
+            "and telling those apart wants a person's eye:",
+            "  " + ",  ".join(pair.label for pair in unexplained),
+            "",
+        ]
+    else:
+        lines += [
+            "every pair reaches a relation, so the table covers every way these sources",
+            "differ. That is a statement about this corpus, not about the table.",
+            "",
+        ]
+    return lines
 
 
 def survey_to_dict(result) -> dict:
@@ -642,6 +681,24 @@ def survey_to_dict(result) -> dict:
             }
             for s in result.labels
         ],
+        "disagreements": None
+        if result.disagreements is None
+        else {
+            "duration": result.disagreements.duration,
+            "share": _jsonable(result.disagreements.share),
+            "by_relation": result.disagreements.by_relation,
+            "pairs": [
+                {
+                    "primary": pair.primary,
+                    "alternative": pair.alternative,
+                    "relation": pair.relation,
+                    "credit": pair.credit,
+                    "duration": pair.duration,
+                    "segments": pair.segments,
+                }
+                for pair in result.disagreements.pairs
+            ],
+        },
     }
 
 
@@ -776,6 +833,11 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
 
 def format_report(report) -> str:
     """Render the corpus-level summary table."""
+    # The consensus column appears only when some reference really prints more
+    # than one chord for a segment. Without it the table keeps exactly the width
+    # and the columns it had, rather than carrying a second copy of `weighted`.
+    consensus = report.has_consensus
+    gap = f"{'':>10}" if consensus else ""
     lines = [
         "",
         f"dataset   {report.dataset}",
@@ -786,40 +848,47 @@ def format_report(report) -> str:
         + (f", {len(report.skipped)} skipped" if report.skipped else ""),
         f"duration  {report.total_duration / 60:.1f} min of annotated audio",
         "",
-        f"{'vocabulary':<12}{'mean':>10}{'weighted':>10}   {'definition'}",
+        f"{'vocabulary':<12}{'mean':>10}{'weighted':>10}"
+        + (f"{'consensus':>10}" if consensus else "")
+        + f"   {'definition'}",
     ]
     for vocabulary in report.vocabularies:
-        lines.append(
+        row = (
             f"{vocabulary:<12}{_percent(report.mean(vocabulary)):>10}"
-            f"{_percent(report.weighted(vocabulary)):>10}   {VOCABULARIES[vocabulary]}"
+            f"{_percent(report.weighted(vocabulary)):>10}"
         )
+        if consensus:
+            row += f"{_percent(report.weighted_consensus(vocabulary)):>10}"
+        lines.append(f"{row}   {VOCABULARIES[vocabulary]}")
     lines += [
         "",
         f"{'chart':<12}{_percent(report.mean_chart()):>10}"
-        f"{'':>10}   chord order as printed, timing ignored",
+        f"{'':>10}{gap}   chord order as printed, timing ignored",
         f"{'grid':<12}{_percent(report.mean_grid()):>10}"
-        f"{'':>10}   order + harmonic rhythm in bars, tempo-free"
+        f"{'':>10}{gap}   order + harmonic rhythm in bars, tempo-free"
         + (
             f" ({report.graded_grids()}/{len(report.results)} tracks)"
             if report.graded_grids() != len(report.results)
             else ""
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
-        f"{'':>10}   boundary agreement, labels ignored",
+        f"{'':>10}{gap}   boundary agreement, labels ignored",
         # The weighted column is filled, unlike chart and grid: this is the same
         # merge over the same seconds as WCSR, so a duration weighting means the
         # same thing here.
         f"{'theory':<12}{_percent(report.mean_graded()):>10}"
-        f"{_percent(report.weighted_graded()):>10}   partial credit for jazz substitutions",
+        f"{_percent(report.weighted_graded()):>10}"
+        + (f"{_percent(report.weighted_consensus_graded()):>10}" if consensus else "")
+        + "   partial credit for jazz substitutions",
     ]
     if report.chorus_count():
         lines.append(
             f"{'bar':<12}{_percent(report.mean_bar()):>10}"
-            f"{'':>10}   bars with the right chord (independent of tempo and offset)"
+            f"{'':>10}{gap}   bars with the right chord (independent of tempo and offset)"
         )
         lines += [
             f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
-            f"{'':>10}   same, comparing chords as {v}"
+            f"{'':>10}{gap}   same, comparing chords as {v}"
             for v in report.vocabularies
             if v != "majmin" and v not in PAIRWISE_VOCABULARIES
         ]
@@ -831,6 +900,14 @@ def format_report(report) -> str:
         "credits are musical judgement, not measured frequencies: read it as indicative.",
         "",
     ]
+    if consensus:
+        lines += [
+            "consensus scores against every chord the reference's sources print for a bar,",
+            "where weighted scores against the first alone. The gap between the two columns",
+            "is how much of the apparent error is chart choice rather than the model. Run",
+            "`survey` on the same manifest to see what the sources disagree about.",
+            "",
+        ]
     lines += _relation_breakdown(report)
     if report.chorus_count():
         lines += [
@@ -932,6 +1009,17 @@ def report_to_dict(report) -> dict:
             vocabulary: {
                 "mean": _jsonable(report.mean(vocabulary)),
                 "weighted": _jsonable(report.weighted(vocabulary)),
+                # Absent rather than a copy of the strict numbers when no
+                # reference prints alternatives, so a consumer can tell the two
+                # situations apart.
+                **(
+                    {
+                        "consensus_mean": _jsonable(report.mean_consensus(vocabulary)),
+                        "consensus_weighted": _jsonable(report.weighted_consensus(vocabulary)),
+                    }
+                    if report.has_consensus
+                    else {}
+                ),
             }
             for vocabulary in report.vocabularies
         },
@@ -945,6 +1033,11 @@ def report_to_dict(report) -> dict:
             "mean": _jsonable(report.mean_graded()),
             "weighted": _jsonable(report.weighted_graded()),
             "by_relation": report.graded_relations(),
+            **(
+                {"consensus_weighted": _jsonable(report.weighted_consensus_graded())}
+                if report.has_consensus
+                else {}
+            ),
         },
         "bar": {
             "mean": _jsonable(report.mean_bar()),
@@ -987,6 +1080,23 @@ def report_to_dict(report) -> dict:
                         "ignored": score.ignored,
                     }
                     for vocabulary, score in result.scores.items()
+                },
+                "consensus": {
+                    vocabulary: {
+                        "wcsr": _jsonable(score.wcsr),
+                        "correct": score.correct,
+                        "compared": score.compared,
+                        "ignored": score.ignored,
+                    }
+                    for vocabulary, score in result.consensus.items()
+                },
+                "consensus_theory": None
+                if result.consensus_graded is None
+                else {
+                    "score": _jsonable(result.consensus_graded.score),
+                    "credit": result.consensus_graded.credit,
+                    "compared": result.consensus_graded.compared,
+                    "by_relation": result.consensus_graded.by_relation,
                 },
                 "theory": None
                 if result.graded is None
@@ -1058,6 +1168,10 @@ def _chorus_to_dict(part) -> dict:
         "segmentation": _jsonable(part.segmentation.score),
         "scores": {name: _jsonable(score.wcsr) for name, score in part.scores.items()},
         "theory": None if part.graded is None else _jsonable(part.graded.score),
+        "consensus": {name: _jsonable(score.wcsr) for name, score in part.consensus.items()},
+        "consensus_theory": None
+        if part.consensus_graded is None
+        else _jsonable(part.consensus_graded.score),
     }
 
 
