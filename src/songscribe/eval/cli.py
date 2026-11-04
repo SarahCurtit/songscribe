@@ -356,8 +356,11 @@ def _split(args: argparse.Namespace) -> int:
     try:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         train, test = split_manifest(manifest, args.test_fraction)
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+    except KeyError:
+        print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
         return 1
 
     directory = args.output_dir or args.manifest.parent
