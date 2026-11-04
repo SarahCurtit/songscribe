@@ -26,6 +26,16 @@ MIN_SEGMENT = 1e-9
 #: them a match. Three is the MIREX definition -- a triad's worth of agreement.
 MIREX_MIN_SHARED = 3
 
+#: Credit a substitution must be worth for the ``substitutions`` vocabulary to
+#: call it a match. Set deliberately above ``relative`` and ``ii_V_merge``
+#: (0.70) and below ``tritone_sub`` (0.80): the boolean verdict stays
+#: conservative -- a tritone substitution and a rootless dominant pass, a
+#: relative minor and a ii written for its V do not -- while the partial credit
+#: those two deserve is carried by ``substitution.graded_score`` instead. Keeping
+#: the threshold here, beside MIREX_MIN_SHARED, is deliberate: it belongs to the
+#: vocabulary rather than to the relation table, which has no notion of passing.
+SUBSTITUTION_MIN_CREDIT = 0.75
+
 #: How far either way :func:`best_offset` looks for a better alignment, and at
 #: what resolution. Three seconds covers the realistic causes -- encoder
 #: lead-in, a rip that kept some pre-gap, a differently trimmed master -- while
@@ -47,7 +57,15 @@ VOCABULARIES: dict[str, str] = {
     "triads": "majmin plus dim, aug, sus2, sus4",
     "sevenths": "maj, min, 7, maj7, min7",
     "mirex": f"at least {MIREX_MIN_SHARED} pitch classes in common",
+    "substitutions": "a jazz substitution a player would accept, by music theory",
 }
+
+#: Vocabularies that compare a *pair* of chords and so have no per-chord class.
+#: :func:`project` cannot serve them, which means every metric built on
+#: projected label strings -- ``chart``, ``grid``, ``bar`` -- has to leave them
+#: out. Named once here because three separate ``!= "mirex"`` tests is three
+#: places to forget the next one.
+PAIRWISE_VOCABULARIES = ("mirex", "substitutions")
 
 #: Several are reported because they ask different questions: ``majmin`` whether the
 #: triad is right, ``sevenths`` whether the seventh is too. The default backend only knows
@@ -155,8 +173,9 @@ def project(chord: Chord | None, vocabulary: str) -> str | None:
     elif vocabulary == "sevenths":
         quality = seventh_of(chord)
     else:
-        # "mirex" compares pitch-class overlap, which is pairwise and so has no
-        # per-chord class. compare() handles it without calling project().
+        # PAIRWISE_VOCABULARIES compare two chords against each other -- overlap
+        # for "mirex", a relation for "substitutions" -- so neither has a
+        # per-chord class. compare() handles both without calling project().
         raise ValueError(f"vocabulary {vocabulary!r} has no per-chord projection")
 
     return None if quality is None else f"{chord.root_name}:{quality}"
@@ -185,6 +204,15 @@ def compare(reference: Chord | None, estimate: Chord | None, vocabulary: str) ->
             return False
         shared = reference.pitch_classes & estimate.pitch_classes
         return len(shared) >= MIREX_MIN_SHARED
+
+    if vocabulary == "substitutions":
+        # Imported here rather than at module scope: substitution.py reads
+        # triad_of and seventh_of from this module, so the other direction can
+        # only be a deferred import. dedupe_chart imports align the same way.
+        from .substitution import grade
+
+        graded = grade(reference, estimate)
+        return None if graded is None else graded.credit >= SUBSTITUTION_MIN_CREDIT
 
     reference_class = project(reference, vocabulary)
     if reference_class is None:

@@ -43,6 +43,7 @@ src/songscribe/
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
     metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
+    substitution.py  graded chord relations: how close a wrong chord is  (pure Python)
     labels.py     chord labels -> one rough symbol per beat, and how well two agree (numpy)
     chart_fit.py  the chart's labels against an estimate from a start, with its chance level (numpy)
     recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
@@ -217,7 +218,7 @@ Useful priors when debugging bad output, roughly in order of impact:
    scoring 58% WCSR but 29% on `songscribe-eval`'s `chart` metric. **WCSR flatters this
    failure; `chart` and `segmentation` are what expose it.**
 
-Which metric to believe depends on the question, and `songscribe-eval` reports four because
+Which metric to believe depends on the question, and `songscribe-eval` reports five because
 they disagree sharply (see `EVALUATION.md`):
 
 | Metric | Asks | Robust to |
@@ -226,6 +227,15 @@ they disagree sharply (see `EVALUATION.md`):
 | `chart` | is the printed chord order right | offset and tempo |
 | `grid` | …and the harmonic rhythm, in bars | offset and tempo |
 | `segmentation` | are the boundaries in the right places | nothing — labels ignored |
+| `theory` | how close is a wrong chord, musically | nothing — same seconds as WCSR |
+
+`theory` (`eval/substitution.py`) grades the *relation* between two chords — extension,
+tritone sub, rootless dominant, relative, parallel — instead of comparing symbols, because
+substitution is correct jazz practice and `sevenths` scores it as a miss. It never touches
+WCSR: the partial credit lives in its own `GradedScore`, and the `substitutions` vocabulary
+is the conservative pass/fail over the same table. **Its credits are musical judgement, not
+measured frequencies** — read the per-relation breakdown `score` prints before believing the
+single number, and don't re-fit the credits until several lead sheets per tune exist.
 
 `grid` is the one that distinguishes one chord per bar from two, which is most of what makes
 an instrumental chart readable. Its harmonic unit is **estimated from chord durations**, so

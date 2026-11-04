@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..beats import BeatGrid
 from ..types import ChordEvent
-from . import chart_fit, form, form_start, metrics
+from . import chart_fit, form, form_start, metrics, substitution
 from .dataset import Dataset, Track
 
 log = logging.getLogger(__name__)
@@ -46,6 +46,8 @@ class ChorusResult:
     #: ``bar`` per scored vocabulary; ``bar`` itself is the majmin entry.
     bar_by_vocabulary: dict[str, float] = field(default_factory=dict)
     alignment: metrics.Alignment | None = None
+    #: Partial credit for jazz substitutions (``substitution.graded_score``).
+    graded: substitution.GradedScore | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,10 @@ class TrackResult:
     anchor: form_start.Anchor | None = None
     #: Seconds of the recording not in any scored block (intro, tail, unaligned).
     unscored_seconds: float = 0.0
+    #: Partial credit for jazz substitutions: how close the estimate is musically
+    #: where it is not exactly right. Carries no vocabulary in its name, so it is
+    #: always graded over the whole relation table, whatever ``-v`` asked for.
+    graded: substitution.GradedScore | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +127,37 @@ class Report:
     def mean_segmentation(self) -> float:
         values = [r.segmentation.score for r in self.results if not isnan(r.segmentation.score)]
         return sum(values) / len(values) if values else nan
+
+    def mean_graded(self) -> float:
+        """Unweighted mean of the per-track graded score, skipping ungraded tracks."""
+        values = [
+            r.graded.score
+            for r in self.results
+            if r.graded is not None and not isnan(r.graded.score)
+        ]
+        return sum(values) / len(values) if values else nan
+
+    def weighted_graded(self) -> float:
+        """Duration-weighted partial credit across the whole corpus."""
+        graded = [r.graded for r in self.results if r.graded is not None]
+        credit = sum(g.credit for g in graded)
+        compared = sum(g.compared for g in graded)
+        return credit / compared if compared > metrics.MIN_SEGMENT else nan
+
+    def graded_relations(self) -> dict[str, float]:
+        """Compared duration per relation over the corpus, largest share first.
+
+        The only audit there is on the credit table: a run whose credit comes
+        mostly from ``relative`` or ``ii_V_merge`` is one where those two are
+        too loose, not one where the model is doing well.
+        """
+        totals: dict[str, float] = {}
+        for result in self.results:
+            if result.graded is None:
+                continue
+            for name, duration in result.graded.by_relation.items():
+                totals[name] = totals.get(name, 0.0) + duration
+        return dict(sorted(totals.items(), key=lambda item: -item[1]))
 
     def mean_grid(self) -> float:
         """Unweighted mean grid similarity over the tracks that have a grid.
@@ -360,12 +397,35 @@ def score_track(
         estimate_chart_chords=len(estimate_chart),
         grid=metrics.grid_score(reference, estimated, chart_vocabulary),
         harmonic=harmonic,
+        graded=substitution.graded_score(reference, estimated),
     )
 
 
 def _mean(values: list[float]) -> float:
     present = [v for v in values if not isnan(v)]
     return sum(present) / len(present) if present else nan
+
+
+def _sum_graded(parts: list[substitution.GradedScore | None]) -> substitution.GradedScore | None:
+    """Combine several choruses' partial credit into one, by duration.
+
+    Summed rather than averaged, as the ``Score`` rows beside it are: the whole
+    performance is one body of compared time, and a chorus the model found easy
+    should not count for as much as a long one it did not.
+    """
+    present = [part for part in parts if part is not None]
+    if not present:
+        return None
+    by_relation: dict[str, float] = {}
+    for part in present:
+        for name, duration in part.by_relation.items():
+            by_relation[name] = by_relation.get(name, 0.0) + duration
+    return substitution.GradedScore(
+        credit=sum(part.credit for part in present),
+        compared=sum(part.compared for part in present),
+        ignored=sum(part.ignored for part in present),
+        by_relation=by_relation,
+    )
 
 
 def score_performance(
@@ -398,8 +458,11 @@ def score_performance(
     # One key for the whole take; a tune that modulates is not handled.
     blocks = form.in_key(found, anchor.shift)
     reference_bar = (end - start) / bars_per_chorus
-    # mirex scores pairs of chords, so a bar has no mirex class.
-    bar_vocabularies = tuple(name for name in vocabularies if name != "mirex")
+    # A bar score compares projected label strings, so the pairwise vocabularies
+    # -- which have no per-chord class at all -- cannot be asked for one.
+    bar_vocabularies = tuple(
+        name for name in vocabularies if name not in metrics.PAIRWISE_VOCABULARIES
+    )
 
     results: list[ChorusResult] = []
     inner: list[TrackResult] = []
@@ -434,6 +497,7 @@ def score_performance(
                     for name in bar_vocabularies
                 },
                 alignment=result.alignment,
+                graded=result.graded,
             )
         )
         inner.append(result)
@@ -475,6 +539,7 @@ def score_performance(
         },
         anchor=anchor,
         unscored_seconds=form.unscored_seconds(blocks),
+        graded=_sum_graded([c.graded for c in chosen]),
     )
 
 

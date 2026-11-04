@@ -216,6 +216,30 @@ class TestSingleChorusIsUnchanged:
         assert framed.duration == plain.duration
         assert framed.unscored_seconds == 0.0
         assert len(framed.choruses) == 1
+        assert framed.graded == plain.graded
+
+
+class TestPerChorusWithAPairwiseVocabulary:
+    def test_substitutions_scores_per_chorus_without_asking_for_a_bar_class(self, tmp_path):
+        # A bar score compares projected label strings, which `substitutions`
+        # has none of. Before PAIRWISE_VOCABULARIES this raised mid-run.
+        performance = take(pickup_beats=3)
+        result = score(
+            tmp_path,
+            performance,
+            wrong_fifth_bar(performance.events),
+            vocabularies=("majmin", "substitutions"),
+        )
+        assert "substitutions" in result.scores
+        assert "substitutions" not in result.bar_by_vocabulary
+        assert "majmin" in result.bar_by_vocabulary
+
+    def test_the_graded_score_sums_over_the_choruses_it_counted(self, tmp_path):
+        performance = take(pickup_beats=3)
+        result = score(tmp_path, performance, performance.events)
+        counted = [c for c in result.choruses if c.chorus.kind != "partial"]
+        assert result.graded.compared == pytest.approx(sum(c.graded.compared for c in counted))
+        assert result.graded.credit == pytest.approx(sum(c.graded.credit for c in counted))
 
 
 class TestEvaluateWithABarGrid:

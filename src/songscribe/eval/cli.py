@@ -24,6 +24,7 @@ from .metrics import (
     ALIGNMENT_WARN_GAIN,
     ALIGNMENT_WARN_OFFSET,
     DEFAULT_VOCABULARIES,
+    PAIRWISE_VOCABULARIES,
     VOCABULARIES,
 )
 from .split import TEST_FRACTION
@@ -738,7 +739,7 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
     """
     header_written = False
 
-    bar_vocabularies = tuple(v for v in vocabularies if v != "mirex")
+    bar_vocabularies = tuple(v for v in vocabularies if v not in PAIRWISE_VOCABULARIES)
 
     def row(label: str, scores, segmentation, bars: dict[str, float] | None, key: str = "") -> None:
         nonlocal header_written
@@ -805,6 +806,11 @@ def format_report(report) -> str:
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
+        # Duration-weighted like WCSR, and shown in the weighted column, because
+        # it is the same merge over the same seconds -- unlike chart and grid,
+        # which are per-track by construction.
+        f"{'theory':<12}{_percent(report.mean_graded()):>10}"
+        f"{_percent(report.weighted_graded()):>10}   partial credit for jazz substitutions",
     ]
     if report.chorus_count():
         lines.append(
@@ -815,14 +821,17 @@ def format_report(report) -> str:
             f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
             f"{'':>10}   same, comparing chords as {v}"
             for v in report.vocabularies
-            if v not in ("majmin", "mirex")
+            if v != "majmin" and v not in PAIRWISE_VOCABULARIES
         ]
     lines += [
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
         "chart and grid are per-track and unweighted: a chart is a chart at any length.",
+        "theory gives partial credit by music theory and leaves WCSR untouched. Its",
+        "credits are musical judgement, not measured frequencies: read it as indicative.",
         "",
     ]
+    lines += _relation_breakdown(report)
     if report.chorus_count():
         lines += [
             f"{report.chorus_count()} choruses in {len(report.results)} tracks, scored separately.",
@@ -839,6 +848,24 @@ def format_report(report) -> str:
         ]
     lines += _alignment_warning(report)
     return "\n".join(lines)
+
+
+def _relation_breakdown(report) -> list[str]:
+    """Where theory's credit came from, as a share of compared time per relation.
+
+    Printed because the credit table is unfitted: a corpus whose credit leans on
+    ``relative`` or ``ii_V_merge`` is one where those two are too generous, and
+    that is invisible in the single ``theory`` number.
+    """
+    relations = report.graded_relations()
+    total = sum(relations.values())
+    if total <= 0:
+        return []
+    return [
+        "theory by relation (share of compared time):",
+        "  " + ",  ".join(f"{name} {duration / total:.1%}" for name, duration in relations.items()),
+        "",
+    ]
 
 
 def _input_variant(report) -> str:
@@ -919,11 +946,18 @@ def report_to_dict(report) -> dict:
             "graded_tracks": report.graded_grids(),
         },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
+        "theory": {
+            "mean": _jsonable(report.mean_graded()),
+            "weighted": _jsonable(report.weighted_graded()),
+            "by_relation": report.graded_relations(),
+        },
         "bar": {
             "mean": _jsonable(report.mean_bar()),
             "choruses": report.chorus_count(),
             "by_vocabulary": {
-                v: _jsonable(report.mean_bar(v)) for v in report.vocabularies if v != "mirex"
+                v: _jsonable(report.mean_bar(v))
+                for v in report.vocabularies
+                if v not in PAIRWISE_VOCABULARIES
             },
         },
         "tracks": [
@@ -958,6 +992,15 @@ def report_to_dict(report) -> dict:
                         "ignored": score.ignored,
                     }
                     for vocabulary, score in result.scores.items()
+                },
+                "theory": None
+                if result.graded is None
+                else {
+                    "score": _jsonable(result.graded.score),
+                    "credit": result.graded.credit,
+                    "compared": result.graded.compared,
+                    "ignored": result.graded.ignored,
+                    "by_relation": result.graded.by_relation,
                 },
                 "alignment": None
                 if result.alignment is None
@@ -1019,6 +1062,7 @@ def _chorus_to_dict(part) -> dict:
         "grid": _jsonable(part.grid),
         "segmentation": _jsonable(part.segmentation.score),
         "scores": {name: _jsonable(score.wcsr) for name, score in part.scores.items()},
+        "theory": None if part.graded is None else _jsonable(part.graded.score),
     }
 
 

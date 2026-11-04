@@ -168,3 +168,25 @@ class TestAgreementSpans:
 
     def test_an_empty_reference_gives_nothing_to_draw(self, turnaround):
         assert viz.agreement_spans([], turnaround) == ()
+
+    def test_it_works_in_the_substitutions_vocabulary(self):
+        # agreement_spans goes through metrics.compare, which serves every
+        # vocabulary including the pairwise ones -- so a plot can show where a
+        # substitution was accepted that majmin called wrong.
+        reference = timeline((0.0, 2.0, "C:7"), (2.0, 4.0, "G:maj"))
+        estimate = timeline((0.0, 2.0, "C:maj"), (2.0, 4.0, "F:maj"))
+        assert viz.agreement_spans(reference, estimate, "substitutions") == (
+            (0.0, 2.0, True),
+            (2.0, 4.0, False),
+        )
+
+
+class TestPairwiseVocabulariesInViz:
+    def test_chord_spans_cannot_colour_a_pairwise_vocabulary(self, turnaround):
+        # It projects each chord on its own, which a pairwise vocabulary has no
+        # way to do. Raising beats drawing a lane of mislabelled spans.
+        from songscribe.eval.metrics import PAIRWISE_VOCABULARIES
+
+        for vocabulary in PAIRWISE_VOCABULARIES:
+            with pytest.raises(ValueError, match="no per-chord projection"):
+                viz.chord_spans(turnaround, vocabulary)

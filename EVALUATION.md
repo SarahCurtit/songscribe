@@ -22,6 +22,7 @@ The `template` backend needs no model weights. `madmom` needs the `chords` extra
 | `grid` | is the order right, and the harmonic rhythm in bars | offset and tempo |
 | `segmentation` | are the chord boundaries in the right places | nothing; labels are ignored |
 | `bar` | does each bar carry the right chord | offset, tempo and length |
+| `theory` | how close is a wrong chord, musically | nothing; it grades the same seconds WCSR does |
 | `placement` | does each chord sit over the right word | offset and tempo |
 
 `bar` applies to recordings of a repeated chart (see
@@ -40,6 +41,7 @@ computed under a comparison vocabulary:
 | `triads` | as `majmin`, plus dim, aug, sus2, sus4 |
 | `sevenths` | the seventh also matches: maj, min, 7, maj7, min7 |
 | `mirex` | the two chords share at least 3 pitch classes |
+| `substitutions` | the two chords stand in a substitution a player would accept |
 
 The default is `root majmin sevenths mirex`; choose others with `-v`, repeatable. The gap
 between vocabularies shows where errors come from. A backend that only emits triads scores
@@ -71,6 +73,48 @@ those cases.
   low WCSR means the boundaries are right and the labels are wrong; both low together points
   to a timing problem in the recording (see [Checking the alignment](#checking-the-alignment)).
 
+### theory: how close a wrong chord is
+
+Every vocabulary above compares two chords for equality after reducing them to a class. On a
+jazz chart that is the wrong question, because substitution is correct practice: a chart's
+`A:7(#5)` played as `A:7`, a `B:hdim7` played as `G:7`, a `C:7` voiced as `C:13`. All three are
+misses under `sevenths` and indistinguishable from a genuinely wrong chord.
+
+`theory` names the relation between the two chords instead and gives it partial credit:
+
+| Relation | Credit | Example |
+|---|---|---|
+| `same` | 1.00 | `C:maj` / `C:maj` |
+| `extension` | 0.95 | `C:7` / `C:13`, and a triad model's `C:7` / `C:maj` |
+| `sus_for_dominant` | 0.90 | `C:sus4(b7)` / `C:7` |
+| `guide_tones` | 0.90 | the third and seventh land on the same notes, in the same roles |
+| `tritone_sub` | 0.80 | `G:7` / `Db:7` |
+| `dim_for_dominant` | 0.80 | `B:hdim7` / `G:7` — the dominant without its root |
+| `ii_V_merge` | 0.70 | `D:min7` / `G:7` |
+| `relative` | 0.70 | `C:maj6` / `A:min7` |
+| `parallel` | 0.40 | `C:maj` / `C:min` |
+| `none` | 0.00 | anything else |
+
+It is reported two ways, and **neither changes WCSR**:
+
+- the `theory` row, a duration-weighted score over the same merged seconds WCSR uses, with the
+  same mean and weighted aggregates;
+- the `substitutions` vocabulary, which turns the credit back into a pass/fail at
+  `metrics.SUBSTITUTION_MIN_CREDIT` (0.75). That threshold sits above `relative` and
+  `ii_V_merge` on purpose: a tritone substitution and a rootless dominant pass, a relative minor
+  and a ii written for its V do not.
+
+`score` also prints the share of compared time each relation accounted for, and `--json`
+records it per track. That breakdown is the thing to read first: **the credits are musical
+judgement, not measured frequencies.** Nothing here has yet measured how often two independent
+lead sheets of one tune disagree in each of these ways, so a run whose credit leans on
+`relative` or `ii_V_merge` is evidence those two are too generous rather than evidence the model
+is doing well. Read `theory` as indicative, the way `grid` is.
+
+`substitutions` and `mirex` compare a *pair* of chords, so neither has a per-chord class.
+`chart`, `grid` and `bar` are built on projected label strings and leave both out; asking for
+`-v substitutions` adds a WCSR column and no bar row.
+
 ### What gets excluded
 
 In WCSR, reference time that the vocabulary cannot express is removed from both numerator and
@@ -84,6 +128,11 @@ removing it would merge its neighbours. It lowers those scores on that track.
 
 An estimate that is unparseable or outside the vocabulary counts as wrong. A track whose
 reference or estimate is missing is skipped and named, not scored as zero.
+
+`theory` and `substitutions` exclude exactly what WCSR does — `X` and unparseable reference
+labels — and nothing else: every relation is defined on pitch content, so no chord is outside
+their vocabulary. A track whose reference is entirely `X` has no `theory` score and is absent
+from its mean, not counted as zero.
 
 ### Differences from `mir_eval`
 
