@@ -149,6 +149,13 @@ The manifest holds paths that follow your library, so keep it uncommitted. The c
 `eval/isophonics-beatles.json` is references-only (no `audio` paths); it works for `survey` and
 `score --estimates`.
 
+`eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
+song, with tempo and key variants as separate tracks. No chord references exist for them yet,
+so each `reference` is a placeholder: the path, `labs/<id>.lab`, where that song's annotation
+will go. Write a `.lab` at that path and the track counts, with no change to the manifest.
+The loader accepts a missing reference and `survey` lists it as unreadable; until the first
+`.lab` is written, `survey` has nothing to read and stops with "no readable annotations".
+
 **5. Survey.** Needs no audio or model:
 
 ```bash
@@ -254,18 +261,19 @@ few seconds per hundred tracks; `--no-alignment-check` skips it.
 
 ## Train and test sets
 
-`eval/jaah.json` and `eval/isophonics-beatles.json` each have a train and a test manifest next
-to them, about 20% of the songs held out. Train includes validation: tune on it, and score on
-test once you are done tuning.
+`eval/jaah.json`, `eval/isophonics-beatles.json` and `eval/backing-track.json` each have a
+train and a test manifest next to them, about 20% of the songs held out. Train includes
+validation: tune on it, and score on test once you are done tuning.
 
 ```bash
 songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
 ```
 
-Recordings of one song always go to the same set (the three `dinah` recordings, for
-example). The set comes from a hash of the song name, so a manifest built locally splits like
-the committed one. If file names hide that two recordings are one song, add them to
-`SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again, before tuning.
+Recordings of one song always go to the same set. A trailing parenthesis is ignored, so
+`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together. The set comes from a
+hash of the song name, so a manifest built locally splits like the committed one. If file
+names hide that two recordings are one song, add them to `SAME_SONG` in
+`src/songscribe/eval/split.py` and run `split` again, before tuning.
 
 ## Scoring a chart played several times
 

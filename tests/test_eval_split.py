@@ -8,7 +8,7 @@ import pytest
 from songscribe.eval import split
 
 EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
-CORPORA = ("jaah", "isophonics-beatles")
+CORPORA = ("jaah", "isophonics-beatles", "backing-track")
 IDS = [f"labs/song_{n}" for n in range(200)]
 
 
