@@ -222,7 +222,8 @@ class TestSingleChorusIsUnchanged:
 class TestPerChorusWithAPairwiseVocabulary:
     def test_substitutions_scores_per_chorus_without_asking_for_a_bar_class(self, tmp_path):
         # A bar score compares projected label strings, which `substitutions`
-        # has none of. Before PAIRWISE_VOCABULARIES this raised mid-run.
+        # has none of, so it must be left out of the bar columns rather than
+        # reaching project().
         performance = take(pickup_beats=3)
         result = score(
             tmp_path,

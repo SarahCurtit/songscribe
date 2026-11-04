@@ -1,29 +1,16 @@
-"""Grading the musical relation between two chords, not their spelling.
+"""How close two chords are musically, rather than whether their symbols match.
 
-String equality after projection asks "is this the same symbol". On a jazz chart that is the
-wrong question: a chart's ``A:7(#5)`` played as ``A:7``, a ``B:hdim7`` played as ``G:7``, a
-``C:7`` voiced as ``C:13`` are all correct practice, and all score zero under every vocabulary
-in :mod:`songscribe.eval.metrics`. This module names the relation instead and gives it partial
-credit, which :func:`metrics.compare` turns back into a conservative pass/fail for the
-``substitutions`` vocabulary, and :func:`graded_score` keeps as a duration-weighted score of its
-own.
+A tritone substitution (``G:7`` for ``Db:7``) and a ii written for its V (``D:min7`` for
+``G:7``) miss every vocabulary in :mod:`songscribe.eval.metrics`, and a rootless dominant
+(``B:hdim7`` for ``G:7``) is outside ``majmin`` and ``sevenths``, so that time is dropped
+rather than scored. This module grades the relation between the two chords and gives it
+partial credit: :func:`metrics.compare` reads it as pass/fail for the ``substitutions``
+vocabulary, :func:`graded_score` as a duration-weighted score. Neither changes WCSR.
 
-WCSR is untouched by both. ``Score.correct`` is a duration and WCSR is a ratio of durations;
-putting fractional credit in there would quietly redefine the one metric here that is
-comparable with published numbers.
-
-**The credits are theory-derived, not fitted.** Nothing in this repo has yet measured how often
-two independent lead sheets of one tune actually disagree in each of these ways, so the numbers
-below are musical judgement, ordered by how little a player would notice the swap. What would
-fit them is the multi-source consensus work: cross-source disagreement frequencies per relation,
-over at least five tunes with three sheets each. Until then, read a graded score as indicative
-and read :attr:`GradedScore.by_relation` to see which relations earned the credit.
-
-:mod:`songscribe.eval.labels` carries a second, unrelated partial-credit scheme --
-``ROOT_CREDIT = 0.5`` for a same-root/other-third confusion, which is the case graded
-:data:`parallel` here at 0.40. The two are deliberately separate: that one weighs a beat while
-locating the form, this one scores a transcription, and the numbers answer to different
-evidence. They are not kept in step.
+The credits are musical judgement, not measured frequencies, so read
+:attr:`GradedScore.by_relation` to see which relations a score came from.
+:mod:`songscribe.eval.labels` has its own partial credit for locating the form; the two
+are separate and not kept in step.
 """
 
 from __future__ import annotations
@@ -34,7 +21,7 @@ from math import nan
 
 from ..types import ChordEvent
 from .harte import Chord, parse
-from .metrics import MIN_SEGMENT, merge_timelines, triad_of
+from .metrics import MIN_SEGMENT, MIREX_MIN_SHARED, merge_timelines, triad_of
 
 #: Semitone above the root of a major and a minor third, and of the three
 #: sevenths a chord symbol can name. ``bb7`` only ever comes from a diminished
@@ -58,20 +45,17 @@ _II_TO_V = 5
 #: A tritone, the root distance of a tritone substitution.
 _TRITONE = 6
 
-#: Pitch classes a diminished chord and a dominant must share for the diminished
-#: one to count as that dominant without its root. The theory is stricter --
-#: ``B:hdim7`` is exactly ``G:9`` minus the G -- but a backend emits a bare
-#: ``G:7``, against which the ninth is missing and the subset test fails. Three
-#: shared notes is what survives that, and is the MIREX threshold besides.
-_ROOTLESS_MIN_SHARED = 3
+#: Where a diminished chord's root can sit relative to the dominant it stands
+#: for: on its b9, 3rd, 5th or b7, which are the four notes left when the
+#: dominant's root is dropped. Without this a dim chord and a dominant sharing
+#: three notes by coincidence -- ``C:13`` against ``D:hdim7`` -- would read as a
+#: rootless voicing of a chord neither contains.
+_ROOTLESS_DISTANCES = (1, 4, 7, 10)
 
-#: Pitch classes two chords a relative-third apart must share. Four shared notes
-#: is ``C:maj6`` against ``A:min7``, the swap players make without thinking.
-#: Three admits the seventh-against-triad forms of it. A bare ``C:maj`` against
-#: ``A:min`` shares only two and is graded an error, because it is one: the
-#: triads have different thirds and fifths and only the root pair suggests
-#: otherwise.
-_RELATIVE_MIN_SHARED = 3
+#: Shared pitch classes a relation needs before it counts as a substitution at
+#: all. Two notes is a coincidence: ``C:maj`` and ``A:min`` share C and E and
+#: are a plain error, which is also what ``mirex`` says about them.
+_MIN_SHARED = MIREX_MIN_SHARED
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,15 +115,10 @@ def _third(chord: Chord) -> int | None:
 def _seventh(chord: Chord) -> int | None:
     """Absolute pitch class of the chord's seventh, or ``None`` if it has none.
 
-    Not :func:`metrics.seventh_of`, which names a MIREX class and refuses
-    anything off a major or minor triad: a pitch class is what a guide-tone
-    comparison needs, and a diminished chord's seventh has to be readable for
-    ``dim_for_dominant`` to mean anything.
-
-    A diminished seventh is only read as a seventh on a diminished chord: the
-    same semitone is a major sixth on everything else, and counting ``C:maj6``
-    as having a seventh of A would make it share guide tones with chords it has
-    no function in common with.
+    A pitch class rather than :func:`metrics.seventh_of`'s MIREX class, which
+    is undefined off a major or minor triad. A ``bb7`` counts only on a
+    diminished chord: the same semitone is a major sixth elsewhere, and reading
+    ``C:maj6``'s A as a seventh would pair it with unrelated chords.
     """
     if chord.root is None:
         return None
@@ -158,10 +137,10 @@ def _is_dominant(chord: Chord) -> bool:
 
 
 def _is_diminished(chord: Chord) -> bool:
-    """``dim``, ``dim7`` or ``hdim7`` -- anything on a diminished triad.
+    """``dim``, ``dim7`` or ``hdim7``: anything on a diminished triad.
 
-    ``triad_of`` already folds all three onto ``"dim"``, reading the third and
-    fifth rather than the symbol, so ``Bdim`` and ``B:hdim7`` arrive together.
+    ``triad_of`` folds all three onto ``"dim"`` by reading the third and fifth,
+    so ``Bdim`` and ``B:hdim7`` arrive together.
     """
     return triad_of(chord) == "dim"
 
@@ -178,10 +157,21 @@ def _shared(first: Chord, second: Chord) -> int:
 
 
 def _same(reference: Chord, estimate: Chord) -> bool:
-    # The root as well as the pitch content: C:maj6 and A:min7 are the same four
-    # notes, and calling that "the same chord" would leave `relative` unreachable
-    # and report a sixth chord named as its relative minor as a perfect match.
-    return reference.root == estimate.root and reference.pitch_classes == estimate.pitch_classes
+    """The same notes, and no disagreement about which of them is the root.
+
+    A symmetric chord has no determinate root -- a dim7 can be named from any
+    of its four notes, an augmented triad from any of its three -- so two
+    spellings of one are the same chord. ``C:maj6`` and ``A:min7`` are also the
+    same notes but are not symmetric at a sixth, and the root choice there is a
+    real difference in function: those are graded ``relative``.
+    """
+    if reference.pitch_classes != estimate.pitch_classes:
+        return False
+    if reference.root == estimate.root:
+        return True
+    shift = (estimate.root - reference.root) % 12
+    rotated = frozenset((pitch + shift) % 12 for pitch in reference.pitch_classes)
+    return rotated == reference.pitch_classes
 
 
 def _extension(reference: Chord, estimate: Chord) -> bool:
@@ -213,17 +203,21 @@ def _sus_for_dominant(reference: Chord, estimate: Chord) -> bool:
 def _guide_tones(reference: Chord, estimate: Chord) -> bool:
     """The third and the seventh land on the same pitch classes, in the same roles.
 
-    Those two notes are what define a chord's function in jazz; the root and
-    fifth are the ones a player drops. Roles, not a set: ``G:7``'s third and
-    seventh are ``(B, F)`` and ``Db:7``'s are ``(F, B)``, equal as sets and
-    swapped as a pair. Comparing sets would collapse a tritone substitution into
-    this relation and pay it 0.90 instead of 0.80.
+    Those two notes carry a chord's function; the root and fifth are the ones a
+    player drops. Roles, not a set: ``G:7``'s third and seventh are ``(B, F)``
+    and ``Db:7``'s are ``(F, B)`` -- swapped, which is ``tritone_sub``. A
+    diminished chord against a dominant is ``dim_for_dominant``, so that one
+    chord grades the same whichever of its notes was named as the root.
     """
     thirds = (_third(reference), _third(estimate))
     sevenths = (_seventh(reference), _seventh(estimate))
     if None in thirds or None in sevenths:
         return False
-    return thirds[0] == thirds[1] and sevenths[0] == sevenths[1]
+    if thirds[0] != thirds[1] or sevenths[0] != sevenths[1]:
+        return False
+    if _dim_for_dominant(reference, estimate):
+        return False
+    return _shared(reference, estimate) >= _MIN_SHARED
 
 
 def _tritone_sub(reference: Chord, estimate: Chord) -> bool:
@@ -236,13 +230,18 @@ def _tritone_sub(reference: Chord, estimate: Chord) -> bool:
 def _dim_for_dominant(reference: Chord, estimate: Chord) -> bool:
     """One side is the other's dominant without its root.
 
-    ``B:hdim7`` is ``G:9`` minus the G, and ``B:dim7`` is ``G:7(b9)`` minus the G
-    -- the same chord as a player voices it. See ``_ROOTLESS_MIN_SHARED`` for why
-    this counts shared notes rather than testing a subset.
+    ``B:hdim7`` is ``G:9`` minus the G and ``B:dim7`` is ``G:7(b9)`` minus the
+    G, which is how a player voices them. Shared notes rather than a subset,
+    since a backend emits a bare ``G:7`` with no ninth to contain the A, plus
+    ``_ROOTLESS_DISTANCES`` so the dim chord sits where that root would leave it.
     """
     for dim, dominant in ((reference, estimate), (estimate, reference)):
-        if _is_diminished(dim) and _is_dominant(dominant):
-            return _shared(dim, dominant) >= _ROOTLESS_MIN_SHARED
+        if not (_is_diminished(dim) and _is_dominant(dominant)):
+            continue
+        if (dim.root - dominant.root) % 12 not in _ROOTLESS_DISTANCES:
+            continue
+        if _shared(dim, dominant) >= _MIN_SHARED:
+            return True
     return False
 
 
@@ -265,11 +264,11 @@ def _relative(reference: Chord, estimate: Chord) -> bool:
         return False
     if (reference.root - estimate.root) % 12 not in _RELATIVE_DISTANCES:
         return False
-    return _shared(reference, estimate) >= _RELATIVE_MIN_SHARED
+    return _shared(reference, estimate) >= _MIN_SHARED
 
 
 def _parallel(reference: Chord, estimate: Chord) -> bool:
-    """Same root, major against minor -- the near-miss a triad model makes constantly."""
+    """Same root, major against minor: the near-miss a triad model makes constantly."""
     if reference.root != estimate.root:
         return False
     triads = (triad_of(reference), triad_of(estimate))

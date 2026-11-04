@@ -27,13 +27,11 @@ MIN_SEGMENT = 1e-9
 MIREX_MIN_SHARED = 3
 
 #: Credit a substitution must be worth for the ``substitutions`` vocabulary to
-#: call it a match. Set deliberately above ``relative`` and ``ii_V_merge``
-#: (0.70) and below ``tritone_sub`` (0.80): the boolean verdict stays
-#: conservative -- a tritone substitution and a rootless dominant pass, a
-#: relative minor and a ii written for its V do not -- while the partial credit
-#: those two deserve is carried by ``substitution.graded_score`` instead. Keeping
-#: the threshold here, beside MIREX_MIN_SHARED, is deliberate: it belongs to the
-#: vocabulary rather than to the relation table, which has no notion of passing.
+#: call it a match. Above ``relative`` and ``ii_V_merge``, below ``tritone_sub``,
+#: so the pass/fail stays narrow: a tritone substitution and a rootless dominant
+#: pass, a relative minor and a ii written for its V do not. The partial credit
+#: those two carry is in ``substitution.graded_score`` instead. It lives here
+#: because passing is a property of the vocabulary, not of the relation table.
 SUBSTITUTION_MIN_CREDIT = 0.75
 
 #: How far either way :func:`best_offset` looks for a better alignment, and at

@@ -230,12 +230,14 @@ they disagree sharply (see `EVALUATION.md`):
 | `theory` | how close is a wrong chord, musically | nothing — same seconds as WCSR |
 
 `theory` (`eval/substitution.py`) grades the *relation* between two chords — extension,
-tritone sub, rootless dominant, relative, parallel — instead of comparing symbols, because
-substitution is correct jazz practice and `sevenths` scores it as a miss. It never touches
-WCSR: the partial credit lives in its own `GradedScore`, and the `substitutions` vocabulary
-is the conservative pass/fail over the same table. **Its credits are musical judgement, not
-measured frequencies** — read the per-relation breakdown `score` prints before believing the
-single number, and don't re-fit the credits until several lead sheets per tune exist.
+tritone sub, rootless dominant, relative, parallel — instead of comparing symbols. A tritone
+sub and a ii written for its V miss every vocabulary including `mirex`, and a rootless
+dominant is outside `majmin` and `sevenths`, so that time is dropped rather than scored. It
+never touches WCSR: the partial credit lives in its own `GradedScore`, and the `substitutions`
+vocabulary is the conservative pass/fail over the same table. **Its credits are musical
+judgement, not measured frequencies** — read the per-relation breakdown `score` prints before
+believing the single number, and don't re-fit the credits until several lead sheets per tune
+exist.
 
 `grid` is the one that distinguishes one chord per bar from two, which is most of what makes
 an instrumental chart readable. Its harmonic unit is **estimated from chord durations**, so

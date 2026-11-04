@@ -806,9 +806,9 @@ def format_report(report) -> str:
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
-        # Duration-weighted like WCSR, and shown in the weighted column, because
-        # it is the same merge over the same seconds -- unlike chart and grid,
-        # which are per-track by construction.
+        # The weighted column is filled, unlike chart and grid: this is the same
+        # merge over the same seconds as WCSR, so a duration weighting means the
+        # same thing here.
         f"{'theory':<12}{_percent(report.mean_graded()):>10}"
         f"{_percent(report.weighted_graded()):>10}   partial credit for jazz substitutions",
     ]

@@ -75,25 +75,32 @@ those cases.
 
 ### theory: how close a wrong chord is
 
-Every vocabulary above compares two chords for equality after reducing them to a class. On a
-jazz chart that is the wrong question, because substitution is correct practice: a chart's
-`A:7(#5)` played as `A:7`, a `B:hdim7` played as `G:7`, a `C:7` voiced as `C:13`. All three are
-misses under `sevenths` and indistinguishable from a genuinely wrong chord.
+Every vocabulary above compares two chords for equality after reducing them to a class. That
+asks whether the symbol is right, not how close a wrong one is, and on a jazz chart the two come
+apart because substitution is correct practice:
 
-`theory` names the relation between the two chords instead and gives it partial credit:
+- a tritone substitution (`G:7` for `Db:7`) and a ii written for its V (`D:min7` for `G:7`) are
+  misses under `majmin`, `sevenths` **and** `mirex` — nothing scores them as near;
+- a rootless dominant (`B:hdim7` for `G:7`) is outside `majmin` and `sevenths` altogether, so
+  that time leaves the denominator and no vocabulary measures it at all;
+- the four vocabularies disagree so sharply on the rest that "how close was it" takes reading
+  all four.
+
+`theory` names the relation between the two chords instead and gives it partial credit, as one
+number over the same seconds WCSR uses:
 
 | Relation | Credit | Example |
 |---|---|---|
-| `same` | 1.00 | `C:maj` / `C:maj` |
+| `same` | 1.00 | `C:maj` / `C:maj`, and `C:dim7` / `Eb:dim7` — one symmetric chord, two names |
 | `extension` | 0.95 | `C:7` / `C:13`, and a triad model's `C:7` / `C:maj` |
 | `sus_for_dominant` | 0.90 | `C:sus4(b7)` / `C:7` |
-| `guide_tones` | 0.90 | the third and seventh land on the same notes, in the same roles |
+| `guide_tones` | 0.90 | `B:hdim7` / `Bb:maj7` — same third and seventh, same roles |
 | `tritone_sub` | 0.80 | `G:7` / `Db:7` |
 | `dim_for_dominant` | 0.80 | `B:hdim7` / `G:7` — the dominant without its root |
 | `ii_V_merge` | 0.70 | `D:min7` / `G:7` |
 | `relative` | 0.70 | `C:maj6` / `A:min7` |
 | `parallel` | 0.40 | `C:maj` / `C:min` |
-| `none` | 0.00 | anything else |
+| `none` | 0.00 | anything else, including anything sharing fewer than 3 pitch classes |
 
 It is reported two ways, and **neither changes WCSR**:
 

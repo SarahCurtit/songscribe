@@ -35,7 +35,8 @@ SYMMETRIC = [
     ("C:maj", "C:maj"),
     ("C:7", "C:13"),
     ("C:maj", "C:maj7"),
-    ("C:maj7", "Db:min7"),
+    ("B:hdim7", "Bb:maj7"),
+    ("C:dim7", "Eb:dim7"),
     ("G:7", "Db:7"),
     ("C:maj6", "A:min7"),
     ("C:maj", "C:min"),
@@ -51,11 +52,29 @@ class TestSame:
         assert relation("Db:maj", "C#:maj") == "same"
 
     def test_the_same_notes_on_another_root_is_relative_not_same(self):
-        # C:maj6 and A:min7 are the same four pitch classes. Grading that "same"
-        # would make `relative` unreachable and call a sixth chord named as its
-        # relative minor a perfect match.
+        # C:maj6 and A:min7 are the same four pitch classes, but the chord is not
+        # symmetric at a sixth, so which note is the root is a real difference.
         assert parse("C:maj6").pitch_classes == parse("A:min7").pitch_classes
         assert relation("C:maj6", "A:min7") == "relative"
+
+    @pytest.mark.parametrize(
+        ("reference", "estimate"),
+        [
+            ("C:dim7", "Eb:dim7"),
+            ("C:dim7", "Gb:dim7"),
+            ("C:dim7", "A:dim7"),
+            ("C:aug", "E:aug"),
+            ("C:aug", "Ab:aug"),
+        ],
+    )
+    def test_a_symmetric_chord_named_from_another_of_its_notes_is_the_same_chord(
+        self, reference, estimate
+    ):
+        # A dim7 can be named from any of its four notes and an augmented triad
+        # from any of its three; annotators and backends pick freely.
+        assert parse(reference).pitch_classes == parse(estimate).pitch_classes
+        assert graded(reference, estimate) == substitution.Grade("same", 1.00)
+        assert metrics.compare(parse(reference), parse(estimate), "substitutions") is True
 
 
 class TestExtension:
@@ -107,16 +126,26 @@ class TestSusForDominant:
 
 
 class TestGuideTones:
-    def test_the_third_and_seventh_in_the_same_roles(self):
-        # C:maj7's third and seventh are E and B; Db:min7's are E and B too,
-        # in the same roles, although the roots are a semitone apart.
-        assert relation("C:maj7", "Db:min7") == "guide_tones"
-        assert credit("C:maj7", "Db:min7") == 0.90
+    @pytest.mark.parametrize(
+        ("reference", "estimate"), [("B:hdim7", "Bb:maj7"), ("Bb:maj7", "B:hdim7")]
+    )
+    def test_the_third_and_seventh_in_the_same_roles(self, reference, estimate):
+        # Both carry D as the third and A as the seventh, and share D F A.
+        assert substitution._third(parse(reference)) == substitution._third(parse(estimate))
+        assert substitution._seventh(parse(reference)) == substitution._seventh(parse(estimate))
+        assert relation(reference, estimate) == "guide_tones"
+        assert credit(reference, estimate) == 0.90
 
-    def test_an_altered_chord_no_triad_names_still_matches_on_guide_tones(self):
-        # C:maj(*5) has its fifth omitted, so triad_of cannot classify it and
-        # `extension` does not apply -- but with no seventh there are no guide
-        # tones either, and the pair is an error.
+    def test_two_shared_notes_are_not_enough(self):
+        # C:maj7 and Db:min7 agree on the third and seventh and on nothing else:
+        # two notes out of four, which is what `mirex` calls a miss.
+        assert len(parse("C:maj7").pitch_classes & parse("Db:min7").pitch_classes) == 2
+        assert relation("C:maj7", "Db:min7") == "none"
+        assert metrics.compare(parse("C:maj7"), parse("Db:min7"), "mirex") is False
+
+    def test_a_chord_with_no_triad_has_no_guide_tones(self):
+        # C:maj(*5) omits its fifth, so triad_of cannot classify it and
+        # `extension` does not apply; with no seventh there are no guide tones.
         assert metrics.triad_of(parse("C:maj(*5)")) is None
         assert relation("C:maj(*5)", "C:maj7") == "none"
 
@@ -154,8 +183,6 @@ class TestDimForDominant:
             ("B:hdim7", "G:7"),
             ("G:7", "B:hdim7"),
             ("B:dim7", "G:7(b9)"),
-            # A dim7 is symmetric, so every inversion of it is the same rootless
-            # dominant.
             ("D:dim7", "G:7"),
             ("E:hdim7", "C:7"),
         ],
@@ -163,6 +190,23 @@ class TestDimForDominant:
     def test_a_diminished_chord_is_its_dominant_without_the_root(self, reference, estimate):
         assert relation(reference, estimate) == "dim_for_dominant"
         assert credit(reference, estimate) == 0.80
+
+    @pytest.mark.parametrize("root", ["Db", "E", "G", "Bb"])
+    def test_every_spelling_of_one_dim7_grades_alike(self, root):
+        # A dim7 is symmetric, so these are four names for one chord. Grading
+        # them differently would make the score depend on the annotator's choice.
+        assert parse(f"{root}:dim7").pitch_classes == parse("E:dim7").pitch_classes
+        assert graded(f"{root}:dim7", "C:7") == substitution.Grade("dim_for_dominant", 0.80)
+
+    def test_a_dim_chord_on_the_dominants_own_root_is_not_rootless(self):
+        # "Without its root" means nothing when both name the same root.
+        assert relation("C:hdim7", "C:7(b5)") == "none"
+
+    def test_three_shared_notes_at_the_wrong_distance_is_not_rootless(self):
+        # C:13 and D:hdim7 share three notes, but Ab is in neither, so D:hdim7
+        # is not C:13 with a root removed.
+        assert len(parse("C:13").pitch_classes & parse("D:hdim7").pitch_classes) == 3
+        assert relation("C:13", "D:hdim7") == "none"
 
     def test_an_unrelated_diminished_chord_is_not(self):
         # E:hdim7 is the ii of D minor, not a rootless A7: it shares only two
@@ -237,10 +281,17 @@ class TestSymmetry:
 
 class TestHighestCreditWins:
     def test_a_pair_several_relations_hold_for_takes_the_best(self):
-        # C:7 against C:maj is both an extension (0.95) and, were the table
-        # walked in order, nothing else -- but D:min7 against G:9 is a ii-V and
-        # shares three pitch classes, so the pick must not depend on table order.
-        assert credit("D:min7", "G:9") == 0.70
+        holding = [
+            r.name for r in substitution.RELATIONS if r.holds(*map(parse, ("C:maj7", "C:maj9")))
+        ]
+        assert "extension" in holding and "guide_tones" in holding
+        assert graded("C:maj7", "C:maj9") == substitution.Grade("extension", 0.95)
+
+    def test_the_table_credits_are_non_increasing(self):
+        # What makes reading the table top to bottom and picking the highest
+        # credit the same answer.
+        credits = [r.credit for r in substitution.RELATIONS]
+        assert credits == sorted(credits, reverse=True)
 
     def test_every_relation_in_the_table_is_reachable(self):
         reached = {
@@ -249,7 +300,7 @@ class TestHighestCreditWins:
                 ("C:maj", "C:maj"),
                 ("C:7", "C:13"),
                 ("C:sus4(b7)", "C:7"),
-                ("C:maj7", "Db:min7"),
+                ("B:hdim7", "Bb:maj7"),
                 ("G:7", "Db:7"),
                 ("B:hdim7", "G:7"),
                 ("D:min7", "G:7"),
@@ -384,12 +435,14 @@ class TestGradedScore:
         result = substitution.graded_score(timeline((0.0, 2.0, "X")), timeline((0.0, 2.0, "C:maj")))
         assert isnan(result.score)
 
-    def test_it_never_scores_below_the_wcsr_it_grades(self):
-        # Partial credit is added on top of exact matches, never taken away, so
-        # the graded score is a ceiling on the substitutions WCSR.
-        reference = timeline((0.0, 2.0, "C:7"), (2.0, 4.0, "D:min7"), (4.0, 6.0, "C:maj"))
-        estimate = timeline((0.0, 2.0, "C:maj"), (2.0, 4.0, "G:7"), (4.0, 6.0, "C:maj"))
-        assert (
-            substitution.graded_score(reference, estimate).score
-            >= metrics.score(reference, estimate, "substitutions").wcsr
-        )
+    def test_it_differs_from_the_substitutions_wcsr_in_both_directions(self):
+        # The two answer different questions and neither bounds the other. A
+        # passing substitution scores 1.0 as WCSR and its own credit here; a
+        # failing one scores 0.0 as WCSR and keeps partial credit here.
+        passing = timeline((0.0, 4.0, "C:7")), timeline((0.0, 4.0, "C:maj"))
+        assert substitution.graded_score(*passing).score == pytest.approx(0.95)
+        assert metrics.score(*passing, "substitutions").wcsr == 1.0
+
+        failing = timeline((0.0, 4.0, "C:maj")), timeline((0.0, 4.0, "C:min"))
+        assert substitution.graded_score(*failing).score == pytest.approx(0.40)
+        assert metrics.score(*failing, "substitutions").wcsr == 0.0
