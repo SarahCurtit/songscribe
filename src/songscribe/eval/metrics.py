@@ -15,23 +15,12 @@ from math import isnan, nan
 from statistics import median
 
 from ..types import ChordEvent, Word
-from .harte import NO_CHORD_LABEL, Chord, parse
+from .harte import MIREX_MIN_SHARED, NO_CHORD_LABEL, Chord, parse, triad_of
+from .substitution import grade
+from .timeline import MIN_SEGMENT, extent, fill_gaps, merge_timelines
 
-#: Durations below this are treated as zero when merging timelines: boundaries
-#: that should coincide often differ in the last float digit, and a sliver
-#: segment would otherwise score a label nobody intended to annotate there.
-MIN_SEGMENT = 1e-9
-
-#: Pitch classes two chords must share for the ``mirex`` comparison to call
-#: them a match. Three is the MIREX definition -- a triad's worth of agreement.
-MIREX_MIN_SHARED = 3
-
-#: Credit a substitution must be worth for the ``substitutions`` vocabulary to
-#: call it a match. Above ``relative`` and ``ii_V_merge``, below ``tritone_sub``,
-#: so the pass/fail stays narrow: a tritone substitution and a rootless dominant
-#: pass, a relative minor and a ii written for its V do not. The partial credit
-#: those two carry is in ``substitution.graded_score`` instead. It lives here
-#: because passing is a property of the vocabulary, not of the relation table.
+#: Credit at which a substitution counts as correct under ``substitutions``.
+#: Tritone subs and rootless dominants pass; a relative minor or a ii for its V do not.
 SUBSTITUTION_MIN_CREDIT = 0.75
 
 #: How far either way :func:`best_offset` looks for a better alignment, and at
@@ -58,11 +47,8 @@ VOCABULARIES: dict[str, str] = {
     "substitutions": "a jazz substitution a player would accept, by music theory",
 }
 
-#: Vocabularies that compare a *pair* of chords and so have no per-chord class.
-#: :func:`project` cannot serve them, which means every metric built on
-#: projected label strings -- ``chart``, ``grid``, ``bar`` -- has to leave them
-#: out. Named once here because three separate ``!= "mirex"`` tests is three
-#: places to forget the next one.
+#: Vocabularies that judge a reference/estimate pair, so they can't turn one chord into a label.
+#: Metrics built on such labels (``chart``, ``grid``, ``bar``) must skip them.
 PAIRWISE_VOCABULARIES = ("mirex", "substitutions")
 
 #: Several are reported because they ask different questions: ``majmin`` whether the
@@ -71,16 +57,6 @@ PAIRWISE_VOCABULARIES = ("mirex", "substitutions")
 #: ``majmin`` score by the vocabulary rather than the model -- which the pair is there to show.
 DEFAULT_VOCABULARIES = ("root", "majmin", "sevenths", "mirex")
 
-#: Which (third, fifth) pair names which triad.
-_TRIADS = {
-    ("maj3", "P5"): "maj",
-    ("min3", "P5"): "min",
-    ("min3", "d5"): "dim",
-    ("maj3", "A5"): "aug",
-    ("sus4", "P5"): "sus4",
-    ("sus2", "P5"): "sus2",
-}
-
 _MAJMIN = ("maj", "min")
 _TRIAD_VOCABULARY = ("maj", "min", "dim", "aug", "sus2", "sus4")
 
@@ -88,38 +64,6 @@ _TRIAD_VOCABULARY = ("maj", "min", "dim", "aug", "sus2", "sus4")
 # --------------------------------------------------------------------------- #
 # Projection into a comparison vocabulary
 # --------------------------------------------------------------------------- #
-
-
-def triad_of(chord: Chord) -> str | None:
-    """Name the triad a chord is built on, or ``None`` if it has none.
-
-    Reads the third and fifth off the interval set and ignores everything
-    above, so ``C:maj7``, ``C:7`` and ``C:maj6`` all come back as ``maj``.
-    A major third outranks a suspension when both are present, since an added
-    4th or 9th colours a triad rather than replacing it.
-    """
-    intervals = chord.intervals
-    if 4 in intervals:
-        third = "maj3"
-    elif 3 in intervals:
-        third = "min3"
-    elif 5 in intervals:
-        third = "sus4"
-    elif 2 in intervals:
-        third = "sus2"
-    else:
-        return None
-
-    if 7 in intervals:
-        fifth = "P5"
-    elif 6 in intervals:
-        fifth = "d5"
-    elif 8 in intervals:
-        fifth = "A5"
-    else:
-        return None
-
-    return _TRIADS.get((third, fifth))
 
 
 def seventh_of(chord: Chord) -> str | None:
@@ -171,9 +115,8 @@ def project(chord: Chord | None, vocabulary: str) -> str | None:
     elif vocabulary == "sevenths":
         quality = seventh_of(chord)
     else:
-        # PAIRWISE_VOCABULARIES compare two chords against each other -- overlap
-        # for "mirex", a relation for "substitutions" -- so neither has a
-        # per-chord class. compare() handles both without calling project().
+        # "mirex" and "substitutions" need both chords to decide, so a single
+        # chord has no label in them; compare() handles them instead.
         raise ValueError(f"vocabulary {vocabulary!r} has no per-chord projection")
 
     return None if quality is None else f"{chord.root_name}:{quality}"
@@ -204,11 +147,6 @@ def compare(reference: Chord | None, estimate: Chord | None, vocabulary: str) ->
         return len(shared) >= MIREX_MIN_SHARED
 
     if vocabulary == "substitutions":
-        # Imported here rather than at module scope: substitution.py reads
-        # triad_of and seventh_of from this module, so the other direction can
-        # only be a deferred import. dedupe_chart imports align the same way.
-        from .substitution import grade
-
         graded = grade(reference, estimate)
         return None if graded is None else graded.credit >= SUBSTITUTION_MIN_CREDIT
 
@@ -221,84 +159,6 @@ def compare(reference: Chord | None, estimate: Chord | None, vocabulary: str) ->
 # --------------------------------------------------------------------------- #
 # Timeline algebra
 # --------------------------------------------------------------------------- #
-
-
-def extent(events: list[ChordEvent]) -> tuple[float, float]:
-    """Span covered by ``events``, as ``(start, end)``."""
-    if not events:
-        return 0.0, 0.0
-    return min(e.start for e in events), max(e.end for e in events)
-
-
-def fill_gaps(
-    events: list[ChordEvent],
-    start: float,
-    end: float,
-    label: str = NO_CHORD_LABEL,
-) -> list[ChordEvent]:
-    """Clip ``events`` to ``[start, end]`` and fill any uncovered time.
-
-    The fill label is ``N``, which is what a gap actually asserts, and what
-    makes a holey estimate comparable to a gapless reference.
-    """
-    # The pipeline calls chords.strip_no_chord before rendering, so a chart's
-    # intro and outro arrive here as missing time rather than as silence the
-    # model failed to label.
-    filled: list[ChordEvent] = []
-    cursor = start
-
-    # `cursor` never moves backwards, so overlapping input resolves as
-    # earliest-wins: the later chord keeps only the time the earlier one did
-    # not claim. Published annotations are gapless and non-overlapping, so
-    # this only arises on a malformed file, where a deterministic reading
-    # beats either guessing or refusing to score the track.
-    for event in sorted(events, key=lambda e: (e.start, e.end)):
-        clipped_start = max(event.start, cursor)
-        clipped_end = min(event.end, end)
-        if clipped_end - clipped_start <= MIN_SEGMENT:
-            continue
-        if clipped_start - cursor > MIN_SEGMENT:
-            filled.append(ChordEvent(cursor, clipped_start, label))
-        filled.append(ChordEvent(clipped_start, clipped_end, event.label))
-        cursor = clipped_end
-
-    if end - cursor > MIN_SEGMENT:
-        filled.append(ChordEvent(cursor, end, label))
-    return filled
-
-
-def merge_timelines(
-    reference: list[ChordEvent],
-    estimate: list[ChordEvent],
-) -> list[tuple[float, float, str, str]]:
-    """Slice two timelines into sub-segments where both hold one label.
-
-    The reference defines the evaluated span: estimate time outside it is
-    discarded, and reference time the estimate never reached counts as ``N``.
-    """
-    start, end = extent(reference)
-    if end - start <= MIN_SEGMENT:
-        return []
-
-    reference = fill_gaps(reference, start, end)
-    estimate = fill_gaps(estimate, start, end)
-
-    boundaries = sorted({start, end} | {b for e in reference + estimate for b in (e.start, e.end)})
-
-    merged: list[tuple[float, float, str, str]] = []
-    r = s = 0
-    for low, high in pairwise(boundaries):
-        if high - low <= MIN_SEGMENT:
-            continue
-        # Both timelines are gapless and sorted, so each pointer only ever
-        # moves forward: advance it past segments that end at or before `low`.
-        while r + 1 < len(reference) and reference[r].end <= low + MIN_SEGMENT:
-            r += 1
-        while s + 1 < len(estimate) and estimate[s].end <= low + MIN_SEGMENT:
-            s += 1
-        merged.append((low, high, reference[r].label, estimate[s].label))
-
-    return merged
 
 
 def directional_hamming_distance(

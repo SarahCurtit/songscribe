@@ -125,11 +125,8 @@ lead sheets of one tune disagree in each of these ways, so a run whose credit le
 `relative` or `ii_V_merge` is evidence those two are too generous rather than evidence the model
 is doing well. Read `theory` as indicative, the way `grid` is.
 
-Coverage of near misses is uneven. A diminished chord against a chord one note away on the same
-root — `C:dim7` against `C:min6`, `C:hdim7` against `C:7(b5)` — grades `none`, although three of
-its four notes agree. Those pairs want a relation the table does not have yet.
-
-`substitutions` and `mirex` compare a *pair* of chords, so neither has a per-chord class.
+`substitutions` and `mirex` need the reference and the estimate together to decide, so a single
+chord has no label in them (`metrics.project` raises for both).
 `chart`, `grid` and `bar` are built on projected label strings and leave both out; asking for
 `-v substitutions` adds a WCSR column and no bar row.
 

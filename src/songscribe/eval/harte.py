@@ -113,6 +113,52 @@ class Chord:
 NO_CHORD_CHORD = Chord(root=None)
 UNKNOWN_CHORD = Chord(root=None, unknown=True)
 
+#: Pitch classes two chords must share for the ``mirex`` comparison to call
+#: them a match. Three is the MIREX definition -- a triad's worth of agreement.
+MIREX_MIN_SHARED = 3
+
+#: Which (third, fifth) pair names which triad.
+_TRIADS = {
+    ("maj3", "P5"): "maj",
+    ("min3", "P5"): "min",
+    ("min3", "d5"): "dim",
+    ("maj3", "A5"): "aug",
+    ("sus4", "P5"): "sus4",
+    ("sus2", "P5"): "sus2",
+}
+
+
+def triad_of(chord: Chord) -> str | None:
+    """Name the triad a chord is built on, or ``None`` if it has none.
+
+    Reads the third and fifth off the interval set and ignores everything
+    above, so ``C:maj7``, ``C:7`` and ``C:maj6`` all come back as ``maj``.
+    A major third outranks a suspension when both are present, since an added
+    4th or 9th colours a triad rather than replacing it.
+    """
+    intervals = chord.intervals
+    if 4 in intervals:
+        third = "maj3"
+    elif 3 in intervals:
+        third = "min3"
+    elif 5 in intervals:
+        third = "sus4"
+    elif 2 in intervals:
+        third = "sus2"
+    else:
+        return None
+
+    if 7 in intervals:
+        fifth = "P5"
+    elif 6 in intervals:
+        fifth = "d5"
+    elif 8 in intervals:
+        fifth = "A5"
+    else:
+        return None
+
+    return _TRIADS.get((third, fifth))
+
 
 def parse_root(text: str) -> int | None:
     """Pitch class of a note name such as ``F#`` or ``Ebb``, else ``None``."""

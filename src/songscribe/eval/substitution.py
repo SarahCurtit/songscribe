@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from math import nan
 
 from ..types import ChordEvent
-from .harte import Chord, parse
-from .metrics import MIN_SEGMENT, MIREX_MIN_SHARED, merge_timelines, triad_of
+from .harte import MIREX_MIN_SHARED, Chord, parse, triad_of
+from .timeline import MIN_SEGMENT, merge_timelines
 
 #: Semitone above the root of a major and a minor third, and of the three
 #: sevenths a chord symbol can name. ``bb7`` only ever comes from a diminished

@@ -82,9 +82,8 @@ class TrackResult:
     anchor: form_start.Anchor | None = None
     #: Seconds of the recording not in any scored block (intro, tail, unaligned).
     unscored_seconds: float = 0.0
-    #: Partial credit for jazz substitutions: how close the estimate is musically
-    #: where it is not exactly right. Carries no vocabulary in its name, so it is
-    #: always graded over the whole relation table, whatever ``-v`` asked for.
+    #: Partial credit for jazz substitutions: how close a wrong chord is musically.
+    #: It is not a vocabulary, so it is computed on every run, whatever ``-v`` says.
     graded: substitution.GradedScore | None = None
 
 
