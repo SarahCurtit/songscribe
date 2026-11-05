@@ -1,9 +1,12 @@
 # Evaluating chord recognition
 
 `songscribe-eval` scores a chord-recognition backend against reference annotations, following
-MIREX conventions. It reads annotations and your own recordings from local paths. The
-repository contains the code and manifests (track ids and relative paths), no audio and no
-annotation text.
+MIREX conventions. MIREX, the Music Information Retrieval Evaluation eXchange, is the yearly
+community benchmark whose chord-estimation task fixed the standard metric (the fraction of
+time labelled correctly, below) and the `mirex` comparison, two chords sharing three pitch
+classes. It reads annotations and your own recordings from local paths. The repository
+contains the code and manifests (track ids and relative paths), no audio and no annotation
+text.
 
 ## Install
 
