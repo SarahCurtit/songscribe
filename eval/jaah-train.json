@@ -10,6 +10,10 @@
       "reference": "labs/airegin.lab"
     },
     {
+      "id": "labs/bags_groove",
+      "reference": "labs/bags_groove.lab"
+    },
+    {
       "id": "labs/big_butter_and_eggman",
       "reference": "labs/big_butter_and_eggman.lab"
     },
@@ -20,6 +24,10 @@
     {
       "id": "labs/black_and_tan_fantasy",
       "reference": "labs/black_and_tan_fantasy.lab"
+    },
+    {
+      "id": "labs/black_water_blues",
+      "reference": "labs/black_water_blues.lab"
     },
     {
       "id": "labs/blue_7",
@@ -52,6 +60,10 @@
     {
       "id": "labs/concerto_for_cootie",
       "reference": "labs/concerto_for_cootie.lab"
+    },
+    {
+      "id": "labs/cotton_tail",
+      "reference": "labs/cotton_tail.lab"
     },
     {
       "id": "labs/cotton_tail_fitzgerald",
@@ -194,6 +206,10 @@
       "reference": "labs/livery_stable_blues.lab"
     },
     {
+      "id": "labs/lost_your_head_blues",
+      "reference": "labs/lost_your_head_blues.lab"
+    },
+    {
       "id": "labs/manteca",
       "reference": "labs/manteca.lab"
     },
@@ -236,6 +252,10 @@
     {
       "id": "labs/night_in_tunisia",
       "reference": "labs/night_in_tunisia.lab"
+    },
+    {
+      "id": "labs/oh_lady_be_good",
+      "reference": "labs/oh_lady_be_good.lab"
     },
     {
       "id": "labs/one_by_one",
@@ -350,6 +370,10 @@
       "reference": "labs/weather_bird.lab"
     },
     {
+      "id": "labs/west_coast_blues",
+      "reference": "labs/west_coast_blues.lab"
+    },
+    {
       "id": "labs/west_end_blues",
       "reference": "labs/west_end_blues.lab"
     },
@@ -360,10 +384,6 @@
     {
       "id": "labs/wrappin_it_up",
       "reference": "labs/wrappin_it_up.lab"
-    },
-    {
-      "id": "labs/cotton_tail",
-      "reference": "labs/cotton_tail.lab"
     }
   ]
 }
