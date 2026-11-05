@@ -42,6 +42,7 @@ src/songscribe/
   lab.py        .lab chord annotation read/write               (pure Python)
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
+    timeline.py   fill gaps, merge two chord timelines         (pure Python)
     metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
     substitution.py  graded chord relations: how close a wrong chord is  (pure Python)
     labels.py     chord labels -> one rough symbol per beat, and how well two agree (numpy)
