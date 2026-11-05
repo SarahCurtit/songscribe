@@ -262,12 +262,10 @@ test once you are done tuning.
 songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
 ```
 
-Recordings of one song always go to the same set: `maple_leaf_rag(bechet)`, the three
-`dinah` recordings, and the Sgt. Pepper title track with its reprise. A song's set comes from
-a hash of its name, so a manifest built locally with audio paths splits the same way as the
-committed one, whatever tracks it holds. When a corpus has versions that the file names do not
-show, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again; a changed grouping
-moves tracks between sets, so do that before tuning.
+Recordings of one song always go to the same set (the three `dinah` recordings, for
+example). The set comes from a hash of the song name, so a manifest built locally splits like
+the committed one. If file names hide that two recordings are one song, add them to
+`SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again, before tuning.
 
 ## Scoring a chart played several times
 
