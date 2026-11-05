@@ -24,13 +24,22 @@ WRITE_SEPARATOR = "\t"
 #: survives a round trip, short enough to stay readable.
 TIME_PRECISION = 6
 
+#: A reversed segment no wider than this is a rounding artefact in the
+#: annotation, not an ordering mistake. Each line carries its own absolute
+#: timestamps, so dropping one leaves every other boundary where it was. A wider
+#: reversal raises. The width is compared at :data:`TIME_PRECISION`, the
+#: precision the times are written in, so a nominal 50 ms reversal counts as one
+#: whatever the subtraction does with the last bit.
+MAX_REVERSED_SPAN = 0.05
+
 
 class LabFormatError(ValueError):
     """A ``.lab`` file could not be parsed.
 
     Raised rather than skipping the offending line: a silently dropped chord
-    shifts every boundary after it, which would corrupt an evaluation score in
-    a way that is very hard to notice.
+    leaves its time labelled ``N``, which moves an evaluation score without
+    anything reporting a problem. The one exception is the reversal
+    :data:`MAX_REVERSED_SPAN` covers, which carries no time to lose.
     """
 
 
@@ -65,7 +74,9 @@ def parse(text: str, source: str | None = None) -> list[ChordEvent]:
             raise LabFormatError(f"{where}{number}: non-finite timestamp in {line!r}")
 
         if end < start:
-            raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            if round(start - end, TIME_PRECISION) > MAX_REVERSED_SPAN:
+                raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            continue
 
         # A label may legitimately contain spaces -- ``C:maj (uncertain)`` turns
         # up in hand-corrected annotation sets -- so the remainder is one label,

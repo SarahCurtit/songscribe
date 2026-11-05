@@ -61,6 +61,30 @@ class TestParse:
         with pytest.raises(lab.LabFormatError, match="precedes start"):
             lab.parse("2.0 1.0 C")
 
+    def test_a_tiny_reversal_is_skipped_and_keeps_the_rest_of_the_file(self):
+        # A trailing reversed no-chord span, as some published annotations end on.
+        events = lab.parse("0.0 281.907 D\n281.907 284.352 N\n284.352 284.307 N\n")
+        assert [e.label for e in events] == ["D", "N"]
+        assert events[-1].end == 284.352
+
+    def test_a_tiny_reversal_mid_file_leaves_the_surrounding_times_alone(self):
+        # The kept events overlap by the width of the skipped segment; neither
+        # of them moves.
+        events = lab.parse("0.0 10.0 C\n10.0 9.96 N\n9.96 20.0 G\n")
+        assert [e.label for e in events] == ["C", "G"]
+        assert (events[0].start, events[0].end) == (0.0, 10.0)
+        assert (events[1].start, events[1].end) == (9.96, 20.0)
+
+    def test_a_reversal_wider_than_the_tolerance_still_raises(self):
+        with pytest.raises(lab.LabFormatError, match="precedes start"):
+            lab.parse(f"1.0 {1.0 - lab.MAX_REVERSED_SPAN * 2} C")
+
+    @pytest.mark.parametrize("text", ["1.0 0.95 N", "2.5 2.45 N", "100.0 99.95 N", "0.05 0.0 N"])
+    def test_a_reversal_of_exactly_the_tolerance_is_skipped(self, text):
+        # 1.0 - 0.95 subtracts to 0.050000000000000044, so the comparison is
+        # made at the precision the times are written in.
+        assert lab.parse(text) == []
+
     @pytest.mark.parametrize("text", ["nan nan C:maj", "0.0 inf C:maj", "-inf 1.0 C"])
     def test_rejects_a_non_finite_timestamp(self, text):
         # float() accepts these and `end < start` is False for nan, so without
