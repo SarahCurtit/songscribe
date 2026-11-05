@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "dataset": "backing-track-test",
+  "notes": "Every song of the jazz backing-track collection, one track per song. No chord references exist yet: each 'reference' is a placeholder path where the song's .lab will go, so survey reports them as missing until they are written. Identifiers only, no audio paths and no annotation text.",
+  "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
+  "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "tracks": [
+    {
+      "id": "labs/actual_proof",
+      "reference": "labs/actual_proof.lab"
+    },
+    {
+      "id": "labs/after_youve_gone",
+      "reference": "labs/after_youve_gone.lab"
+    },
+    {
+      "id": "labs/beatrice",
+      "reference": "labs/beatrice.lab"
+    },
+    {
+      "id": "labs/body_and_soul",
+      "reference": "labs/body_and_soul.lab"
+    },
+    {
+      "id": "labs/central_park_west",
+      "reference": "labs/central_park_west.lab"
+    },
+    {
+      "id": "labs/donna_lee",
+      "reference": "labs/donna_lee.lab"
+    },
+    {
+      "id": "labs/equinox",
+      "reference": "labs/equinox.lab"
+    },
+    {
+      "id": "labs/footprints",
+      "reference": "labs/footprints.lab"
+    },
+    {
+      "id": "labs/have_you_met_miss_jones(medium_slow)",
+      "reference": "labs/have_you_met_miss_jones(medium_slow).lab"
+    },
+    {
+      "id": "labs/have_you_met_miss_jones(medium_up)",
+      "reference": "labs/have_you_met_miss_jones(medium_up).lab"
+    },
+    {
+      "id": "labs/if_i_were_a_bell",
+      "reference": "labs/if_i_were_a_bell.lab"
+    },
+    {
+      "id": "labs/lady_bird",
+      "reference": "labs/lady_bird.lab"
+    },
+    {
+      "id": "labs/lucky_southern",
+      "reference": "labs/lucky_southern.lab"
+    },
+    {
+      "id": "labs/misty(in_ab_concert)",
+      "reference": "labs/misty(in_ab_concert).lab"
+    },
+    {
+      "id": "labs/misty(in_eb_concert)",
+      "reference": "labs/misty(in_eb_concert).lab"
+    },
+    {
+      "id": "labs/monks_dream",
+      "reference": "labs/monks_dream.lab"
+    },
+    {
+      "id": "labs/my_funny_valentine",
+      "reference": "labs/my_funny_valentine.lab"
+    },
+    {
+      "id": "labs/my_one_and_only_love",
+      "reference": "labs/my_one_and_only_love.lab"
+    },
+    {
+      "id": "labs/on_green_dolphin_street",
+      "reference": "labs/on_green_dolphin_street.lab"
+    },
+    {
+      "id": "labs/out_of_nowhere",
+      "reference": "labs/out_of_nowhere.lab"
+    },
+    {
+      "id": "labs/softly_as_in_a_morning_sunrise(medium)",
+      "reference": "labs/softly_as_in_a_morning_sunrise(medium).lab"
+    },
+    {
+      "id": "labs/solar",
+      "reference": "labs/solar.lab"
+    },
+    {
+      "id": "labs/someday_my_prince_will_come",
+      "reference": "labs/someday_my_prince_will_come.lab"
+    },
+    {
+      "id": "labs/song_for_my_father",
+      "reference": "labs/song_for_my_father.lab"
+    },
+    {
+      "id": "labs/the_song_is_you",
+      "reference": "labs/the_song_is_you.lab"
+    },
+    {
+      "id": "labs/tune_up",
+      "reference": "labs/tune_up.lab"
+    },
+    {
+      "id": "labs/up_jumped_spring(bright)",
+      "reference": "labs/up_jumped_spring(bright).lab"
+    },
+    {
+      "id": "labs/up_jumped_spring(medium)",
+      "reference": "labs/up_jumped_spring(medium).lab"
+    },
+    {
+      "id": "labs/you_stepped_out_of_a_dream",
+      "reference": "labs/you_stepped_out_of_a_dream.lab"
+    },
+    {
+      "id": "labs/youd_be_so_nice_to_come_home_to",
+      "reference": "labs/youd_be_so_nice_to_come_home_to.lab"
+    }
+  ]
+}

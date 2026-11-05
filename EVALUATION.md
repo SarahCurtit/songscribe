@@ -1,9 +1,12 @@
 # Evaluating chord recognition
 
 `songscribe-eval` scores a chord-recognition backend against reference annotations, following
-MIREX conventions. It reads annotations and your own recordings from local paths. The
-repository contains the code and manifests (track ids and relative paths), no audio and no
-annotation text.
+MIREX conventions. MIREX, the Music Information Retrieval Evaluation eXchange, is the yearly
+community benchmark whose chord-estimation task fixed the standard metric (the fraction of
+time labelled correctly, below) and the `mirex` comparison, two chords sharing three pitch
+classes. It reads annotations and your own recordings from local paths. The repository
+contains the code and manifests (track ids and relative paths), no audio and no annotation
+text.
 
 ## Install
 
@@ -22,6 +25,7 @@ The `template` backend needs no model weights. `madmom` needs the `chords` extra
 | `grid` | is the order right, and the harmonic rhythm in bars | offset and tempo |
 | `segmentation` | are the chord boundaries in the right places | nothing; labels are ignored |
 | `bar` | does each bar carry the right chord | offset, tempo and length |
+| `theory` | how close is a wrong chord, musically | nothing; it grades the same seconds WCSR does |
 | `placement` | does each chord sit over the right word | offset and tempo |
 
 `bar` applies to recordings of a repeated chart (see
@@ -40,6 +44,7 @@ computed under a comparison vocabulary:
 | `triads` | as `majmin`, plus dim, aug, sus2, sus4 |
 | `sevenths` | the seventh also matches: maj, min, 7, maj7, min7 |
 | `mirex` | the two chords share at least 3 pitch classes |
+| `substitutions` | the two chords stand in a substitution a player would accept |
 
 The default is `root majmin sevenths mirex`; choose others with `-v`, repeatable. The gap
 between vocabularies shows where errors come from. A backend that only emits triads scores
@@ -71,6 +76,64 @@ those cases.
   low WCSR means the boundaries are right and the labels are wrong; both low together points
   to a timing problem in the recording (see [Checking the alignment](#checking-the-alignment)).
 
+### theory: how close a wrong chord is
+
+Every vocabulary above compares two chords for equality after reducing them to a class. That
+asks whether the symbol is right, not how close a wrong one is, and on a jazz chart the two come
+apart because substitution is correct practice:
+
+- a tritone substitution (`G:7` for `Db:7`) and a ii written for its V (`D:min7` for `G:7`) are
+  misses under `majmin`, `sevenths` **and** `mirex` — nothing scores them as near;
+- where the annotation names a rootless dominant such as `B:hdim7`, `majmin` and `sevenths`
+  cannot express it and that time leaves their denominator, while `mirex` counts it correct
+  against `G:7` — the two share B, D and F;
+- the four vocabularies disagree so sharply on the rest that "how close was it" takes reading
+  all four.
+
+`theory` names the relation between the two chords instead and gives it partial credit, as one
+number over the same seconds WCSR uses:
+
+| Relation | Credit | Example |
+|---|---|---|
+| `same` | 1.00 | `C:maj` / `C:maj`, and `C:dim7` / `Eb:dim7` — one symmetric chord, two names |
+| `extension` | 0.95 | `C:7` / `C:13`, and a triad model's `C:7` / `C:maj` |
+| `sus_for_dominant` | 0.90 | `C:sus4(b7)` / `C:7` |
+| `guide_tones` | 0.90 | `B:hdim7` / `Bb:maj7` — same third and seventh, same roles |
+| `tritone_sub` | 0.80 | `G:7` / `Db:7` |
+| `dim_for_dominant` | 0.80 | `B:hdim7` / `G:7` — the dominant without its root |
+| `ii_V_merge` | 0.70 | `D:min7` / `G:7` |
+| `relative` | 0.70 | `C:maj6` / `A:min7` |
+| `sus_for_triad` | 0.70 | `C:sus4` / `C:maj` |
+| `seventh_swap` | 0.60 | `C:maj7` / `C:7` |
+| `parallel` | 0.40 | `C:maj` / `C:min` |
+| `none` | 0.00 | anything else |
+
+It is reported two ways, and **neither changes WCSR**. Both grade the same seconds with the
+same table; they differ in what a grade is worth:
+
+| | `substitutions` | `theory` |
+|---|---|---|
+| Scores a segment | 1 if credit ≥ `metrics.SUBSTITUTION_MIN_CREDIT` (0.75), else 0 | its credit, 0 to 1 |
+| Answers | would a player accept it? | how close was it? |
+| `relative`, `ii_V_merge`, `sus_for_triad`, `seventh_swap`, `parallel` | 0 | 0.4 to 0.7 |
+| `extension` (0.95) | 1 | 0.95 |
+
+So `theory` is usually higher: those five near misses count for nothing in `substitutions`
+and for part of their credit in `theory`. It can be lower on a run dominated by `extension`.
+A large gap means the errors are mostly near misses; a small one means they are mostly `none`.
+
+`score` also prints the share of compared time each relation accounted for, and `--json`
+records it per track. That breakdown is the thing to read first: **the credits are musical
+judgement, not measured frequencies.** Nothing here has yet measured how often two independent
+lead sheets of one tune disagree in each of these ways, so a run whose credit leans on
+`relative` or `ii_V_merge` is evidence those two are too generous rather than evidence the model
+is doing well. Read `theory` as indicative, the way `grid` is.
+
+`substitutions` and `mirex` need the reference and the estimate together to decide, so a single
+chord has no label in them (`metrics.project` raises for both).
+`chart`, `grid` and `bar` are built on projected label strings and leave both out; asking for
+`-v substitutions` adds a WCSR column and no bar row.
+
 ### What gets excluded
 
 In WCSR, reference time that the vocabulary cannot express is removed from both numerator and
@@ -84,6 +147,11 @@ removing it would merge its neighbours. It lowers those scores on that track.
 
 An estimate that is unparseable or outside the vocabulary counts as wrong. A track whose
 reference or estimate is missing is skipped and named, not scored as zero.
+
+`theory` and `substitutions` exclude exactly what WCSR does — `X` and unparseable reference
+labels — and nothing else: every relation is defined on pitch content, so no chord is outside
+their vocabulary. A track whose reference is entirely `X` has no `theory` score and is absent
+from its mean, not counted as zero.
 
 ### Differences from `mir_eval`
 
@@ -148,6 +216,13 @@ album, or a title found under several albums. `--list-unpaired` lists every one.
 The manifest holds paths that follow your library, so keep it uncommitted. The committed
 `eval/isophonics-beatles.json` is references-only (no `audio` paths); it works for `survey` and
 `score --estimates`.
+
+`eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
+song, with tempo and key variants as separate tracks. No chord references exist for them yet,
+so each `reference` is a placeholder: the path, `labs/<id>.lab`, where that song's annotation
+will go. Write a `.lab` at that path and the track counts, with no change to the manifest.
+The loader accepts a missing reference and `survey` lists it as unreadable; until the first
+`.lab` is written, `survey` has nothing to read and stops with "no readable annotations".
 
 **5. Survey.** Needs no audio or model:
 
@@ -251,6 +326,22 @@ Then replace the original in the audio library with `out.wav` (same folder and s
 rebuild the manifest with `manifest --audio`, and re-run with a fresh `--cache`, since cached
 estimates are keyed by backend, input variant and track, not by the audio. The sweep takes a
 few seconds per hundred tracks; `--no-alignment-check` skips it.
+
+## Train and test sets
+
+`eval/jaah.json`, `eval/isophonics-beatles.json` and `eval/backing-track.json` each have a
+train and a test manifest next to them, about 20% of the songs held out. Train includes
+validation: tune on it, and score on test once you are done tuning.
+
+```bash
+songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
+```
+
+Recordings of one song always go to the same set. A trailing parenthesis is ignored, so
+`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together. The set comes from a
+hash of the song name, so a manifest built locally splits like the committed one. If file
+names hide that two recordings are one song, add them to `SAME_SONG` in
+`src/songscribe/eval/split.py` and run `split` again, before tuning.
 
 ## Scoring a chart played several times
 

@@ -12,6 +12,7 @@ from .dataset import ANNOTATION_ROOT_ENV, AUDIO_ROOT_ENV, Dataset, Track, load_m
 from .harte import Chord, parse
 from .metrics import (
     DEFAULT_VOCABULARIES,
+    PAIRWISE_VOCABULARIES,
     VOCABULARIES,
     Score,
     Segmentation,
@@ -19,17 +20,25 @@ from .metrics import (
     score_all,
     segmentation,
 )
+from .substitution import RELATIONS, Grade, GradedScore, Relation, grade, graded_score
 
 __all__ = [
     "ANNOTATION_ROOT_ENV",
     "AUDIO_ROOT_ENV",
     "DEFAULT_VOCABULARIES",
+    "PAIRWISE_VOCABULARIES",
+    "RELATIONS",
     "VOCABULARIES",
     "Chord",
     "Dataset",
+    "Grade",
+    "GradedScore",
+    "Relation",
     "Score",
     "Segmentation",
     "Track",
+    "grade",
+    "graded_score",
     "load_manifest",
     "parse",
     "score",

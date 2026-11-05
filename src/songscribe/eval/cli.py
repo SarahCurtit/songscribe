@@ -24,8 +24,10 @@ from .metrics import (
     ALIGNMENT_WARN_GAIN,
     ALIGNMENT_WARN_OFFSET,
     DEFAULT_VOCABULARIES,
+    PAIRWISE_VOCABULARIES,
     VOCABULARIES,
 )
+from .split import TEST_FRACTION
 from .survey import TOP_LABELS
 
 #: Width of the leading column in the per-track table. Long enough for an
@@ -256,6 +258,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     survey.add_argument("--json", type=Path, help="also write the survey as JSON")
 
+    split = subparsers.add_parser(
+        "split",
+        parents=[common],
+        help="split a manifest into train and test manifests",
+        description=(
+            "Write <name>-train.json and <name>-test.json from a manifest. Recordings of one "
+            "song always land in the same one. Train includes validation."
+        ),
+    )
+    split.add_argument("manifest", type=Path, help="manifest to split")
+    split.add_argument(
+        "-o",
+        "--output-dir",
+        type=Path,
+        help="where to write the two manifests (default: next to the input)",
+    )
+    split.add_argument(
+        "--test-fraction",
+        type=float,
+        default=TEST_FRACTION,
+        help="share of songs held out (default: %(default)s); changing it changes the test set",
+    )
+
     form = subparsers.add_parser(
         "form",
         parents=[common],
@@ -321,7 +346,31 @@ def main(argv: list[str] | None = None) -> int:
         return _survey(args)
     if args.command == "form":
         return _form(args)
+    if args.command == "split":
+        return _split(args)
     return _score(args)
+
+
+def _split(args: argparse.Namespace) -> int:
+    from .split import song_key, split_manifest
+
+    try:
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        train, test = split_manifest(manifest, args.test_fraction)
+    except (OSError, ValueError) as error:
+        print(f"songscribe-eval: {error}", file=sys.stderr)
+        return 1
+    except KeyError:
+        print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
+        return 1
+
+    directory = args.output_dir or args.manifest.parent
+    for part in (train, test):
+        path = directory / f"{part['dataset']}.json"
+        write_manifest(path, part)
+        songs = {song_key(track["id"]) for track in part["tracks"]}
+        print(f"wrote {path}: {len(part['tracks'])} tracks, {len(songs)} songs")
+    return 0
 
 
 def _manifest(args: argparse.Namespace) -> int:
@@ -690,7 +739,7 @@ def _per_track_printer(vocabularies: tuple[str, ...], per_chorus: bool = False):
     """
     header_written = False
 
-    bar_vocabularies = tuple(v for v in vocabularies if v != "mirex")
+    bar_vocabularies = tuple(v for v in vocabularies if v not in PAIRWISE_VOCABULARIES)
 
     def row(label: str, scores, segmentation, bars: dict[str, float] | None, key: str = "") -> None:
         nonlocal header_written
@@ -757,6 +806,11 @@ def format_report(report) -> str:
         ),
         f"{'segmentation':<12}{_percent(report.mean_segmentation()):>10}"
         f"{'':>10}   boundary agreement, labels ignored",
+        # The weighted column is filled, unlike chart and grid: this is the same
+        # merge over the same seconds as WCSR, so a duration weighting means the
+        # same thing here.
+        f"{'theory':<12}{_percent(report.mean_graded()):>10}"
+        f"{_percent(report.weighted_graded()):>10}   partial credit for jazz substitutions",
     ]
     if report.chorus_count():
         lines.append(
@@ -767,14 +821,17 @@ def format_report(report) -> str:
             f"{'bar ' + v:<12}{_percent(report.mean_bar(v)):>10}"
             f"{'':>10}   same, comparing chords as {v}"
             for v in report.vocabularies
-            if v not in ("majmin", "mirex")
+            if v != "majmin" and v not in PAIRWISE_VOCABULARIES
         ]
     lines += [
         "",
         "mean = per-track average; weighted = by duration across the corpus.",
         "chart and grid are per-track and unweighted: a chart is a chart at any length.",
+        "theory gives partial credit by music theory and leaves WCSR untouched. Its",
+        "credits are musical judgement, not measured frequencies: read it as indicative.",
         "",
     ]
+    lines += _relation_breakdown(report)
     if report.chorus_count():
         lines += [
             f"{report.chorus_count()} choruses in {len(report.results)} tracks, scored separately.",
@@ -791,6 +848,19 @@ def format_report(report) -> str:
         ]
     lines += _alignment_warning(report)
     return "\n".join(lines)
+
+
+def _relation_breakdown(report) -> list[str]:
+    """Where theory's credit came from, as a share of compared time per relation."""
+    relations = report.graded_relations()
+    total = sum(relations.values())
+    if total <= 0:
+        return []
+    return [
+        "theory by relation (share of compared time):",
+        "  " + ",  ".join(f"{name} {duration / total:.1%}" for name, duration in relations.items()),
+        "",
+    ]
 
 
 def _input_variant(report) -> str:
@@ -871,11 +941,18 @@ def report_to_dict(report) -> dict:
             "graded_tracks": report.graded_grids(),
         },
         "segmentation": {"mean": _jsonable(report.mean_segmentation())},
+        "theory": {
+            "mean": _jsonable(report.mean_graded()),
+            "weighted": _jsonable(report.weighted_graded()),
+            "by_relation": report.graded_relations(),
+        },
         "bar": {
             "mean": _jsonable(report.mean_bar()),
             "choruses": report.chorus_count(),
             "by_vocabulary": {
-                v: _jsonable(report.mean_bar(v)) for v in report.vocabularies if v != "mirex"
+                v: _jsonable(report.mean_bar(v))
+                for v in report.vocabularies
+                if v not in PAIRWISE_VOCABULARIES
             },
         },
         "tracks": [
@@ -910,6 +987,15 @@ def report_to_dict(report) -> dict:
                         "ignored": score.ignored,
                     }
                     for vocabulary, score in result.scores.items()
+                },
+                "theory": None
+                if result.graded is None
+                else {
+                    "score": _jsonable(result.graded.score),
+                    "credit": result.graded.credit,
+                    "compared": result.graded.compared,
+                    "ignored": result.graded.ignored,
+                    "by_relation": result.graded.by_relation,
                 },
                 "alignment": None
                 if result.alignment is None
@@ -971,6 +1057,7 @@ def _chorus_to_dict(part) -> dict:
         "grid": _jsonable(part.grid),
         "segmentation": _jsonable(part.segmentation.score),
         "scores": {name: _jsonable(score.wcsr) for name, score in part.scores.items()},
+        "theory": None if part.graded is None else _jsonable(part.graded.score),
     }
 
 

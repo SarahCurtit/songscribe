@@ -562,3 +562,129 @@ class TestReportFormatting:
         assert "NaN" not in text
         assert document["summary"]["majmin"]["mean"] == pytest.approx(0.5)
         assert len(document["tracks"]) == 2
+
+
+class TestGradedReport:
+    """The theory row: partial credit beside WCSR, never inside it.
+
+    In the ``corpus`` fixture the one-second track is labelled exactly right and
+    the nine-second one is a plain wrong chord, so the two aggregates differ and
+    no relation but ``same`` and ``none`` is in play.
+    """
+
+    def test_every_track_is_graded(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert all(result.graded is not None for result in report.results)
+
+    def test_the_mean_is_per_track_and_the_weighted_by_duration(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.mean_graded() == pytest.approx(0.5)
+        assert report.weighted_graded() == pytest.approx(0.1)
+
+    def test_relations_account_for_the_compared_time(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.graded_relations() == {
+            "none": pytest.approx(9.0),
+            "same": pytest.approx(1.0),
+        }
+
+    def test_relations_are_listed_largest_share_first(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        shares = list(report.graded_relations().values())
+        assert shares == sorted(shares, reverse=True)
+
+    def test_wcsr_is_untouched_by_the_graded_score(self, corpus):
+        # The no-regression pin: a duration of partial credit must never reach
+        # Score.correct, which is what WCSR is a ratio of.
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.weighted("majmin") == pytest.approx(0.1)
+        assert report.results[0].scores["majmin"].correct == pytest.approx(1.0)
+        assert report.results[1].scores["majmin"].correct == pytest.approx(0.0)
+
+    def test_the_summary_prints_a_theory_row(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        text = format_report(report)
+        assert "theory" in text
+        assert "theory by relation (share of compared time):" in text
+        assert "none 90.0%" in text
+
+    def test_json_carries_the_corpus_and_per_track_numbers(self, corpus):
+        import json
+
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        document = report_to_dict(report)
+        json.dumps(document)
+        assert document["theory"]["mean"] == pytest.approx(0.5)
+        assert document["theory"]["weighted"] == pytest.approx(0.1)
+        assert document["theory"]["by_relation"]["none"] == pytest.approx(9.0)
+        first = document["tracks"][0]["theory"]
+        assert first["score"] == pytest.approx(1.0)
+        assert first["by_relation"] == {"same": pytest.approx(1.0)}
+
+    def test_choruses_without_a_graded_score_do_not_sink_the_others(self):
+        from songscribe.eval.substitution import GradedScore
+
+        present = GradedScore(credit=1.8, compared=2.0, ignored=0.5, by_relation={"same": 2.0})
+        assert runner._sum_graded([None, present, None]) == present
+        assert runner._sum_graded([None, None]) is None
+
+    def test_summing_choruses_adds_durations_rather_than_averaging(self):
+        from songscribe.eval.substitution import GradedScore
+
+        parts = [
+            GradedScore(credit=1.0, compared=1.0, ignored=0.0, by_relation={"same": 1.0}),
+            GradedScore(credit=0.0, compared=9.0, ignored=1.0, by_relation={"none": 9.0}),
+        ]
+        total = runner._sum_graded(parts)
+        assert (total.credit, total.compared, total.ignored) == (1.0, 10.0, 1.0)
+        assert total.by_relation == {"same": 1.0, "none": 9.0}
+        assert total.score == pytest.approx(0.1)
+
+    def test_an_unscoreable_track_renders_as_a_dash_not_a_zero(self, tmp_path):
+        annotations = tmp_path / "ann"
+        estimates = tmp_path / "est"
+        annotations.mkdir()
+        estimates.mkdir()
+        # An all-X reference: nothing compared, so there is no score to report.
+        (annotations / "only.lab").write_text("0.0 4.0 X\n", encoding="utf-8")
+        (estimates / "only.lab").write_text("0.0 4.0 C\n", encoding="utf-8")
+        manifest = tmp_path / "m.json"
+        dataset.write_manifest(
+            manifest,
+            dataset.build("x-only", [{"id": "only", "reference": "only.lab"}]),
+        )
+        data = dataset.load_manifest(manifest, annotation_root=annotations)
+
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert isnan(report.results[0].graded.score)
+        assert isnan(report.mean_graded())
+        assert report.graded_relations() == {}
+        assert report_to_dict(report)["theory"]["mean"] is None
+        assert "theory by relation" not in format_report(report)
+
+
+class TestPairwiseVocabulariesInTheReport:
+    def test_a_substitutions_run_scores_and_prints(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(
+            data, estimates_dir=estimates, vocabularies=("majmin", "substitutions")
+        )
+        assert report.weighted("substitutions") == pytest.approx(0.1)
+        assert "substitutions" in format_report(report)
+
+    def test_no_bar_row_is_printed_for_a_pairwise_vocabulary(self, corpus):
+        # bar compares projected label strings, which a pairwise vocabulary has
+        # none of. Printing the row would mean computing it, which raises.
+        data, estimates = corpus
+        report = runner.evaluate(
+            data, estimates_dir=estimates, vocabularies=("majmin", "substitutions")
+        )
+        assert "bar substitutions" not in format_report(report)
+        assert "substitutions" not in report_to_dict(report)["bar"]["by_vocabulary"]

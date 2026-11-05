@@ -140,7 +140,8 @@ class TestMirexComparison:
         # C major and A minor share C and E only.
         assert metrics.compare(parse("C:maj"), parse("A:min"), "mirex") is False
 
-    def test_a_relative_minor_third_apart_is_not_a_match(self):
+    def test_a_mediant_a_third_above_is_not_a_match(self):
+        # C's relative minor is A:min, on the line above; E:min is its mediant.
         assert metrics.compare(parse("C:maj"), parse("E:min"), "mirex") is False
 
     def test_no_chord_against_a_chord_is_wrong_in_both_directions(self):
@@ -381,3 +382,19 @@ class TestVocabularyRegistry:
         estimate = timeline((0.0, 1.0, "C"))
         for vocabulary in metrics.VOCABULARIES:
             assert metrics.score(reference, estimate, vocabulary).wcsr == 1.0
+
+    def test_every_pairwise_vocabulary_is_registered(self):
+        for vocabulary in metrics.PAIRWISE_VOCABULARIES:
+            assert vocabulary in metrics.VOCABULARIES
+
+    def test_pairwise_is_exactly_the_set_without_a_per_chord_projection(self):
+        # The constant and project()'s behaviour have to agree: everything built
+        # on projected label strings -- chart, grid, bar -- filters on it, and a
+        # vocabulary missing from it would reach project() and raise mid-run.
+        chord = parse("C:maj")
+        for vocabulary in metrics.VOCABULARIES:
+            if vocabulary in metrics.PAIRWISE_VOCABULARIES:
+                with pytest.raises(ValueError, match="no per-chord projection"):
+                    metrics.project(chord, vocabulary)
+            else:
+                assert metrics.project(chord, vocabulary) is not None
