@@ -19,8 +19,8 @@ from .harte import MIREX_MIN_SHARED, NO_CHORD_LABEL, Chord, parse, triad_of
 from .substitution import grade
 from .timeline import MIN_SEGMENT, extent, fill_gaps, merge_timelines
 
-#: Credit at which a substitution counts as correct under ``substitutions``.
-#: Tritone subs and rootless dominants pass; a relative minor or a ii for its V do not.
+#: Credit at which ``substitutions`` scores a segment 1 instead of 0 (``theory`` scores the
+#: credit itself). Tritone subs and rootless dominants pass; a relative minor or ii-for-V do not.
 SUBSTITUTION_MIN_CREDIT = 0.75
 
 #: How far either way :func:`best_offset` looks for a better alignment, and at
@@ -44,7 +44,7 @@ VOCABULARIES: dict[str, str] = {
     "triads": "majmin plus dim, aug, sus2, sus4",
     "sevenths": "maj, min, 7, maj7, min7",
     "mirex": f"at least {MIREX_MIN_SHARED} pitch classes in common",
-    "substitutions": "a jazz substitution a player would accept, by music theory",
+    "substitutions": "pass/fail: a jazz substitution a player would accept (see theory)",
 }
 
 #: Vocabularies that judge a reference/estimate pair, so they can't turn one chord into a label.

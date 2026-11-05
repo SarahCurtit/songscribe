@@ -108,15 +108,19 @@ number over the same seconds WCSR uses:
 | `parallel` | 0.40 | `C:maj` / `C:min` |
 | `none` | 0.00 | anything else |
 
-It is reported two ways, and **neither changes WCSR**:
+It is reported two ways, and **neither changes WCSR**. Both grade the same seconds with the
+same table; they differ in what a grade is worth:
 
-- the `theory` row, a duration-weighted score over the same merged seconds WCSR uses, with the
-  same mean and weighted aggregates;
-- the `substitutions` vocabulary, which turns the credit back into a pass/fail at
-  `metrics.SUBSTITUTION_MIN_CREDIT` (0.75). Everything from `dim_for_dominant` up passes, so a
-  tritone substitution and a rootless dominant count correct; a ii written for its V, a relative
-  minor, a suspension against a plain triad, a seventh swap and a parallel major/minor do not,
-  and carry their credit in the `theory` score alone.
+| | `substitutions` | `theory` |
+|---|---|---|
+| Scores a segment | 1 if credit ≥ `metrics.SUBSTITUTION_MIN_CREDIT` (0.75), else 0 | its credit, 0 to 1 |
+| Answers | would a player accept it? | how close was it? |
+| `relative`, `ii_V_merge`, `sus_for_triad`, `seventh_swap`, `parallel` | 0 | 0.4 to 0.7 |
+| `extension` (0.95) | 1 | 0.95 |
+
+So `theory` is usually higher: those five near misses count for nothing in `substitutions`
+and for part of their credit in `theory`. It can be lower on a run dominated by `extension`.
+A large gap means the errors are mostly near misses; a small one means they are mostly `none`.
 
 `score` also prints the share of compared time each relation accounted for, and `--json`
 records it per track. That breakdown is the thing to read first: **the credits are musical
