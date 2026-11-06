@@ -277,13 +277,10 @@ def _parse_quality(quality: str | None) -> set[int] | None:
             or ABBREVIATED_SHORTHANDS.get(name)
         )
         if shorthand is None:
-            # A bare degree lands here and stays unparsed, which is deliberate and
-            # permanent. Isophonics writes "E:4" twice in one Carole King track, and
-            # Harte spells a degree list in parentheses, so it is not notation we can
-            # read. Which chord it means is ambiguous: "E:sus4" as written, since this
-            # annotator does abbreviate, or an "Eb" chord with a dropped flat, since
-            # the bars either side are "Eb/5". Guessing would put a chord in the
-            # reference that the recording may not contain.
+            # A bare degree stays unparsed, deliberately and for good: Harte
+            # parenthesises a degree list, and which chord Isophonics' "E:4" means
+            # is ambiguous, so reading it either way would put a chord in the
+            # reference the recording may not contain. EVALUATION.md has the case.
             return None
         intervals = {0, *_degrees_to_semitones(shorthand)}
     elif degree_text is not None:
