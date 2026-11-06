@@ -175,8 +175,9 @@ manifest over the Beatles. The archive holds more than one artist, and each is a
 manifest of its own — `-zweieck` (18 tracks) and `-carole-king` (7) — built with `manifest
 --include "chordlab/<artist>"`, because Isophonics rates its annotations per artist and one
 average would hide that. Carole King is held out whole (`-test`, no `-train`, written by hand):
-7 songs cannot carry a hash split, and `split` refuses rather than writing an empty side. Michael Jackson's set has no chords at all, only segments, so it never
-reaches a manifest. Their `reference` paths start at `chordlab/`, so the annotation
+7 songs cannot carry a hash split, and `split` refuses rather than writing an empty side.
+Michael Jackson's set has no chords at all, only segments, so it never reaches a manifest.
+Their `reference` paths start at `chordlab/`, so the annotation
 root — `SONGSCRIBE_EVAL_ANNOTATIONS`, as above, or `--annotations` — must be the directory
 *containing* `chordlab/`; unset, it falls back to `eval/` and finds nothing. They are all
 **references-only** — no `audio` paths —

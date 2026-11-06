@@ -389,8 +389,8 @@ and `split` does not produce it, so edit it alongside `eval/isophonics-carole-ki
 the corpus changes.
 
 A hash split is approximate by design, and on a small corpus it can land every song on one
-side. `split` refuses that rather than writing a 0-track manifest, and names the fraction that
-would not have:
+side. `split` refuses that rather than writing a 0-track manifest, and says where the nearest
+song hashes:
 
 ```
 songscribe-eval: test would be empty -- 7 songs is too few for a 0.2 hash split;

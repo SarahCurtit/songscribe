@@ -373,7 +373,7 @@ def _split(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
         return 1
 
-    refusal = degenerate_split_lines(manifest["tracks"], train, test, args.test_fraction)
+    refusal = empty_side_refusal(manifest["tracks"], train, test, args.test_fraction)
     if refusal:
         for line in refusal:
             print(line, file=sys.stderr)
@@ -388,18 +388,18 @@ def _split(args: argparse.Namespace) -> int:
     return 0
 
 
-def degenerate_split_lines(
+def empty_side_refusal(
     tracks: list[dict],
     train: dict,
     test: dict,
     test_fraction: float,
 ) -> list[str]:
-    """Why a split with an empty side was refused, naming the fraction that would not be.
+    """Why a split with an empty side was refused, naming where the nearest song hashes.
 
-    A hash split of a handful of songs can land all of them on one side. Writing a
-    0-track manifest would be a trap for whoever scores it next, and would replace
-    a corpus held out whole, whose test manifest no command regenerates, so nothing
-    is written at all when this returns lines.
+    A hash split of a handful of songs can land all of them on one side. A 0-track
+    manifest reads as a split that happened, and writing one would replace a corpus
+    held out whole, whose test manifest no command regenerates, so nothing is
+    written at all when this returns lines.
     """
     from .split import position, song_key
 
