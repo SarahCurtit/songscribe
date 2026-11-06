@@ -223,7 +223,7 @@ class TestEvaluate:
 
     @pytest.mark.parametrize(
         "content",
-        [b"this is not a lab file\n", b"2.0 1.0 C:maj\n", b"0.0 9.0 C:maj \xff\xfe\n"],
+        [b"this is not a lab file\n", b"20.0 1.0 C:maj\n", b"0.0 9.0 C:maj \xff\xfe\n"],
         ids=["too-few-fields", "end-before-start", "not-utf8"],
     )
     def test_a_malformed_reference_is_skipped_rather_than_crashing_the_run(

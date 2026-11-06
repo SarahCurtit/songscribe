@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from songscribe import beats, lab
@@ -59,7 +61,48 @@ class TestParse:
 
     def test_end_before_start_raises(self):
         with pytest.raises(lab.LabFormatError, match="precedes start"):
-            lab.parse("2.0 1.0 C")
+            lab.parse("20.0 1.0 C")
+
+    def test_a_tiny_reversal_is_skipped_and_keeps_the_rest_of_the_file(self):
+        # A trailing reversed no-chord span, as some published annotations end on.
+        events = lab.parse("0.0 281.907 D\n281.907 284.352 N\n284.352 284.307 N\n")
+        assert [e.label for e in events] == ["D", "N"]
+        assert events[-1].end == 284.352
+
+    def test_a_tiny_reversal_mid_file_leaves_the_surrounding_times_alone(self):
+        # The kept events overlap by the width of the skipped segment; neither
+        # of them moves.
+        events = lab.parse("0.0 10.0 C\n10.0 9.96 N\n9.96 20.0 G\n")
+        assert [e.label for e in events] == ["C", "G"]
+        assert (events[0].start, events[0].end) == (0.0, 10.0)
+        assert (events[1].start, events[1].end) == (9.96, 20.0)
+
+    def test_a_reversal_inside_the_tolerance_is_skipped_whatever_the_tolerance_is(self):
+        half = lab.MAX_REVERSED_SPAN / 2
+        events = lab.parse(f"0.0 100.0 C\n100.0 {100.0 - half} N\n{100.0 - half} 120.0 G\n")
+        assert [e.label for e in events] == ["C", "G"]
+        assert (events[1].start, events[1].end) == (100.0 - half, 120.0)
+
+    def test_a_reversal_of_exactly_the_tolerance_is_skipped(self):
+        assert lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN} N") == []
+
+    def test_a_reversal_wider_than_the_tolerance_still_raises(self):
+        with pytest.raises(lab.LabFormatError, match="precedes start"):
+            lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN * 2} C")
+
+    def test_times_a_hair_over_the_tolerance_are_skipped(self):
+        # Written times, not derived ones, and tied to the tolerance's current
+        # value: the first assert fails loudly if it moves and this pair stops
+        # being the case the test is for.
+        width = 2.003 - 1.003
+        assert width > lab.MAX_REVERSED_SPAN
+        assert lab.parse("2.003 1.003 N") == []
+
+    def test_a_skipped_reversal_is_logged(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="songscribe.lab"):
+            lab.parse("284.352 284.307 N", source="song.lab")
+        assert "song.lab:1" in caplog.text
+        assert "0.045" in caplog.text
 
     @pytest.mark.parametrize("text", ["nan nan C:maj", "0.0 inf C:maj", "-inf 1.0 C"])
     def test_rejects_a_non_finite_timestamp(self, text):
