@@ -217,6 +217,41 @@ The manifest holds paths that follow your library, so keep it uncommitted. The c
 `eval/isophonics-beatles.json` is references-only (no `audio` paths); it works for `survey` and
 `score --estimates`.
 
+One archive holds several artists, and `--include` takes one of them as its own corpus. That
+is how the committed per-artist manifests were built, and how to rebuild one:
+
+```bash
+songscribe-eval manifest data/isophonics --include chordlab/Zweieck \
+  --name isophonics-zweieck --output eval/isophonics-zweieck.json
+```
+
+`--include` keeps the annotations at or under a path relative to the annotation directory, and
+is repeatable. It matches whole directory names, so a prefix that stops mid-name selects
+nothing rather than the wrong corpus.
+
+Keeping the artists apart matters because Isophonics rates its own chord annotations per
+artist: The Beatles "use with confidence", Zweieck "moderate confidence", Carole King "have
+not been carefully checked, use with care". One average over all three would hide that, and a
+poor Carole King score is as likely to be the reference as the model. The chord references
+cover three of the four artists — Michael Jackson's set is structural segmentation only, with
+no chords at all, so it never reaches a manifest.
+
+| Manifest | Tracks | Annotated | Confidence upstream | `survey` |
+|---|---|---|---|---|
+| `eval/isophonics-beatles.json` | 180 | 8.15 h | use with confidence | every label parses |
+| `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence | every label parses |
+| `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked | exits 2, and 2 files need a reader fix |
+
+Carole King is 7 of the 14 Tapestry tracks (01–07), and is the one corpus here that does not
+pass its own health check:
+
+- `survey` exits 2. Six segments carry four qualities `eval/harte.py` has no parse for
+  (`B:7sus`, `E:4`, `E:sus`, `E:7sus`). Per this repository's rule that is a gap in our
+  vocabulary, not bad data, and worth closing before quoting a number from this corpus.
+- Two files end on a reversed final `N` segment, 45 ms and 17 ms backwards, so `lab.parse`
+  rejects them and `survey` reads 5 of 7 tracks (0.27 h of the 0.44 h). Skipping a reversal
+  that short is a separate change; until it lands, scores on this corpus cover five tracks.
+
 `eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
 song, with tempo and key variants as separate tracks. No chord references exist for them yet,
 so each `reference` is a placeholder: the path, `labs/<id>.lab`, where that song's annotation
@@ -329,19 +364,41 @@ few seconds per hundred tracks; `--no-alignment-check` skips it.
 
 ## Train and test sets
 
-`eval/jaah.json`, `eval/isophonics-beatles.json` and `eval/backing-track.json` each have a
-train and a test manifest next to them, about 20% of the songs held out. Train includes
-validation: tune on it, and score on test once you are done tuning.
+`eval/jaah.json`, `eval/isophonics-beatles.json`, `eval/isophonics-zweieck.json` and
+`eval/backing-track.json` each have a train and a test manifest next to them, about 20% of the
+songs held out. Train includes validation: tune on it, and score on test once you are done
+tuning.
 
 ```bash
 songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
 ```
 
 Recordings of one song always go to the same set. A trailing parenthesis is ignored, so
-`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together. The set comes from a
-hash of the song name, so a manifest built locally splits like the committed one. If file
-names hide that two recordings are one song, add them to `SAME_SONG` in
-`src/songscribe/eval/split.py` and run `split` again, before tuning.
+`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together, and a leading track
+number is ignored in either spelling Isophonics ships (`05_-_Dig_It`, `05 Beautiful`), so a
+song is not tied to its position on the album. The set comes from a hash of the song name, so
+a manifest built locally splits like the committed one. If file names hide that two recordings
+are one song, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again,
+before tuning.
+
+**Carole King is held out whole**, as `eval/isophonics-carole-king-test.json` with no train
+manifest: score it, never tune on it. Seven songs cannot carry a hash split — the lowest of
+them hashes at 0.39, so no sensible fraction holds one out, and `split` would write an empty
+test set. That it is also the set Isophonics has not checked carefully is a second reason to
+keep it off the tuning side rather than average it in.
+
+A hash split is approximate by design, and on a small corpus it can put every song on one
+side. `split` warns when that happens and names the fraction that would not have:
+
+```
+songscribe-eval: test is empty -- 7 songs is too few for a 0.2 hash split;
+  the lowest song hashes at 0.39. Split a larger corpus, or use it whole
+  rather than holding out none of it.
+```
+
+Both manifests are still written, and the exit stays 0: the split is the right split for that
+fraction. Raising `--test-fraction` until something lands in test is choosing a test set by
+the number it gives, which is the thing a held-out set exists to prevent.
 
 ## Scoring a chart played several times
 

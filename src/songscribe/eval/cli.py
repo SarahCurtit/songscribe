@@ -114,6 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="dataset name for report headers (default: the annotation directory's name)",
     )
     manifest.add_argument(
+        "--include",
+        action="append",
+        metavar="PATH",
+        help=(
+            "keep only annotations at or under this path, relative to the annotation "
+            "directory; repeatable (e.g. 'chordlab/Zweieck' for one artist of an archive)"
+        ),
+    )
+    manifest.add_argument(
         "--list-unpaired",
         action="store_true",
         help="print every track that did not pair, not just the first few",
@@ -370,7 +379,44 @@ def _split(args: argparse.Namespace) -> int:
         write_manifest(path, part)
         songs = {song_key(track["id"]) for track in part["tracks"]}
         print(f"wrote {path}: {len(part['tracks'])} tracks, {len(songs)} songs")
+    for line in degenerate_split_lines(manifest["tracks"], train, test, args.test_fraction):
+        print(line, file=sys.stderr)
     return 0
+
+
+def degenerate_split_lines(
+    tracks: list[dict],
+    train: dict,
+    test: dict,
+    test_fraction: float,
+) -> list[str]:
+    """Warn if one side came out empty, naming the fraction that would not have.
+
+    A hash split of a handful of songs can put all of them on one side, and both
+    manifests are still written: an empty set is only visibly wrong if you know
+    what it should have held. Not an error -- the split is still the right split
+    for that fraction -- so it goes to stderr and the exit stays 0.
+    """
+    from .split import position, song_key
+
+    empty = "train" if not train["tracks"] else "test" if not test["tracks"] else None
+    if empty is None or not tracks:
+        return []
+
+    # Per song, not per track: the split assigns songs, so a corpus of three
+    # takes of one tune is one song's worth of chances to land on either side.
+    positions = sorted(position(key) for key in {song_key(track["id"]) for track in tracks})
+    # The fraction that would first move a song across: the lowest song for an
+    # empty test set, just above the highest for an empty train one.
+    needed = positions[0] if empty == "test" else positions[-1]
+    comparison = "lowest" if empty == "test" else "highest"
+    songs = f"{len(positions)} song" + ("" if len(positions) == 1 else "s")
+    return [
+        f"songscribe-eval: {empty} is empty -- {songs} is too few for a "
+        f"{test_fraction:g} hash split;",
+        f"  the {comparison} song hashes at {needed:.2f}. Split a larger corpus, or use it whole",
+        "  rather than holding out none of it.",
+    ]
 
 
 def _manifest(args: argparse.Namespace) -> int:
@@ -383,7 +429,7 @@ def _manifest(args: argparse.Namespace) -> int:
         # that ends up pasted into a comparison table. Inside the try because
         # resolve() can raise on a symlink loop.
         name = args.name or args.annotations.expanduser().resolve().name or "corpus"
-        report = build_manifest(args.annotations, args.audio, name=name)
+        report = build_manifest(args.annotations, args.audio, name=name, include=args.include)
     except (OSError, ValueError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1

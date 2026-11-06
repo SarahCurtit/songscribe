@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "dataset": "isophonics-zweieck",
+  "notes": "Chord reference annotations only, not paired with any audio. Paths are relative, and no annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
+  "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
+  "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "tracks": [
+    {
+      "id": "chordlab/Zweieck/Zwielicht/01_-_Spiel_Mir_Eine_Alte_Melodie",
+      "reference": "chordlab/Zweieck/Zwielicht/01_-_Spiel_Mir_Eine_Alte_Melodie.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/02_-_Rawhide",
+      "reference": "chordlab/Zweieck/Zwielicht/02_-_Rawhide.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/03_-_She",
+      "reference": "chordlab/Zweieck/Zwielicht/03_-_She.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/04_-_Erbauliche_Gedanken_Eines_Tobackrauchers",
+      "reference": "chordlab/Zweieck/Zwielicht/04_-_Erbauliche_Gedanken_Eines_Tobackrauchers.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/05_-_Andersrum",
+      "reference": "chordlab/Zweieck/Zwielicht/05_-_Andersrum.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/06_-_Tigerfest",
+      "reference": "chordlab/Zweieck/Zwielicht/06_-_Tigerfest.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/07_-_Akne",
+      "reference": "chordlab/Zweieck/Zwielicht/07_-_Akne.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/08_-_Blass",
+      "reference": "chordlab/Zweieck/Zwielicht/08_-_Blass.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/09_-_Mr_Morgan",
+      "reference": "chordlab/Zweieck/Zwielicht/09_-_Mr_Morgan.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/10_-_Liebesleid",
+      "reference": "chordlab/Zweieck/Zwielicht/10_-_Liebesleid.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/11_-_Ich_Kann_Heute_Nicht",
+      "reference": "chordlab/Zweieck/Zwielicht/11_-_Ich_Kann_Heute_Nicht.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/12_-_Jakob_Und_Marie",
+      "reference": "chordlab/Zweieck/Zwielicht/12_-_Jakob_Und_Marie.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/13_-_Paparazzi",
+      "reference": "chordlab/Zweieck/Zwielicht/13_-_Paparazzi.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/14_-_Santa_Donna_Lucia_Mobile",
+      "reference": "chordlab/Zweieck/Zwielicht/14_-_Santa_Donna_Lucia_Mobile.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/15_-_Es_Wird_Alles_Wieder_Gut,_Herr_Professor",
+      "reference": "chordlab/Zweieck/Zwielicht/15_-_Es_Wird_Alles_Wieder_Gut,_Herr_Professor.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/16_-_Zu_Leise_Fu\u0308r_Mich",
+      "reference": "chordlab/Zweieck/Zwielicht/16_-_Zu_Leise_Fu\u0308r_Mich.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/17_-_Duell",
+      "reference": "chordlab/Zweieck/Zwielicht/17_-_Duell.lab"
+    },
+    {
+      "id": "chordlab/Zweieck/Zwielicht/18_-_Zuhause",
+      "reference": "chordlab/Zweieck/Zwielicht/18_-_Zuhause.lab"
+    }
+  ]
+}

@@ -169,13 +169,18 @@ instant and a long run is resumable — which matters because `madmom` runs at ~
 making the 8-hour Beatles set ~4 hours (`template` is ~180x, so ~3 minutes). Shake the
 paths out with `-c template --limit 5` first. See `EVALUATION.md`.
 
-The Beatles annotations live in the gitignored `data/isophonics/` (extract the Isophonics
-archive there, so `chordlab/` sits directly under it); `eval/isophonics-beatles.json` is the
-committed manifest over them. Its `reference` paths start at `chordlab/`, so the annotation
+The Isophonics annotations live in the gitignored `data/isophonics/` (extract the archive
+there, so `chordlab/` sits directly under it); `eval/isophonics-beatles.json` is the committed
+manifest over the Beatles. The archive holds more than one artist, and each is a committed
+manifest of its own — `-zweieck` (18 tracks) and `-carole-king` (7) — built with `manifest
+--include chordlab/<artist>`, because Isophonics rates its annotations per artist and one
+average would hide that. Carole King is held out whole (`-test`, no `-train`): 7 songs cannot
+carry a hash split. Michael Jackson's set has no chords at all, only segments, so it never
+reaches a manifest. Their `reference` paths start at `chordlab/`, so the annotation
 root — `SONGSCRIBE_EVAL_ANNOTATIONS`, as above, or `--annotations` — must be the directory
-*containing* `chordlab/`; unset, it falls back to `eval/` and finds nothing. The manifest is
+*containing* `chordlab/`; unset, it falls back to `eval/` and finds nothing. They are all
 **references-only** — no `audio` paths —
-so it serves `survey` and `score --estimates` (both need that root), and `score -c` on it
+so they serve `survey` and `score --estimates` (both need that root), and `score -c` on them
 scores nothing. A `-c` run needs a manifest built locally with `manifest -a`, as above; its
 audio paths follow your own library's filenames, so it stays uncommitted. Its paths are
 relative to the two directories it was built from, so `score` needs both roots pointing

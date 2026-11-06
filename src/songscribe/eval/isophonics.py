@@ -9,6 +9,7 @@ or take the other name and a few allowlisted words. Misses are reported, never g
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -182,6 +183,22 @@ def find_annotations(annotation_root: Path) -> list[Path]:
     return found
 
 
+def _is_included(relative: Path, include: Sequence[str]) -> bool:
+    """True if ``relative`` is one of ``include`` or sits under one of them.
+
+    Matched on whole path components, so ``chordlab/Zwei`` selects nothing rather
+    than ``chordlab/Zweieck``: a prefix stopping mid-name is a typo, and building
+    a committed manifest from it would quietly scope it to the wrong corpus.
+    """
+    path = relative.as_posix()
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in map(_prefix, include))
+
+
+def _prefix(text: str) -> str:
+    """One ``include`` path, normalised to compare against a relative POSIX path."""
+    return Path(text).as_posix().rstrip("/")
+
+
 def _is_archive(directory: Path) -> bool:
     """True if ``directory`` holds a chord directory beside another annotation one."""
     names = {c.name.lower() for c in directory.iterdir() if c.is_dir()}
@@ -204,12 +221,16 @@ def build_manifest(
     audio_root: str | Path | None = None,
     name: str = "isophonics",
     notes: str | None = None,
+    include: Sequence[str] | None = None,
 ) -> BuildReport:
     """Pair annotations with audio and assemble a manifest.
 
     ``audio_root`` may be omitted, which produces a manifest with references
     only -- enough to score pre-computed estimates, not to run a model.
     ``notes`` defaults to the paired text only if at least one track paired.
+    ``include`` keeps only the annotations at or under those paths, relative to
+    ``annotation_root``: an archive holding several artists is one corpus per
+    artist, rated for confidence and scored separately, not one average.
     """
     annotation_root = Path(annotation_root).expanduser()
     if not annotation_root.is_dir():
@@ -218,6 +239,18 @@ def build_manifest(
     annotations = find_annotations(annotation_root)
     if not annotations:
         raise FileNotFoundError(f"no .lab files under {annotation_root}")
+
+    if include:
+        annotations = [
+            path for path in annotations if _is_included(path.relative_to(annotation_root), include)
+        ]
+        # Distinct from the message above: the tree does hold annotations, so the
+        # path that selected none of them is what to go and look at.
+        if not annotations:
+            raise FileNotFoundError(
+                f"no .lab files under {annotation_root} are at or under "
+                f"{', '.join(map(_prefix, include))}"
+            )
 
     audio_root = Path(audio_root).expanduser() if audio_root else None
     # A mistyped audio root would otherwise index nothing and report every
