@@ -59,7 +59,7 @@ class TestParse:
 
     def test_end_before_start_raises(self):
         with pytest.raises(lab.LabFormatError, match="precedes start"):
-            lab.parse("2.0 1.0 C")
+            lab.parse("20.0 1.0 C")
 
     def test_a_tiny_reversal_is_skipped_and_keeps_the_rest_of_the_file(self):
         # A trailing reversed no-chord span, as some published annotations end on.
@@ -75,13 +75,20 @@ class TestParse:
         assert (events[0].start, events[0].end) == (0.0, 10.0)
         assert (events[1].start, events[1].end) == (9.96, 20.0)
 
+    def test_a_reversal_of_seconds_within_the_tolerance_is_skipped(self):
+        # The tolerance covers a reversal far wider than the tens of
+        # milliseconds the published sets actually carry.
+        events = lab.parse("0.0 100.0 C\n100.0 97.0 N\n97.0 120.0 G\n")
+        assert [e.label for e in events] == ["C", "G"]
+        assert (events[1].start, events[1].end) == (97.0, 120.0)
+
     def test_a_reversal_wider_than_the_tolerance_still_raises(self):
         with pytest.raises(lab.LabFormatError, match="precedes start"):
-            lab.parse(f"1.0 {1.0 - lab.MAX_REVERSED_SPAN * 2} C")
+            lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN * 2} C")
 
-    @pytest.mark.parametrize("text", ["1.0 0.95 N", "2.5 2.45 N", "100.0 99.95 N", "0.05 0.0 N"])
+    @pytest.mark.parametrize("text", ["8.002 3.002 N", "10.0 5.0 N", "100.0 95.0 N", "5.0 0.0 N"])
     def test_a_reversal_of_exactly_the_tolerance_is_skipped(self, text):
-        # 1.0 - 0.95 subtracts to 0.050000000000000044, so the comparison is
+        # 8.002 - 3.002 subtracts to 5.000000000000001, so the comparison is
         # made at the precision the times are written in.
         assert lab.parse(text) == []
 

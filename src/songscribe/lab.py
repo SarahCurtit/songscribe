@@ -24,13 +24,20 @@ WRITE_SEPARATOR = "\t"
 #: survives a round trip, short enough to stay readable.
 TIME_PRECISION = 6
 
-#: A reversed segment no wider than this is a rounding artefact in the
-#: annotation, not an ordering mistake. Each line carries its own absolute
-#: timestamps, so dropping one leaves every other boundary where it was. A wider
-#: reversal raises. The width is compared at :data:`TIME_PRECISION`, the
-#: precision the times are written in, so a nominal 50 ms reversal counts as one
-#: whatever the subtraction does with the last bit.
-MAX_REVERSED_SPAN = 0.05
+#: A reversed segment no wider than this is treated as an artefact of how the
+#: annotation was produced, not an ordering mistake, and is skipped. Skipping is
+#: cheap at any width: each line carries its own absolute timestamps, so
+#: dropping one leaves every other boundary where it was, and a reversed segment
+#: spans no forward time, so no annotated second goes missing with it. The
+#: tolerance is therefore set well above the reversals actually seen -- tens of
+#: milliseconds in the Isophonics chord sets -- so that a corpus is readable
+#: rather than exactly as readable as the widest artefact measured so far. Past
+#: this width the file is rejected: a reversal of seconds is a line in the wrong
+#: place, which is a real error in the annotation's order. The width is compared
+#: at :data:`TIME_PRECISION`, the precision the times are written in, so a
+#: nominal reversal of exactly the tolerance counts as covered whatever the
+#: subtraction does with the last bit.
+MAX_REVERSED_SPAN = 5.0
 
 
 class LabFormatError(ValueError):
