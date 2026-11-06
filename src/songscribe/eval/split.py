@@ -23,10 +23,7 @@ SAME_SONG = {
     "new_east_st_louis": "east_st_louis",
 }
 
-#: Both separators ship inside one archive: Isophonics numbers the Beatles "05_-_Dig_It" and
-#: Carole King "05 Beautiful". A number left in the key would tie the song to its position on
-#: the album, so renumbering a file, or the same song appearing on a reissue at another track
-#: number, would move it between the sets.
+#: Both spellings ship: Isophonics numbers the Beatles "05_-_Dig_It", Carole King "05 Beautiful".
 _TRACK_NUMBER = re.compile(r"^(cd\d+_-_)?\d+(_-_| )")
 _PARENTHESES = re.compile(r"_?\([^)]*\)$")
 

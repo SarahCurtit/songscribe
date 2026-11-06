@@ -394,12 +394,12 @@ def empty_side_refusal(
     test: dict,
     test_fraction: float,
 ) -> list[str]:
-    """Why a split with an empty side was refused, naming where the nearest song hashes.
+    """Lines explaining the refusal when a split would leave train or test with no songs.
 
-    A hash split of a handful of songs can land all of them on one side. A 0-track
-    manifest reads as a split that happened, and writing one would replace a corpus
-    held out whole, whose test manifest no command regenerates, so nothing is
-    written at all when this returns lines.
+    Empty when both sides have songs. A hash split of only a few songs can land
+    all of them on one side; nothing is written then, since a 0-track manifest
+    reads as a real split and would replace the test manifest of a corpus held
+    out whole, which no command regenerates.
     """
     from .split import position, song_key
 

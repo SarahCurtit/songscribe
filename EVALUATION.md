@@ -235,21 +235,13 @@ poor Carole King score is as likely to be the reference as the model. The chord 
 cover three of the four artists — Michael Jackson's set is structural segmentation only, with
 no chords at all, so it never reaches a manifest.
 
-| Manifest | Tracks | Annotated | Confidence upstream | `survey` |
-|---|---|---|---|---|
-| `eval/isophonics-beatles.json` | 180 | 8.15 h | use with confidence | every label parses |
-| `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence | every label parses |
-| `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked | exits 2, and 2 files need a reader fix |
+| Manifest | Tracks | Annotated | Confidence upstream |
+|---|---|---|---|
+| `eval/isophonics-beatles.json` | 180 | 8.15 h | use with confidence |
+| `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence |
+| `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked |
 
-Carole King is Tapestry's first seven tracks (01–07), and is the one corpus here that does not
-pass its own health check:
-
-- `survey` exits 2. Six segments carry four qualities `eval/harte.py` has no parse for
-  (`B:7sus`, `E:4`, `E:sus`, `E:7sus`). Per this repository's rule that is a gap in our
-  vocabulary, not bad data, and worth closing before quoting a number from this corpus.
-- Two files end on a reversed final `N` segment, 45 ms and 17 ms backwards, so `lab.parse`
-  rejects them and `survey` reads 5 of 7 tracks (0.27 h of the 0.44 h). Skipping a reversal
-  that short is a separate change; until it lands, scores on this corpus cover five tracks.
+Carole King is Tapestry's first seven tracks (01–07).
 
 `eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
 song, with tempo and key variants as separate tracks. No chord references exist for them yet,
