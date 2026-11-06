@@ -216,9 +216,9 @@ class TestAbbreviatedSpellings:
         assert parse("E:sus(9)").intervals == frozenset({0, 5, 7, 2})
 
     def test_a_bare_degree_is_not_a_quality(self):
-        # "E:4" appears twice in one Carole King track. It is not Harte syntax,
-        # and the bars around it are Eb chords, so which chord it means is a
-        # question for the annotation rather than a spelling to accept here.
+        # Pins a standing decision, so making `survey` exit 0 on Carole King is
+        # not a reason to accept "E:4". EVALUATION.md's Isophonics section and
+        # _parse_quality say why a bare degree stays unparsed.
         assert parse("E:4") is None
 
 

@@ -148,7 +148,10 @@ the chart as written). See `EVALUATION.md`.
 
 `survey` is the corpus health check: it reports annotated time and whether every label
 parses, and **exits non-zero if any label doesn't** — an unparseable label is a gap in
-`eval/harte.py`, not bad data. Run it on a new corpus before anything else.
+`eval/harte.py`, not bad data. Run it on a new corpus before anything else. The one exception
+is a label that isn't valid notation: Carole King's `E:4` is a bare degree where Harte
+parenthesises a degree list, so it stays unparsed on purpose and `survey` exits 2 on that
+corpus for good. Don't "fix" it — `EVALUATION.md` says why, and a test pins it.
 
 `notebooks/annotations.ipynb` draws the same data: chord timelines raw vs collapsed-to-chart,
 harmonic rhythm, root profile, corpus label coverage, reference-against-estimate with an
