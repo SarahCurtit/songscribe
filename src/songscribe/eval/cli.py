@@ -373,14 +373,18 @@ def _split(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
         return 1
 
+    refusal = degenerate_split_lines(manifest["tracks"], train, test, args.test_fraction)
+    if refusal:
+        for line in refusal:
+            print(line, file=sys.stderr)
+        return 1
+
     directory = args.output_dir or args.manifest.parent
     for part in (train, test):
         path = directory / f"{part['dataset']}.json"
         write_manifest(path, part)
         songs = {song_key(track["id"]) for track in part["tracks"]}
         print(f"wrote {path}: {len(part['tracks'])} tracks, {len(songs)} songs")
-    for line in degenerate_split_lines(manifest["tracks"], train, test, args.test_fraction):
-        print(line, file=sys.stderr)
     return 0
 
 
@@ -390,12 +394,12 @@ def degenerate_split_lines(
     test: dict,
     test_fraction: float,
 ) -> list[str]:
-    """Warn if one side came out empty, naming the fraction that would not have.
+    """Why a split with an empty side was refused, naming the fraction that would not be.
 
-    A hash split of a handful of songs can put all of them on one side, and both
-    manifests are still written: an empty set is only visibly wrong if you know
-    what it should have held. Not an error -- the split is still the right split
-    for that fraction -- so it goes to stderr and the exit stays 0.
+    A hash split of a handful of songs can land all of them on one side. Writing a
+    0-track manifest would be a trap for whoever scores it next, and would replace
+    a corpus held out whole, whose test manifest no command regenerates, so nothing
+    is written at all when this returns lines.
     """
     from .split import position, song_key
 
@@ -406,16 +410,17 @@ def degenerate_split_lines(
     # Per song, not per track: the split assigns songs, so a corpus of three
     # takes of one tune is one song's worth of chances to land on either side.
     positions = sorted(position(key) for key in {song_key(track["id"]) for track in tracks})
-    # The fraction that would first move a song across: the lowest song for an
-    # empty test set, just above the highest for an empty train one.
+    # The fraction a song first crosses at: the lowest position for an empty test
+    # set, and at most the highest for an empty train one.
     needed = positions[0] if empty == "test" else positions[-1]
     comparison = "lowest" if empty == "test" else "highest"
     songs = f"{len(positions)} song" + ("" if len(positions) == 1 else "s")
+    held = "none" if empty == "test" else "all"
     return [
-        f"songscribe-eval: {empty} is empty -- {songs} is too few for a "
+        f"songscribe-eval: {empty} would be empty -- {songs} is too few for a "
         f"{test_fraction:g} hash split;",
-        f"  the {comparison} song hashes at {needed:.2f}. Split a larger corpus, or use it whole",
-        "  rather than holding out none of it.",
+        f"  the {comparison} song hashes at {needed:.2f}. Nothing written; score the corpus whole",
+        f"  rather than holding out {held} of it.",
     ]
 
 

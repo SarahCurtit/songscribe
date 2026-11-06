@@ -196,7 +196,7 @@ def _is_included(relative: Path, include: Sequence[str]) -> bool:
 
 def _prefix(text: str) -> str:
     """One ``include`` path, normalised to compare against a relative POSIX path."""
-    return Path(text).as_posix().rstrip("/")
+    return Path(text).as_posix()
 
 
 def _is_archive(directory: Path) -> bool:

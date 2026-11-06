@@ -153,37 +153,56 @@ class TestPosition:
         assert all(0.0 <= split.position(f"song_{n}") < 1.0 for n in range(50))
 
 
-class TestEmptySideWarning:
-    """Both manifests are written even when one is empty, so `split` has to say so."""
+class TestEmptySideIsRefused:
+    """A side that comes out empty is not a split, so nothing is written.
+
+    Writing it would also replace a corpus held out whole, whose test manifest no
+    command regenerates.
+    """
 
     @staticmethod
     def _ids(predicate, count: int = 5) -> list[str]:
         return [i for i in IDS if predicate(split.position(split.song_key(i)))][:count]
 
-    def _run(self, tmp_path: Path, ids: list[str]) -> None:
+    def _run(self, tmp_path: Path, ids: list[str]) -> int:
         from songscribe.eval import cli
 
         path = tmp_path / "corpus.json"
         path.write_text(json.dumps(manifest(*ids)), encoding="utf-8")
-        assert cli.main(["split", str(path)]) == 0
+        return cli.main(["split", str(path)])
 
     def test_an_empty_test_set_names_the_fraction_that_would_have_worked(self, tmp_path, capsys):
         ids = self._ids(lambda p: p >= split.TEST_FRACTION)
-        self._run(tmp_path, ids)
+        assert self._run(tmp_path, ids) == 1
         error = capsys.readouterr().err
-        assert "test is empty" in error
+        assert "test would be empty" in error
         assert f"{len(ids)} songs is too few" in error
         assert f"hashes at {min(split.position(split.song_key(i)) for i in ids):.2f}" in error
 
-    def test_an_empty_train_set_is_called_out_too(self, tmp_path, capsys):
-        self._run(tmp_path, self._ids(lambda p: p < split.TEST_FRACTION))
-        assert "train is empty" in capsys.readouterr().err
+    def test_neither_manifest_is_written(self, tmp_path):
+        assert self._run(tmp_path, self._ids(lambda p: p >= split.TEST_FRACTION)) == 1
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["corpus.json"]
 
-    def test_a_split_with_both_sides_filled_stays_quiet(self, tmp_path, capsys):
-        self._run(tmp_path, IDS)
+    def test_an_existing_test_manifest_survives_the_refusal(self, tmp_path):
+        """The Carole King case: a hand-made test manifest must not be overwritten."""
+        kept = tmp_path / "corpus-test.json"
+        kept.write_text("held out whole", encoding="utf-8")
+        assert self._run(tmp_path, self._ids(lambda p: p >= split.TEST_FRACTION)) == 1
+        assert kept.read_text(encoding="utf-8") == "held out whole"
+
+    def test_an_empty_train_set_says_all_of_it_is_held_out(self, tmp_path, capsys):
+        assert self._run(tmp_path, self._ids(lambda p: p < split.TEST_FRACTION)) == 1
+        error = capsys.readouterr().err
+        assert "train would be empty" in error
+        assert "holding out all of it" in error
+
+    def test_a_split_with_both_sides_filled_writes_both_and_stays_quiet(self, tmp_path, capsys):
+        assert self._run(tmp_path, IDS) == 0
         assert capsys.readouterr().err == ""
+        assert (tmp_path / "demo-train.json").exists()
+        assert (tmp_path / "demo-test.json").exists()
 
     def test_takes_of_one_song_count_as_one_chance(self, tmp_path, capsys):
         song = self._ids(lambda p: p >= split.TEST_FRACTION, count=1)[0]
-        self._run(tmp_path, [f"{song}(take{n})" for n in range(4)])
+        assert self._run(tmp_path, [f"{song}(take{n})" for n in range(4)]) == 1
         assert "1 song is too few" in capsys.readouterr().err

@@ -46,9 +46,9 @@ def song_key(track_id: str) -> str:
 def position(key: str) -> float:
     """Where the song sits in the unit interval. Stable across runs and manifests.
 
-    Exposed so a caller can say which fraction *would* hold a song out: on a small
-    corpus every song can sit above the fraction, and "0 tracks" alone doesn't say
-    whether that is the fraction or the corpus.
+    A caller can report which fraction would hold a song out: on a small corpus
+    every song can sit above the fraction, and "0 tracks" alone doesn't
+    distinguish the fraction from the corpus.
     """
     digest = hashlib.sha256(key.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big") / 2**64

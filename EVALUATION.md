@@ -226,8 +226,7 @@ songscribe-eval manifest data/isophonics --include chordlab/Zweieck \
 ```
 
 `--include` keeps the annotations at or under a path relative to the annotation directory, and
-is repeatable. It matches whole directory names, so a prefix that stops mid-name selects
-nothing rather than the wrong corpus.
+is repeatable. It matches whole directory names.
 
 Keeping the artists apart matters because Isophonics rates its own chord annotations per
 artist: The Beatles "use with confidence", Zweieck "moderate confidence", Carole King "have
@@ -242,7 +241,7 @@ no chords at all, so it never reaches a manifest.
 | `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence | every label parses |
 | `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked | exits 2, and 2 files need a reader fix |
 
-Carole King is 7 of the 14 Tapestry tracks (01–07), and is the one corpus here that does not
+Carole King is Tapestry's first seven tracks (01–07), and is the one corpus here that does not
 pass its own health check:
 
 - `survey` exits 2. Six segments carry four qualities `eval/harte.py` has no parse for
@@ -383,21 +382,24 @@ before tuning.
 
 **Carole King is held out whole**, as `eval/isophonics-carole-king-test.json` with no train
 manifest: score it, never tune on it. Seven songs cannot carry a hash split — the lowest of
-them hashes at 0.39, so no sensible fraction holds one out, and `split` would write an empty
-test set. That it is also the set Isophonics has not checked carefully is a second reason to
-keep it off the tuning side rather than average it in.
+them hashes at 0.39, so no sensible fraction holds one out. That it is also the set Isophonics
+has not checked carefully is a second reason to keep it off the tuning side rather than
+average it in. That test manifest is **maintained by hand**: it is every track of the corpus,
+and `split` does not produce it, so edit it alongside `eval/isophonics-carole-king.json` when
+the corpus changes.
 
-A hash split is approximate by design, and on a small corpus it can put every song on one
-side. `split` warns when that happens and names the fraction that would not have:
+A hash split is approximate by design, and on a small corpus it can land every song on one
+side. `split` refuses that rather than writing a 0-track manifest, and names the fraction that
+would not have:
 
 ```
-songscribe-eval: test is empty -- 7 songs is too few for a 0.2 hash split;
-  the lowest song hashes at 0.39. Split a larger corpus, or use it whole
+songscribe-eval: test would be empty -- 7 songs is too few for a 0.2 hash split;
+  the lowest song hashes at 0.39. Nothing written; score the corpus whole
   rather than holding out none of it.
 ```
 
-Both manifests are still written, and the exit stays 0: the split is the right split for that
-fraction. Raising `--test-fraction` until something lands in test is choosing a test set by
+Neither manifest is written and the exit is 1, so a corpus held out whole keeps its test
+manifest. Raising `--test-fraction` until something lands in test is choosing a test set by
 the number it gives, which is the thing a held-out set exists to prevent.
 
 ## Scoring a chart played several times
