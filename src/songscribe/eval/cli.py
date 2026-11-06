@@ -114,6 +114,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="dataset name for report headers (default: the annotation directory's name)",
     )
     manifest.add_argument(
+        "--include",
+        action="append",
+        metavar="PATH",
+        help=(
+            "keep only annotations at or under this path, relative to the annotation "
+            "directory; repeatable (e.g. 'chordlab/Zweieck' for one artist of an archive)"
+        ),
+    )
+    manifest.add_argument(
         "--list-unpaired",
         action="store_true",
         help="print every track that did not pair, not just the first few",
@@ -364,6 +373,12 @@ def _split(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
         return 1
 
+    refusal = empty_side_refusal(manifest["tracks"], train, test, args.test_fraction)
+    if refusal:
+        for line in refusal:
+            print(line, file=sys.stderr)
+        return 1
+
     directory = args.output_dir or args.manifest.parent
     for part in (train, test):
         path = directory / f"{part['dataset']}.json"
@@ -371,6 +386,42 @@ def _split(args: argparse.Namespace) -> int:
         songs = {song_key(track["id"]) for track in part["tracks"]}
         print(f"wrote {path}: {len(part['tracks'])} tracks, {len(songs)} songs")
     return 0
+
+
+def empty_side_refusal(
+    tracks: list[dict],
+    train: dict,
+    test: dict,
+    test_fraction: float,
+) -> list[str]:
+    """Lines explaining the refusal when a split would leave train or test with no songs.
+
+    Empty when both sides have songs. A hash split of only a few songs can land
+    all of them on one side; nothing is written then, since a 0-track manifest
+    reads as a real split and would replace the test manifest of a corpus held
+    out whole, which no command regenerates.
+    """
+    from .split import position, song_key
+
+    empty = "train" if not train["tracks"] else "test" if not test["tracks"] else None
+    if empty is None or not tracks:
+        return []
+
+    # Per song, not per track: the split assigns songs, so a corpus of three
+    # takes of one tune is one song's worth of chances to land on either side.
+    positions = sorted(position(key) for key in {song_key(track["id"]) for track in tracks})
+    # The fraction a song first crosses at: the lowest position for an empty test
+    # set, and at most the highest for an empty train one.
+    needed = positions[0] if empty == "test" else positions[-1]
+    comparison = "lowest" if empty == "test" else "highest"
+    songs = f"{len(positions)} song" + ("" if len(positions) == 1 else "s")
+    held = "none" if empty == "test" else "all"
+    return [
+        f"songscribe-eval: {empty} would be empty -- {songs} is too few for a "
+        f"{test_fraction:g} hash split;",
+        f"  the {comparison} song hashes at {needed:.2f}. Nothing written; score the corpus whole",
+        f"  rather than holding out {held} of it.",
+    ]
 
 
 def _manifest(args: argparse.Namespace) -> int:
@@ -383,7 +434,7 @@ def _manifest(args: argparse.Namespace) -> int:
         # that ends up pasted into a comparison table. Inside the try because
         # resolve() can raise on a symlink loop.
         name = args.name or args.annotations.expanduser().resolve().name or "corpus"
-        report = build_manifest(args.annotations, args.audio, name=name)
+        report = build_manifest(args.annotations, args.audio, name=name, include=args.include)
     except (OSError, ValueError) as error:
         print(f"songscribe-eval: {error}", file=sys.stderr)
         return 1

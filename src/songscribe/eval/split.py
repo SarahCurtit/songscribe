@@ -23,7 +23,8 @@ SAME_SONG = {
     "new_east_st_louis": "east_st_louis",
 }
 
-_TRACK_NUMBER = re.compile(r"^(cd\d+_-_)?\d+_-_")
+#: Both spellings ship: Isophonics numbers the Beatles "05_-_Dig_It", Carole King "05 Beautiful".
+_TRACK_NUMBER = re.compile(r"^(cd\d+_-_)?\d+(_-_| )")
 _PARENTHESES = re.compile(r"_?\([^)]*\)$")
 
 
@@ -39,10 +40,20 @@ def song_key(track_id: str) -> str:
     return SAME_SONG.get(stem, stem)
 
 
+def position(key: str) -> float:
+    """Where the song sits in the unit interval. Stable across runs and manifests.
+
+    A caller can report which fraction would hold a song out: on a small corpus
+    every song can sit above the fraction, and "0 tracks" alone doesn't
+    distinguish the fraction from the corpus.
+    """
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64
+
+
 def is_test(key: str, test_fraction: float = TEST_FRACTION) -> bool:
     """Whether the song with this key is held out."""
-    digest = hashlib.sha256(key.encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big") / 2**64 < test_fraction
+    return position(key) < test_fraction
 
 
 def split_manifest(manifest: dict, test_fraction: float = TEST_FRACTION) -> tuple[dict, dict]:

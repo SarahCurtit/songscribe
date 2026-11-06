@@ -217,6 +217,32 @@ The manifest holds paths that follow your library, so keep it uncommitted. The c
 `eval/isophonics-beatles.json` is references-only (no `audio` paths); it works for `survey` and
 `score --estimates`.
 
+One archive holds several artists, and `--include` takes one of them as its own corpus. That
+is how the committed per-artist manifests were built, and how to rebuild one:
+
+```bash
+songscribe-eval manifest data/isophonics --include chordlab/Zweieck \
+  --name isophonics-zweieck --output eval/isophonics-zweieck.json
+```
+
+`--include` keeps the annotations at or under a path relative to the annotation directory, and
+is repeatable. It matches whole directory names.
+
+Keeping the artists apart matters because Isophonics rates its own chord annotations per
+artist: The Beatles "use with confidence", Zweieck "moderate confidence", Carole King "have
+not been carefully checked, use with care". One average over all three would hide that, and a
+poor Carole King score is as likely to be the reference as the model. The chord references
+cover three of the four artists — Michael Jackson's set is structural segmentation only, with
+no chords at all, so it never reaches a manifest.
+
+| Manifest | Tracks | Annotated | Confidence upstream |
+|---|---|---|---|
+| `eval/isophonics-beatles.json` | 180 | 8.15 h | use with confidence |
+| `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence |
+| `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked |
+
+Carole King is Tapestry's first seven tracks (01–07).
+
 `eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
 song, with tempo and key variants as separate tracks. No chord references exist for them yet,
 so each `reference` is a placeholder: the path, `labs/<id>.lab`, where that song's annotation
@@ -329,19 +355,44 @@ few seconds per hundred tracks; `--no-alignment-check` skips it.
 
 ## Train and test sets
 
-`eval/jaah.json`, `eval/isophonics-beatles.json` and `eval/backing-track.json` each have a
-train and a test manifest next to them, about 20% of the songs held out. Train includes
-validation: tune on it, and score on test once you are done tuning.
+`eval/jaah.json`, `eval/isophonics-beatles.json`, `eval/isophonics-zweieck.json` and
+`eval/backing-track.json` each have a train and a test manifest next to them, about 20% of the
+songs held out. Train includes validation: tune on it, and score on test once you are done
+tuning.
 
 ```bash
 songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
 ```
 
 Recordings of one song always go to the same set. A trailing parenthesis is ignored, so
-`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together. The set comes from a
-hash of the song name, so a manifest built locally splits like the committed one. If file
-names hide that two recordings are one song, add them to `SAME_SONG` in
-`src/songscribe/eval/split.py` and run `split` again, before tuning.
+`autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together, and a leading track
+number is ignored in either spelling Isophonics ships (`05_-_Dig_It`, `05 Beautiful`), so a
+song is not tied to its position on the album. The set comes from a hash of the song name, so
+a manifest built locally splits like the committed one. If file names hide that two recordings
+are one song, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again,
+before tuning.
+
+**Carole King is held out whole**, as `eval/isophonics-carole-king-test.json` with no train
+manifest: score it, never tune on it. Seven songs cannot carry a hash split — the lowest of
+them hashes at 0.39, so no sensible fraction holds one out. That it is also the set Isophonics
+has not checked carefully is a second reason to keep it off the tuning side rather than
+average it in. That test manifest is **maintained by hand**: it is every track of the corpus,
+and `split` does not produce it, so edit it alongside `eval/isophonics-carole-king.json` when
+the corpus changes.
+
+A hash split is approximate by design, and on a small corpus it can land every song on one
+side. `split` refuses that rather than writing a 0-track manifest, and says where the nearest
+song hashes:
+
+```
+songscribe-eval: test would be empty -- 7 songs is too few for a 0.2 hash split;
+  the lowest song hashes at 0.39. Nothing written; score the corpus whole
+  rather than holding out none of it.
+```
+
+Neither manifest is written and the exit is 1, so a corpus held out whole keeps its test
+manifest. Raising `--test-fraction` until something lands in test is choosing a test set by
+the number it gives, which is the thing a held-out set exists to prevent.
 
 ## Scoring a chart played several times
 

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "dataset": "isophonics-carole-king",
+  "notes": "Chord reference annotations only, not paired with any audio. Paths are relative, and no annotation text is stored here -- only identifiers -- so this manifest carries no licensed material.",
+  "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
+  "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "tracks": [
+    {
+      "id": "chordlab/Carole King/01 I Feel The Earth Move",
+      "reference": "chordlab/Carole King/01 I Feel The Earth Move.lab"
+    },
+    {
+      "id": "chordlab/Carole King/02 So Far Away",
+      "reference": "chordlab/Carole King/02 So Far Away.lab"
+    },
+    {
+      "id": "chordlab/Carole King/03 It's Too Late",
+      "reference": "chordlab/Carole King/03 It's Too Late.lab"
+    },
+    {
+      "id": "chordlab/Carole King/04 Home Again",
+      "reference": "chordlab/Carole King/04 Home Again.lab"
+    },
+    {
+      "id": "chordlab/Carole King/05 Beautiful",
+      "reference": "chordlab/Carole King/05 Beautiful.lab"
+    },
+    {
+      "id": "chordlab/Carole King/06 Way Over Yonder",
+      "reference": "chordlab/Carole King/06 Way Over Yonder.lab"
+    },
+    {
+      "id": "chordlab/Carole King/07 You've Got A Friend",
+      "reference": "chordlab/Carole King/07 You've Got A Friend.lab"
+    }
+  ]
+}

@@ -865,3 +865,66 @@ class TestBuildManifest:
         empty.mkdir()
         with pytest.raises(FileNotFoundError, match=r"no \.lab files"):
             isophonics.build_manifest(empty)
+
+
+class TestIncludeFilter:
+    @pytest.fixture
+    def archive(self, tmp_path):
+        """One archive holding two artists, nested and flat, as Isophonics ships them."""
+        nested = tmp_path / "ann" / "chordlab" / "Zwolf" / "Zwielicht"
+        nested.mkdir(parents=True)
+        (nested / "01_-_Erste_Melodie.lab").write_text("0.0 1.0 C:maj\n", encoding="utf-8")
+        (nested / "02_-_Zweite_Melodie.lab").write_text("0.0 1.0 A:min\n", encoding="utf-8")
+
+        flat = tmp_path / "ann" / "chordlab" / "Clara Placeholder"
+        flat.mkdir(parents=True)
+        (flat / "01 Open Window.lab").write_text("0.0 1.0 D:maj\n", encoding="utf-8")
+
+        keys = tmp_path / "ann" / "keylab"
+        keys.mkdir(parents=True)
+        (keys / "Erste_Melodie.lab").write_text("0.0 1.0 C\n", encoding="utf-8")
+        return tmp_path / "ann"
+
+    def test_one_artist_of_an_archive_becomes_its_own_corpus(self, archive):
+        report = isophonics.build_manifest(archive, include=["chordlab/Zwolf"])
+        assert [t["id"] for t in report.manifest["tracks"]] == [
+            "chordlab/Zwolf/Zwielicht/01_-_Erste_Melodie",
+            "chordlab/Zwolf/Zwielicht/02_-_Zweite_Melodie",
+        ]
+
+    def test_the_total_counts_only_what_was_included(self, archive):
+        report = isophonics.build_manifest(archive, include=["chordlab/Clara Placeholder"])
+        assert (report.total, len(report.manifest["tracks"])) == (1, 1)
+
+    def test_several_paths_add_up(self, archive):
+        report = isophonics.build_manifest(
+            archive, include=["chordlab/Clara Placeholder", "chordlab/Zwolf/Zwielicht"]
+        )
+        assert report.total == 3
+
+    def test_a_single_annotation_can_be_named(self, archive):
+        report = isophonics.build_manifest(
+            archive, include=["chordlab/Clara Placeholder/01 Open Window.lab"]
+        )
+        assert report.total == 1
+
+    def test_a_trailing_slash_is_accepted(self, archive):
+        assert isophonics.build_manifest(archive, include=["chordlab/Zwolf/"]).total == 2
+
+    def test_a_prefix_stopping_mid_name_selects_nothing(self, archive):
+        with pytest.raises(FileNotFoundError, match="at or under"):
+            isophonics.build_manifest(archive, include=["chordlab/Zwol"])
+
+    def test_no_include_keeps_every_artist(self, archive):
+        assert isophonics.build_manifest(archive).total == 3
+
+    def test_the_manifest_command_passes_the_flag_through(self, archive, tmp_path, capsys):
+        from songscribe.eval import cli
+
+        output = tmp_path / "m.json"
+        argv = ["manifest", str(archive), "--output", str(output), "--name", "zwolf"]
+        assert cli.main([*argv, "--include", "chordlab/Zwolf"]) == 0
+        written = json.loads(output.read_text(encoding="utf-8"))
+        assert written["dataset"] == "zwolf"
+        assert len(written["tracks"]) == 2
+        assert "2 annotations" in capsys.readouterr().out
