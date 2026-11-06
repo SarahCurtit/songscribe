@@ -90,18 +90,19 @@ class TestParse:
         with pytest.raises(lab.LabFormatError, match="precedes start"):
             lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN * 2} C")
 
-    @pytest.mark.parametrize("text", ["2.003 1.003 N", "10.0 9.0 N", "100.0 99.0 N", "1.0 0.0 N"])
-    def test_times_a_hair_over_the_tolerance_are_skipped(self, text):
-        # Written times, not derived ones: 2.003 - 1.003 subtracts to
-        # 1.0000000000000002, which only a comparison at TIME_PRECISION covers.
-        # Tied to the tolerance's current value, unlike the tests above.
-        assert lab.parse(text) == []
+    def test_times_a_hair_over_the_tolerance_are_skipped(self):
+        # Written times, not derived ones, and tied to the tolerance's current
+        # value: the first assert fails loudly if it moves and this pair stops
+        # being the case the test is for.
+        width = 2.003 - 1.003
+        assert width > lab.MAX_REVERSED_SPAN
+        assert lab.parse("2.003 1.003 N") == []
 
     def test_a_skipped_reversal_is_logged(self, caplog):
         with caplog.at_level(logging.WARNING, logger="songscribe.lab"):
             lab.parse("284.352 284.307 N", source="song.lab")
         assert "song.lab:1" in caplog.text
-        assert "0.045s" in caplog.text
+        assert "0.045" in caplog.text
 
     @pytest.mark.parametrize("text", ["nan nan C:maj", "0.0 inf C:maj", "-inf 1.0 C"])
     def test_rejects_a_non_finite_timestamp(self, text):

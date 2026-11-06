@@ -41,7 +41,7 @@ class LabFormatError(ValueError):
     Raised rather than skipping the offending line: a silently dropped chord
     leaves its time labelled ``N``, which moves an evaluation score without
     anything reporting a problem. The one exception is the reversal
-    :data:`MAX_REVERSED_SPAN` covers, which spans no time.
+    :data:`MAX_REVERSED_SPAN` covers, which spans no time and is logged.
     """
 
 
@@ -78,10 +78,10 @@ def parse(text: str, source: str | None = None) -> list[ChordEvent]:
         if end < start:
             if round(start - end, TIME_PRECISION) > MAX_REVERSED_SPAN:
                 raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
-            # Logged, not silent: the segment is gone from the timeline, and a
-            # survey of a new corpus should say so rather than read clean.
+            # A survey of a new corpus should name the dropped segment rather
+            # than read clean. %g, so a sub-millisecond width isn't shown as 0.
             log.warning(
-                "%s%d: skipping segment reversed by %.3fs (end %s precedes start %s)",
+                "%s%d: skipping segment reversed by %gs (end %s precedes start %s)",
                 where,
                 number,
                 start - end,
