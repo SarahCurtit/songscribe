@@ -236,12 +236,14 @@ backend, and the denominator to quote beside a WCSR. `survey` exits non-zero if 
 not parse, which usually indicates a gap in `eval/harte.py`.
 
 One corpus is a standing exception. Carole King's `05 Beautiful` writes `E:4` twice, and
-`survey` exits 2 over those two segments (0.1 min) by design, not because anything is
+`survey` exits 2 over those two segments (6.2 s) by design, not because anything is
 unfinished. A bare degree is not Harte notation — a degree list is parenthesised, `E:(4)` —
-and both occurrences hold a bar between two `Eb/5` chords in a passage of `Ab`, `F:7` and
-`C:min`, where an E root does not belong and an `Eb` one would. Reading it either way writes
-a chord into the reference that the recording may not contain, so `harte.parse` returns
-`None` and the two segments are dropped from scoring rather than scored against a guess.
+and which chord it means is ambiguous. It could be `E:sus4` as written, since this annotator
+abbreviates elsewhere (`sus` for `sus4`, `7sus` for `sus4(b7)`); or an `Eb` chord with a
+dropped flat, since both occurrences hold a bar between two `Eb/5` chords in a passage of
+`Ab`, `F:7` and `C:min`. Either way, picking one writes a chord into the reference that the
+recording may not contain, so `harte.parse` returns `None` and those seconds are dropped from
+scoring rather than scored against a guess.
 
 **6. Score.**
 

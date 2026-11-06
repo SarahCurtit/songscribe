@@ -52,8 +52,9 @@ SHORTHANDS: dict[str, tuple[str, ...]] = {
 }
 
 #: Spellings that are not Harte's but appear in published annotations, as the degrees
-#: they stand for. Isophonics' Carole King files write "sus" beside "sus4" and "7sus"
-#: beside "sus4(b7)" within the same tracks, which is what fixes their meaning.
+#: they stand for. Isophonics' Carole King album writes "sus" and "7sus" on two tracks
+#: and Harte's "sus4" and "sus4(b7)" on another, and both resolve the way a suspended
+#: fourth does: "E:sus" to "E:min7", "B:7sus" to "B:7" beside a separate "B:min7".
 ABBREVIATED_SHORTHANDS: dict[str, tuple[str, ...]] = {
     "sus": SHORTHANDS["sus4"],
     "7sus": (*SHORTHANDS["sus4"], "b7"),
@@ -277,11 +278,12 @@ def _parse_quality(quality: str | None) -> set[int] | None:
         )
         if shorthand is None:
             # A bare degree lands here and stays unparsed, which is deliberate and
-            # permanent. Isophonics writes "E:4" twice in one Carole King track;
-            # Harte spells a degree list in parentheses, so a bare one is not
-            # notation we can read, and both occurrences hold a bar between two
-            # "Eb/5" chords, where an E root does not belong. Reading it either
-            # way puts a chord in the reference the recording may not contain.
+            # permanent. Isophonics writes "E:4" twice in one Carole King track, and
+            # Harte spells a degree list in parentheses, so it is not notation we can
+            # read. Which chord it means is ambiguous: "E:sus4" as written, since this
+            # annotator does abbreviate, or an "Eb" chord with a dropped flat, since
+            # the bars either side are "Eb/5". Guessing would put a chord in the
+            # reference that the recording may not contain.
             return None
         intervals = {0, *_degrees_to_semitones(shorthand)}
     elif degree_text is not None:

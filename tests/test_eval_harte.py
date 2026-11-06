@@ -4,6 +4,9 @@ import pytest
 
 from songscribe.chords import HARTE_QUALITIES, normalise_label
 from songscribe.eval.harte import (
+    ABBREVIATED_SHORTHANDS,
+    COMPACT_TO_HARTE,
+    SHORTHANDS,
     Chord,
     parse,
     parse_degree,
@@ -214,6 +217,12 @@ class TestAbbreviatedSpellings:
 
     def test_a_degree_list_still_applies(self):
         assert parse("E:sus(9)").intervals == frozenset({0, 5, 7, 2})
+
+    def test_the_table_only_ever_adds_names(self):
+        # It is consulted last, so a name already in either table would be dead
+        # here, and a quality redefined here would silently not take effect.
+        known = set(SHORTHANDS) | set(COMPACT_TO_HARTE)
+        assert not set(ABBREVIATED_SHORTHANDS) & known
 
     def test_a_bare_degree_is_not_a_quality(self):
         # Pins a standing decision, so making `survey` exit 0 on Carole King is
