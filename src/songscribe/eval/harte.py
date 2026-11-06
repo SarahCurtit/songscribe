@@ -51,6 +51,14 @@ SHORTHANDS: dict[str, tuple[str, ...]] = {
     "sus4": ("4", "5"),
 }
 
+#: Spellings that are not Harte's but appear in published annotations, as the degrees
+#: they stand for. Isophonics' Carole King files write "sus" beside "sus4" and "7sus"
+#: beside "sus4(b7)" within the same tracks, which is what fixes their meaning.
+ABBREVIATED_SHORTHANDS: dict[str, tuple[str, ...]] = {
+    "sus": SHORTHANDS["sus4"],
+    "7sus": (*SHORTHANDS["sus4"], "b7"),
+}
+
 #: This project's shorthand, inverted back to Harte. ``chords.normalise_label``
 #: is the forward direction, so inverting its table means the two notations can
 #: never drift apart: a quality added there is understood here for free.
@@ -262,7 +270,11 @@ def _parse_quality(quality: str | None) -> set[int] | None:
     name, degree_text = match.groups()
 
     if name:
-        shorthand = SHORTHANDS.get(name) or SHORTHANDS.get(COMPACT_TO_HARTE.get(name, ""))
+        shorthand = (
+            SHORTHANDS.get(name)
+            or SHORTHANDS.get(COMPACT_TO_HARTE.get(name, ""))
+            or ABBREVIATED_SHORTHANDS.get(name)
+        )
         if shorthand is None:
             return None
         intervals = {0, *_degrees_to_semitones(shorthand)}

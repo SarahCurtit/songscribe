@@ -193,6 +193,35 @@ class TestParseLabel:
         assert parse("  A:min  ") == parse("A:min")
 
 
+class TestAbbreviatedSpellings:
+    """Isophonics writes "sus" and "7sus" where Harte names sus4 and sus4(b7)."""
+
+    def test_sus_is_the_suspended_fourth(self):
+        assert parse("E:sus") == parse("E:sus4")
+
+    def test_seven_sus_is_the_suspended_fourth_with_a_minor_seventh(self):
+        assert parse("E:7sus") == parse("E:sus4(b7)")
+
+    @pytest.mark.parametrize(
+        ("label", "intervals"),
+        [("E:sus", {0, 5, 7}), ("B:7sus", {0, 5, 7, 10})],
+    )
+    def test_the_pitch_content(self, label, intervals):
+        assert parse(label).intervals == frozenset(intervals)
+
+    def test_they_work_without_a_colon_like_every_other_quality(self):
+        assert parse("Esus") == parse("E:sus4")
+
+    def test_a_degree_list_still_applies(self):
+        assert parse("E:sus(9)").intervals == frozenset({0, 5, 7, 2})
+
+    def test_a_bare_degree_is_not_a_quality(self):
+        # "E:4" appears twice in one Carole King track. It is not Harte syntax,
+        # and the bars around it are Eb chords, so which chord it means is a
+        # question for the annotation rather than a spelling to accept here.
+        assert parse("E:4") is None
+
+
 class TestPitchClasses:
     def test_absolute_pitch_classes_of_a_triad(self):
         assert parse("A:min").pitch_classes == frozenset({9, 0, 4})
