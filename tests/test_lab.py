@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from songscribe import beats, lab
@@ -75,22 +77,31 @@ class TestParse:
         assert (events[0].start, events[0].end) == (0.0, 10.0)
         assert (events[1].start, events[1].end) == (9.96, 20.0)
 
-    def test_a_reversal_of_seconds_within_the_tolerance_is_skipped(self):
-        # The tolerance covers a reversal far wider than the tens of
-        # milliseconds the published sets actually carry.
-        events = lab.parse("0.0 100.0 C\n100.0 97.0 N\n97.0 120.0 G\n")
+    def test_a_reversal_inside_the_tolerance_is_skipped_whatever_the_tolerance_is(self):
+        half = lab.MAX_REVERSED_SPAN / 2
+        events = lab.parse(f"0.0 100.0 C\n100.0 {100.0 - half} N\n{100.0 - half} 120.0 G\n")
         assert [e.label for e in events] == ["C", "G"]
-        assert (events[1].start, events[1].end) == (97.0, 120.0)
+        assert (events[1].start, events[1].end) == (100.0 - half, 120.0)
+
+    def test_a_reversal_of_exactly_the_tolerance_is_skipped(self):
+        assert lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN} N") == []
 
     def test_a_reversal_wider_than_the_tolerance_still_raises(self):
         with pytest.raises(lab.LabFormatError, match="precedes start"):
             lab.parse(f"100.0 {100.0 - lab.MAX_REVERSED_SPAN * 2} C")
 
-    @pytest.mark.parametrize("text", ["8.002 3.002 N", "10.0 5.0 N", "100.0 95.0 N", "5.0 0.0 N"])
-    def test_a_reversal_of_exactly_the_tolerance_is_skipped(self, text):
-        # 8.002 - 3.002 subtracts to 5.000000000000001, so the comparison is
-        # made at the precision the times are written in.
+    @pytest.mark.parametrize("text", ["2.003 1.003 N", "10.0 9.0 N", "100.0 99.0 N", "1.0 0.0 N"])
+    def test_times_a_hair_over_the_tolerance_are_skipped(self, text):
+        # Written times, not derived ones: 2.003 - 1.003 subtracts to
+        # 1.0000000000000002, which only a comparison at TIME_PRECISION covers.
+        # Tied to the tolerance's current value, unlike the tests above.
         assert lab.parse(text) == []
+
+    def test_a_skipped_reversal_is_logged(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="songscribe.lab"):
+            lab.parse("284.352 284.307 N", source="song.lab")
+        assert "song.lab:1" in caplog.text
+        assert "0.045s" in caplog.text
 
     @pytest.mark.parametrize("text", ["nan nan C:maj", "0.0 inf C:maj", "-inf 1.0 C"])
     def test_rejects_a_non_finite_timestamp(self, text):

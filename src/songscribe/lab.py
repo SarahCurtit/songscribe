@@ -9,11 +9,14 @@ chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from math import isfinite
 from pathlib import Path
 
 from .types import BeatEvent, ChordEvent
+
+log = logging.getLogger(__name__)
 
 #: Isophonics writes space-separated, madmom and :mod:`songscribe.demo` write
 #: tab-separated, and some published annotation sets mix both within one file.
@@ -24,20 +27,12 @@ WRITE_SEPARATOR = "\t"
 #: survives a round trip, short enough to stay readable.
 TIME_PRECISION = 6
 
-#: A reversed segment no wider than this is treated as an artefact of how the
-#: annotation was produced, not an ordering mistake, and is skipped. Skipping is
-#: cheap at any width: each line carries its own absolute timestamps, so
-#: dropping one leaves every other boundary where it was, and a reversed segment
-#: spans no forward time, so no annotated second goes missing with it. The
-#: tolerance is therefore set well above the reversals actually seen -- tens of
-#: milliseconds in the Isophonics chord sets -- so that a corpus is readable
-#: rather than exactly as readable as the widest artefact measured so far. Past
-#: this width the file is rejected: a reversal of seconds is a line in the wrong
-#: place, which is a real error in the annotation's order. The width is compared
-#: at :data:`TIME_PRECISION`, the precision the times are written in, so a
-#: nominal reversal of exactly the tolerance counts as covered whatever the
-#: subtraction does with the last bit.
-MAX_REVERSED_SPAN = 5.0
+#: A reversed segment this narrow is an artefact of how the annotation was
+#: produced, not an ordering mistake, and is skipped; the lines around it keep
+#: their own timestamps. A wider reversal is a line in the wrong place and is
+#: rejected. The width is compared at :data:`TIME_PRECISION`, so a nominal
+#: reversal of exactly the tolerance is covered.
+MAX_REVERSED_SPAN = 1.0
 
 
 class LabFormatError(ValueError):
@@ -46,7 +41,7 @@ class LabFormatError(ValueError):
     Raised rather than skipping the offending line: a silently dropped chord
     leaves its time labelled ``N``, which moves an evaluation score without
     anything reporting a problem. The one exception is the reversal
-    :data:`MAX_REVERSED_SPAN` covers, which carries no time to lose.
+    :data:`MAX_REVERSED_SPAN` covers, which spans no time.
     """
 
 
@@ -83,6 +78,16 @@ def parse(text: str, source: str | None = None) -> list[ChordEvent]:
         if end < start:
             if round(start - end, TIME_PRECISION) > MAX_REVERSED_SPAN:
                 raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            # Logged, not silent: the segment is gone from the timeline, and a
+            # survey of a new corpus should say so rather than read clean.
+            log.warning(
+                "%s%d: skipping segment reversed by %.3fs (end %s precedes start %s)",
+                where,
+                number,
+                start - end,
+                end,
+                start,
+            )
             continue
 
         # A label may legitimately contain spaces -- ``C:maj (uncertain)`` turns
