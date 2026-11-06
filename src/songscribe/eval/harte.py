@@ -65,6 +65,18 @@ NO_CHORD_LABEL = NO_CHORD
 #: measure the annotation, not the model.
 UNKNOWN_LABEL = "X"
 
+#: Separates the chords of a label that prints more than one. A lead sheet often
+#: offers a bar two readings -- the big chord and the small one above it -- and
+#: two sheets of one tune disagree in the same way; ``D:min|D:7`` is one bar that
+#: two sources spell differently. Harte uses no such character, and
+#: ``lab.parse`` passes a label through verbatim, so carrying the set in the
+#: label itself needs no change to the file format or its reader.
+#:
+#: The first chord is the primary one: :func:`parse` returns it and nothing else,
+#: so every metric in the harness goes on reading exactly one chord per segment
+#: and stays strict. :mod:`songscribe.eval.consensus` is what reads the rest.
+ALTERNATIVE_SEPARATOR = "|"
+
 _ROOT = re.compile(r"([A-G])([b#]*)")
 _QUALITY = re.compile(r"^([a-zA-Z0-9]*)(?:\(([^)]*)\))?$")
 _DEGREE = re.compile(r"^(\*?)([b#]*)(\d+)$")
@@ -187,6 +199,15 @@ def parse_degree(text: str) -> tuple[int, bool] | None:
     return (degree + shift) % 12, bool(omit)
 
 
+def alternatives(label: str) -> tuple[str, ...]:
+    """Split a label into the chords it prints, primary first.
+
+    One chord gives a one-item tuple, so a caller never has to ask whether a
+    label carries alternatives before splitting it.
+    """
+    return tuple(part.strip() for part in label.split(ALTERNATIVE_SEPARATOR))
+
+
 def parse(label: str) -> Chord | None:
     """Parse a chord label into its pitch content.
 
@@ -194,10 +215,18 @@ def parse(label: str) -> Chord | None:
     ``None`` for a label that cannot be parsed, rather than guessing at it --
     the same rule ``chords.normalise_label`` follows. What that means is the
     caller's call, and differs by side: see :func:`metrics.compare`.
+
+    A label printing several chords parses as its primary one, which is what
+    keeps every existing metric strict and unchanged on a reference carrying
+    alternatives. :func:`consensus.parse_alternatives` reads all of them.
     """
     label = label.strip()
     if not label:
         return None
+    if ALTERNATIVE_SEPARATOR in label:
+        label = alternatives(label)[0]
+        if not label:
+            return None
     if label == NO_CHORD_LABEL:
         return NO_CHORD_CHORD
     if label == UNKNOWN_LABEL:
@@ -239,8 +268,14 @@ def transpose_label(label: str, semitones: int) -> str:
     """The label with its root moved ``semitones`` up, spelled with sharps.
 
     The quality and any bass degree are relative, so they are kept as written.
-    ``N``, ``X`` and anything that does not parse come back untouched.
+    ``N``, ``X`` and anything that does not parse come back untouched. Every
+    chord of a label printing alternatives is transposed: moving only the
+    primary one would leave the rest naming chords in the original key.
     """
+    if ALTERNATIVE_SEPARATOR in label:
+        return ALTERNATIVE_SEPARATOR.join(
+            transpose_label(part, semitones) for part in alternatives(label)
+        )
     chord = parse(label)
     if chord is None or chord.root is None or semitones % 12 == 0:
         return label

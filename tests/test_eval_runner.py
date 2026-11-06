@@ -688,3 +688,165 @@ class TestPairwiseVocabulariesInTheReport:
         )
         assert "bar substitutions" not in format_report(report)
         assert "substitutions" not in report_to_dict(report)["bar"]["by_vocabulary"]
+
+
+@pytest.fixture
+def chart_corpus(tmp_path):
+    """A reference printing two chords for one of its two bars.
+
+    Bar 1 is labelled right; bar 2 is labelled with the chart's *alternative*,
+    so strict scoring calls it wrong and consensus scoring calls it right. The
+    second track prints one chord per bar, which is what makes this a mixed
+    corpus -- the case where the consensus column has to cover every track or
+    stop being comparable with the strict one beside it.
+    """
+    annotations = tmp_path / "ann"
+    estimates = tmp_path / "est"
+    annotations.mkdir()
+    estimates.mkdir()
+
+    (annotations / "chart.lab").write_text("0.0 2.0 C:maj\n2.0 4.0 D:min|D:7\n", encoding="utf-8")
+    (estimates / "chart.lab").write_text("0.0 2.0 C\n2.0 4.0 D7\n", encoding="utf-8")
+
+    (annotations / "plain.lab").write_text("0.0 4.0 C:maj\n", encoding="utf-8")
+    (estimates / "plain.lab").write_text("0.0 4.0 C\n", encoding="utf-8")
+
+    manifest = tmp_path / "m.json"
+    dataset.write_manifest(
+        manifest,
+        dataset.build(
+            "charts",
+            [
+                {"id": "chart", "reference": "chart.lab"},
+                {"id": "plain", "reference": "plain.lab"},
+            ],
+        ),
+    )
+    return dataset.load_manifest(manifest, annotation_root=annotations), estimates
+
+
+class TestConsensusReport:
+    """Strict and consensus side by side, over a reference carrying alternatives."""
+
+    def test_only_the_track_with_alternatives_carries_a_consensus_score(self, chart_corpus):
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        by_id = {r.track_id: r for r in report.results}
+        assert by_id["chart"].consensus
+        assert by_id["plain"].consensus == {}
+        assert by_id["plain"].consensus_graded is None
+
+    def test_the_report_knows_the_corpus_has_alternatives(self, chart_corpus):
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.has_consensus
+
+    def test_an_ordinary_corpus_has_no_consensus_at_all(self, corpus):
+        # The discipline: a corpus without hand-entered alternatives reports
+        # exactly what it reported before this existed.
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert not report.has_consensus
+        assert all(result.consensus == {} for result in report.results)
+
+    def test_strict_calls_the_alternative_wrong_and_consensus_calls_it_right(self, chart_corpus):
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        chart = next(r for r in report.results if r.track_id == "chart")
+        assert chart.scores["majmin"].wcsr == pytest.approx(0.5)
+        assert chart.consensus["majmin"].wcsr == pytest.approx(1.0)
+
+    def test_the_corpus_aggregate_covers_the_track_without_alternatives_too(self, chart_corpus):
+        # Both tracks are 4 s. Strict: 2 s + 4 s correct of 8 s. Consensus: 8/8.
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert report.weighted("majmin") == pytest.approx(0.75)
+        assert report.weighted_consensus("majmin") == pytest.approx(1.0)
+        assert report.mean_consensus("majmin") == pytest.approx(1.0)
+
+    def test_the_theory_row_gets_a_consensus_figure_too(self, chart_corpus):
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        chart = next(r for r in report.results if r.track_id == "chart")
+        # Bar 2 is D:min against D:7 strictly -- parallel, 0.40 -- and an exact
+        # match against the alternative.
+        assert chart.graded.score == pytest.approx(0.7)
+        assert chart.consensus_graded.score == pytest.approx(1.0)
+        assert report.weighted_consensus_graded() == pytest.approx(1.0)
+
+    def test_wcsr_is_untouched_by_the_consensus_reading(self, chart_corpus):
+        # The same no-regression pin as the graded score: consensus credit must
+        # never reach the strict Score the published numbers come from.
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        chart = next(r for r in report.results if r.track_id == "chart")
+        assert chart.scores["majmin"].correct == pytest.approx(2.0)
+
+    def test_the_summary_prints_a_consensus_column(self, chart_corpus):
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        text = format_report(report)
+        assert "consensus" in text
+        assert "is how much of the apparent error is chart choice" in text
+
+    def test_an_ordinary_corpus_prints_no_consensus_column(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        assert "consensus" not in format_report(report)
+
+    def test_json_carries_the_consensus_numbers(self, chart_corpus):
+        import json
+
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        document = report_to_dict(report)
+        json.dumps(document)
+        assert document["summary"]["majmin"]["consensus_weighted"] == pytest.approx(1.0)
+        assert document["theory"]["consensus_weighted"] == pytest.approx(1.0)
+        chart = next(t for t in document["tracks"] if t["id"] == "chart")
+        assert chart["consensus"]["majmin"]["wcsr"] == pytest.approx(1.0)
+        assert chart["consensus_theory"]["score"] == pytest.approx(1.0)
+
+    def test_per_track_output_shows_which_track_moved(self, chart_corpus, capsys):
+        from songscribe.eval.cli import _per_track_printer
+
+        data, estimates = chart_corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        printer = _per_track_printer(report.vocabularies)
+        for result in sorted(report.results, key=lambda r: r.track_id):
+            printer(result)
+        lines = capsys.readouterr().out.splitlines()
+        # One consensus line, under the contested track and not the plain one.
+        assert sum(line.startswith("  consensus") for line in lines) == 1
+        assert lines[1].startswith("chart")
+        assert lines[2].startswith("  consensus")
+
+    def test_json_omits_the_consensus_keys_on_an_ordinary_corpus(self, corpus):
+        data, estimates = corpus
+        report = runner.evaluate(data, estimates_dir=estimates)
+        document = report_to_dict(report)
+        assert "consensus_weighted" not in document["summary"]["majmin"]
+        assert "consensus_weighted" not in document["theory"]
+        assert document["tracks"][0]["consensus"] == {}
+
+
+class TestSummingScoresAcrossChoruses:
+    def _score(self, correct, compared, ignored):
+        return runner.metrics.Score(
+            vocabulary="majmin", correct=correct, compared=compared, ignored=ignored
+        )
+
+    def test_durations_add_rather_than_average(self):
+        parts = [
+            {"majmin": self._score(1.0, 2.0, 0.5)},
+            {"majmin": self._score(3.0, 6.0, 1.5)},
+        ]
+        summed = runner._sum_scores(parts, parts[0])
+        assert summed["majmin"].correct == pytest.approx(4.0)
+        assert summed["majmin"].compared == pytest.approx(8.0)
+        assert summed["majmin"].ignored == pytest.approx(2.0)
+
+    def test_an_empty_vocabulary_set_sums_to_nothing(self):
+        # A reference with no alternatives has no consensus entries to sum, and
+        # must not acquire any here.
+        assert runner._sum_scores([{}, {}], {}) == {}

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..beats import BeatGrid
 from ..types import ChordEvent
-from . import chart_fit, form, form_start, metrics, substitution
+from . import chart_fit, consensus, form, form_start, metrics, substitution
 from .dataset import Dataset, Track
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,11 @@ class ChorusResult:
     alignment: metrics.Alignment | None = None
     #: Partial credit for jazz substitutions (``substitution.graded_score``).
     graded: substitution.GradedScore | None = None
+    #: WCSR against every chord the reference's sources print, per vocabulary.
+    #: Empty unless this reference carries alternatives at all.
+    consensus: dict[str, metrics.Score] = field(default_factory=dict)
+    #: Partial credit against those same sources (``consensus.graded_score``).
+    consensus_graded: substitution.GradedScore | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +90,14 @@ class TrackResult:
     #: Partial credit for jazz substitutions: how close a wrong chord is musically.
     #: It is not a vocabulary, so it is computed on every run, whatever ``-v`` says.
     graded: substitution.GradedScore | None = None
+    #: The same WCSR rows scored against every chord the reference's sources
+    #: print rather than the primary one alone. Empty for a reference that
+    #: prints one chord per segment, which is every corpus without hand-entered
+    #: alternatives -- so those report exactly what they reported before.
+    consensus: dict[str, metrics.Score] = field(default_factory=dict)
+    #: Partial credit against those same sources, for the gap between a strict
+    #: and a consensus reading of the theory score.
+    consensus_graded: substitution.GradedScore | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +154,57 @@ class Report:
         graded = [r.graded for r in self.results if r.graded is not None]
         credit = sum(g.credit for g in graded)
         compared = sum(g.compared for g in graded)
+        return credit / compared if compared > metrics.MIN_SEGMENT else nan
+
+    @property
+    def has_consensus(self) -> bool:
+        """Whether any scored reference printed more than one chord for a segment.
+
+        False for every corpus without hand-entered alternatives, which is what
+        keeps the consensus columns out of their output entirely rather than
+        printing a second copy of the strict number.
+        """
+        return any(r.consensus for r in self.results)
+
+    def _consensus_score(self, result: TrackResult, vocabulary: str) -> metrics.Score | None:
+        """One track's consensus WCSR, falling back to its strict score.
+
+        A reference printing one chord per segment has no separate consensus
+        number because the two are the same by definition. Falling back rather
+        than skipping is what keeps the consensus column a figure for the whole
+        corpus, and so comparable with the strict column beside it, on a corpus
+        where only some tunes carry alternatives.
+        """
+        if vocabulary in result.consensus:
+            return result.consensus[vocabulary]
+        return result.scores.get(vocabulary)
+
+    def mean_consensus(self, vocabulary: str) -> float:
+        """Unweighted mean of per-track consensus WCSR, skipping unscoreable tracks."""
+        scores = [self._consensus_score(r, vocabulary) for r in self.results]
+        values = [s.wcsr for s in scores if s is not None and not isnan(s.wcsr)]
+        return sum(values) / len(values) if values else nan
+
+    def weighted_consensus(self, vocabulary: str) -> float:
+        """Duration-weighted consensus WCSR across the whole corpus."""
+        scores = [self._consensus_score(r, vocabulary) for r in self.results]
+        present = [s for s in scores if s is not None]
+        correct = sum(s.correct for s in present)
+        compared = sum(s.compared for s in present)
+        return correct / compared if compared > metrics.MIN_SEGMENT else nan
+
+    def weighted_consensus_graded(self) -> float:
+        """Duration-weighted partial credit against every chord the sources print.
+
+        Falls back to a track's strict grading for the same reason
+        :meth:`_consensus_score` does.
+        """
+        graded = [
+            r.consensus_graded if r.consensus_graded is not None else r.graded for r in self.results
+        ]
+        present = [g for g in graded if g is not None]
+        credit = sum(g.credit for g in present)
+        compared = sum(g.compared for g in present)
         return credit / compared if compared > metrics.MIN_SEGMENT else nan
 
     def graded_relations(self) -> dict[str, float]:
@@ -378,6 +442,12 @@ def score_track(
     estimate_chart = metrics.chart_sequence(estimated, chart_vocabulary)
     harmonic = metrics.harmonic_rhythm(metrics.dedupe_chart(reference, chart_vocabulary))
 
+    # Only worth scoring a second time when the reference really does print more
+    # than one chord somewhere: on an ordinary corpus the consensus numbers would
+    # be a copy of the strict ones, and an empty dict is what keeps them out of
+    # the report rather than padding it with duplicates.
+    alternatives = consensus.has_alternatives(reference)
+
     return TrackResult(
         track_id=track.id,
         duration=end - start,
@@ -392,12 +462,34 @@ def score_track(
         grid=metrics.grid_score(reference, estimated, chart_vocabulary),
         harmonic=harmonic,
         graded=substitution.graded_score(reference, estimated),
+        consensus=consensus.score_all(reference, estimated, vocabularies) if alternatives else {},
+        consensus_graded=(consensus.graded_score(reference, estimated) if alternatives else None),
     )
 
 
 def _mean(values: list[float]) -> float:
     present = [v for v in values if not isnan(v)]
     return sum(present) / len(present) if present else nan
+
+
+def _sum_scores(
+    parts: list[dict[str, metrics.Score]], names: dict[str, metrics.Score]
+) -> dict[str, metrics.Score]:
+    """Add several choruses' WCSR durations together, one entry per vocabulary.
+
+    ``names`` supplies which vocabularies to sum, so an empty one -- a reference
+    printing a single chord per segment, which has no consensus row at all --
+    gives an empty result rather than inventing entries.
+    """
+    return {
+        name: metrics.Score(
+            vocabulary=name,
+            correct=sum(part[name].correct for part in parts),
+            compared=sum(part[name].compared for part in parts),
+            ignored=sum(part[name].ignored for part in parts),
+        )
+        for name in names
+    }
 
 
 def _sum_graded(parts: list[substitution.GradedScore | None]) -> substitution.GradedScore | None:
@@ -492,6 +584,8 @@ def score_performance(
                 },
                 alignment=result.alignment,
                 graded=result.graded,
+                consensus=result.consensus,
+                consensus_graded=result.consensus_graded,
             )
         )
         inner.append(result)
@@ -501,15 +595,7 @@ def score_performance(
     counted = [i for i, c in enumerate(results) if c.chorus.kind != "partial"] or [0]
     chosen = [results[i] for i in counted]
     first = inner[counted[0]]
-    scores = {
-        name: metrics.Score(
-            vocabulary=name,
-            correct=sum(c.scores[name].correct for c in chosen),
-            compared=sum(c.scores[name].compared for c in chosen),
-            ignored=sum(c.scores[name].ignored for c in chosen),
-        )
-        for name in first.scores
-    }
+    scores = _sum_scores([c.scores for c in chosen], first.scores)
     return TrackResult(
         track_id=track.id,
         duration=sum(inner[i].duration for i in counted),
@@ -534,6 +620,8 @@ def score_performance(
         anchor=anchor,
         unscored_seconds=form.unscored_seconds(blocks),
         graded=_sum_graded([c.graded for c in chosen]),
+        consensus=_sum_scores([c.consensus for c in chosen], first.consensus),
+        consensus_graded=_sum_graded([c.consensus_graded for c in chosen]),
     )
 
 

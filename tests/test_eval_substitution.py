@@ -55,6 +55,15 @@ GRID = [
         "11",
         "13",
         "7(b9)",
+        # Both spellings of a dominant with a flattened fifth, which are not the
+        # same chord: "7(b5)" adds the flat five and keeps the natural one,
+        # "7(*5,b5)" replaces it. Only the second is a note from a hdim7.
+        "7(b5)",
+        "7(*5,b5)",
+        # hdim7(9) is in the project's own chart, and min7(b5) is a fifth-note
+        # spelling of a half-diminished chord: both reach dim_near_miss.
+        "hdim7(9)",
+        "min7(b5)",
     )
 ]
 
@@ -395,6 +404,7 @@ class TestHighestCreditWins:
             ("C:maj6", "A:min7", "relative"),
             ("C:sus4", "C:maj", "sus_for_triad"),
             ("C:maj7", "C:7", "seventh_swap"),
+            ("C:dim7", "C:min6", "dim_near_miss"),
             ("C:maj", "C:min", "parallel"),
             ("C:maj", "F#:maj", "none"),
         ],
@@ -417,10 +427,114 @@ class TestHighestCreditWins:
                 ("C:maj6", "A:min7", "relative"),
                 ("C:sus4", "C:maj", "sus_for_triad"),
                 ("C:maj7", "C:7", "seventh_swap"),
+                ("C:dim7", "C:min6", "dim_near_miss"),
                 ("C:maj", "C:min", "parallel"),
                 ("C:maj", "F#:maj", "none"),
             ]
         } == {r.name for r in substitution.RELATIONS}
+
+
+#: The quality pairs ``dim_near_miss`` wins over ``GRID``. Not the whole set it
+#: can reach -- a wider spelling of the diminished family reaches more, and the
+#: rule in ``_dim_near_miss`` is the definition. This is the regression pin.
+DIM_NEAR_MISS_WINS = [
+    ("dim", "min"),
+    ("dim", "min7(b5)"),
+    ("dim7", "min6"),
+    ("hdim7", "7(*5,b5)"),
+]
+
+
+class TestDiminishedNearMiss:
+    """A diminished chord a note from another chord on the same root."""
+
+    @pytest.mark.parametrize(("first", "second"), DIM_NEAR_MISS_WINS)
+    def test_it_holds_both_ways_round_at_its_stated_credit(self, first, second):
+        for reference, estimate in ((first, second), (second, first)):
+            assert graded(f"C:{reference}", f"C:{estimate}") == substitution.Grade(
+                "dim_near_miss", 0.60
+            )
+
+    def test_it_wins_for_no_other_quality_pair_in_the_grid(self):
+        # Pinned so that widening the rule shows up here rather than silently
+        # paying credit somewhere nobody looked.
+        chords = {label: parse(label) for label in GRID}
+        won = {
+            tuple(sorted((a.split(":", 1)[1], b.split(":", 1)[1])))
+            for a in GRID
+            for b in GRID
+            if substitution.grade(chords[a], chords[b]).relation == "dim_near_miss"
+        }
+        assert won == {tuple(sorted(pair)) for pair in DIM_NEAR_MISS_WINS}
+
+    def test_a_flat_five_added_is_not_a_flat_five_substituted(self):
+        # Harte's "7(b5)" keeps the natural fifth, so it is a five-note chord
+        # three notes from a hdim7. Omitting the fifth it replaces is what makes
+        # the four-note chord this relation is about.
+        assert sorted(parse("C:7(b5)").pitch_classes) == [0, 4, 6, 7, 10]
+        assert sorted(parse("C:7(*5,b5)").pitch_classes) == [0, 4, 6, 10]
+        assert relation("C:hdim7", "C:7(b5)") == "none"
+        assert relation("C:hdim7", "C:7(*5,b5)") == "dim_near_miss"
+
+    @pytest.mark.parametrize(
+        ("estimate", "name"),
+        # A note apart as well, but these two relations describe them better and
+        # outrank or tie it. Pinned because the docstring says so.
+        [("C:min7", "guide_tones"), ("C:dim7", "seventh_swap")],
+    )
+    def test_the_relations_that_claim_a_near_miss_first_keep_it(self, estimate, name):
+        assert relation("C:hdim7", estimate) == name
+
+    def test_major_for_minor_is_still_only_parallel(self):
+        # Neither side is diminished, so the signature triad-model error keeps
+        # the low credit it is meant to have.
+        assert graded("C:maj", "C:min") == substitution.Grade("parallel", 0.40)
+
+
+class TestAddingARelationOnlyEverRaisesCredit:
+    """Swept over ``GRID``: a new row must not move an existing verdict.
+
+    ``grade`` returns the highest-credit relation that holds, so a row below
+    ``metrics.SUBSTITUTION_MIN_CREDIT`` cannot change the ``substitutions``
+    vocabulary and cannot lower any pair's credit. That is the argument for
+    adding one to a table whose numbers are already published, so it is checked
+    rather than asserted in prose.
+    """
+
+    WITHOUT_NEW_ROW = tuple(r for r in substitution.RELATIONS if r.name != "dim_near_miss")
+
+    def test_no_pair_loses_credit(self):
+        chords = [parse(label) for label in GRID]
+        lowered = [
+            (a, b)
+            for a in chords
+            for b in chords
+            if substitution.grade(a, b).credit
+            < substitution.grade(a, b, self.WITHOUT_NEW_ROW).credit
+        ]
+        assert lowered == []
+
+    def test_no_substitutions_verdict_moves(self):
+        chords = [parse(label) for label in GRID]
+        threshold = metrics.SUBSTITUTION_MIN_CREDIT
+        moved = [
+            (a, b)
+            for a in chords
+            for b in chords
+            if (substitution.grade(a, b).credit >= threshold)
+            != (substitution.grade(a, b, self.WITHOUT_NEW_ROW).credit >= threshold)
+        ]
+        assert moved == []
+
+    def test_the_pairs_it_does_raise_were_all_graded_zero(self):
+        chords = {label: parse(label) for label in GRID}
+        raised = [
+            substitution.grade(chords[a], chords[b], self.WITHOUT_NEW_ROW).credit
+            for a in GRID
+            for b in GRID
+            if substitution.grade(chords[a], chords[b]).relation == "dim_near_miss"
+        ]
+        assert raised and set(raised) == {0.0}
 
 
 class TestEveryRelationEarnsItsPlace:
