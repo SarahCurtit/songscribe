@@ -9,11 +9,14 @@ chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from math import isfinite
 from pathlib import Path
 
 from .types import BeatEvent, ChordEvent
+
+log = logging.getLogger(__name__)
 
 #: Isophonics writes space-separated, madmom and :mod:`songscribe.demo` write
 #: tab-separated, and some published annotation sets mix both within one file.
@@ -24,13 +27,21 @@ WRITE_SEPARATOR = "\t"
 #: survives a round trip, short enough to stay readable.
 TIME_PRECISION = 6
 
+#: A reversed segment this narrow is an artefact of how the annotation was
+#: produced, not an ordering mistake, and is skipped; the lines around it keep
+#: their own timestamps. A wider reversal is a line in the wrong place and is
+#: rejected. The width is compared at :data:`TIME_PRECISION`, so a nominal
+#: reversal of exactly the tolerance is covered.
+MAX_REVERSED_SPAN = 1.0
+
 
 class LabFormatError(ValueError):
     """A ``.lab`` file could not be parsed.
 
     Raised rather than skipping the offending line: a silently dropped chord
-    shifts every boundary after it, which would corrupt an evaluation score in
-    a way that is very hard to notice.
+    leaves its time labelled ``N``, which moves an evaluation score without
+    anything reporting a problem. The one exception is the reversal
+    :data:`MAX_REVERSED_SPAN` covers, which spans no time and is logged.
     """
 
 
@@ -65,7 +76,19 @@ def parse(text: str, source: str | None = None) -> list[ChordEvent]:
             raise LabFormatError(f"{where}{number}: non-finite timestamp in {line!r}")
 
         if end < start:
-            raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            if round(start - end, TIME_PRECISION) > MAX_REVERSED_SPAN:
+                raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            # A survey of a new corpus should name the dropped segment rather
+            # than read clean. %g, so a sub-millisecond width isn't shown as 0.
+            log.warning(
+                "%s%d: skipping segment reversed by %gs (end %s precedes start %s)",
+                where,
+                number,
+                start - end,
+                end,
+                start,
+            )
+            continue
 
         # A label may legitimately contain spaces -- ``C:maj (uncertain)`` turns
         # up in hand-corrected annotation sets -- so the remainder is one label,
