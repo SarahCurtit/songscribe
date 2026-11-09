@@ -235,15 +235,10 @@ vocabulary how much reference time is scoreable. That figure is the upper bound 
 backend, and the denominator to quote beside a WCSR. `survey` exits non-zero if a label does
 not parse, which usually indicates a gap in `eval/harte.py`.
 
-One corpus is a standing exception. Carole King's `05 Beautiful` writes `E:4` twice, and
-`survey` exits 2 over those two segments (6.2 s) by design, not because anything is
-unfinished. A bare degree is not Harte notation — a degree list is parenthesised, `E:(4)` —
-and which chord it means is ambiguous. It could be `E:sus4` as written, since this annotator
-abbreviates elsewhere (`sus` for `sus4`, `7sus` for `sus4(b7)`); or an `Eb` chord with a
-dropped flat, since both occurrences hold a bar between two `Eb/5` chords in a passage of
-`Ab`, `F:7` and `C:min`. Either way, picking one writes a chord into the reference that the
-recording may not contain, so `harte.parse` returns `None` and those seconds are dropped from
-scoring rather than scored against a guess.
+The exception is a label that isn't valid notation. Carole King's `05 Beautiful` writes a bare
+degree, `E:4`, where Harte parenthesises a degree list; it could be `E:sus4` or an `Eb` with a
+dropped flat. Guessing would put a chord in the reference the recording may not contain, so
+`harte.parse` returns `None` and `survey` exits 2 on that corpus by design.
 
 **6. Score.**
 
