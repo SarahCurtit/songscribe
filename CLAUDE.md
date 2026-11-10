@@ -45,6 +45,7 @@ src/songscribe/
     timeline.py   fill gaps, merge two chord timelines         (pure Python)
     metrics.py    WCSR, vocabularies, segmentation, bar score  (pure Python)
     substitution.py  graded chord relations: how close a wrong chord is  (pure Python)
+    consensus.py  scoring against every chord a bar's sources print     (pure Python)
     labels.py     chord labels -> one rough symbol per beat, and how well two agree (numpy)
     chart_fit.py  the chart's labels against an estimate from a start, with its chance level (numpy)
     recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
@@ -245,6 +246,17 @@ vocabulary is the conservative pass/fail over the same table. **Its credits are 
 judgement, not measured frequencies** — read the per-relation breakdown `score` prints before
 believing the single number, and don't re-fit the credits until several lead sheets per tune
 exist.
+
+A reference label may print **several chords for one bar**, separated by `|` (`D:min|D:7`): a
+lead sheet's small alternate chord, or two sheets of one tune disagreeing. `harte.parse` returns
+the primary chord alone, so every metric above stays strict and unchanged; `eval/consensus.py`
+is the opt-in reading that counts a segment right when any source matches, printed as a
+`consensus` column only when a reference actually carries alternatives. It moves a score **both
+ways** — an alternative a vocabulary can express pulls time out of the excluded pile and into
+the denominator, which is why `sevenths` can fall while `mirex` rises. `survey` grades each
+disagreement through the relation table and lists the pairs nothing explains: those are either a
+missing relation or a misread chart. Writing `|` labels belongs wherever the charts live; this
+repo only reads them.
 
 `grid` is the one that distinguishes one chord per bar from two, which is most of what makes
 an instrumental chart readable. Its harmonic unit is **estimated from chord durations**, so

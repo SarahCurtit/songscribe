@@ -45,6 +45,10 @@ _TRITONE = 6
 #: same way.
 _NINTHS = (1, 2)
 
+#: Largest symmetric difference between two chords' pitch classes that still
+#: counts as one note apart: one note changed on each side.
+_ONE_NOTE_APART = 2
+
 #: Shared pitch classes the overlap-gated relations below require. Two notes is
 #: a coincidence for chords of this width: ``C:maj`` and ``A:min`` share C and E
 #: and are a plain error, which is what ``mirex`` says about them too.
@@ -223,6 +227,25 @@ def _seventh_swap(reference: Chord, estimate: Chord) -> bool:
     return None not in sevenths and sevenths[0] != sevenths[1]
 
 
+def _dim_near_miss(reference: Chord, estimate: Chord) -> bool:
+    """A diminished chord against a chord a note away on the same root.
+
+    ``C:dim7``/``C:min6`` and ``C:dim``/``C:min`` differ only in the fifth,
+    ``C:hdim7``/``C:7(*5,b5)`` only in the third. Confined to the diminished
+    family: widened to any pair a note apart it would hold for
+    ``C:maj``/``C:min`` as well, and since :func:`grade` takes the highest
+    credit that would override ``parallel``.
+    """
+    if reference.root is None or reference.root != estimate.root:
+        return False
+    if not (_is_diminished(reference) or _is_diminished(estimate)):
+        return False
+    # Pitch content, not the symbol: "C:7(b5)" adds a flat fifth and keeps the
+    # natural one, so it is five notes and three from a hdim7, while
+    # "C:7(*5,b5)" omits the fifth it replaces and is one away.
+    return len(reference.pitch_classes ^ estimate.pitch_classes) <= _ONE_NOTE_APART
+
+
 def _guide_tones(reference: Chord, estimate: Chord) -> bool:
     """The third and the seventh land on the same pitch classes, in the same roles.
 
@@ -328,6 +351,7 @@ RELATIONS: tuple[Relation, ...] = (
     Relation("relative", 0.70, _relative),
     Relation("sus_for_triad", 0.70, _sus_for_triad),
     Relation("seventh_swap", 0.60, _seventh_swap),
+    Relation("dim_near_miss", 0.60, _dim_near_miss),
     Relation("parallel", 0.40, _parallel),
     Relation(NO_RELATION, 0.00, lambda reference, estimate: True),
 )
