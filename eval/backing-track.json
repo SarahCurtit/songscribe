@@ -4,6 +4,7 @@
   "notes": "Every song of the jazz backing-track collection, one track per song. No chord references exist yet: each 'reference' is a placeholder path where the song's .lab will go, so survey reports them as missing until they are written. Identifiers only, no audio paths and no annotation text.",
   "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
   "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "split": "by band: no trio on both sides, written from the private line-ups by the data_extraction repo's labels/band_split.py",
   "tracks": [
     {
       "id": "labs/26_2",
