@@ -259,7 +259,12 @@ songscribe-eval survey eval/isophonics-beatles.json
 It reports annotated time, distinct labels, whether every label parses, and for each
 vocabulary how much reference time is scoreable. That figure is the upper bound for any
 backend, and the denominator to quote beside a WCSR. `survey` exits non-zero if a label does
-not parse, which indicates a gap in `eval/harte.py`.
+not parse, which usually indicates a gap in `eval/harte.py`.
+
+The exception is a label that isn't valid notation. Carole King's `05 Beautiful` writes a bare
+degree, `E:4`, where Harte parenthesises a degree list; it could be `E:sus4` or an `Eb` with a
+dropped flat. Guessing would put a chord in the reference the recording may not contain, so
+`harte.parse` returns `None` and `survey` exits 2 on that corpus by design.
 
 **6. Score.**
 
