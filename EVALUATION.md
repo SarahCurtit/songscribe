@@ -358,7 +358,8 @@ few seconds per hundred tracks; `--no-alignment-check` skips it.
 `eval/jaah.json`, `eval/isophonics-beatles.json`, `eval/isophonics-zweieck.json` and
 `eval/backing-track.json` each have a train and a test manifest next to them, about 20% of the
 songs held out. Train includes validation: tune on it, and score on test once you are done
-tuning.
+tuning. The first three are hash splits (below); the backing tracks are
+[split by band](#backing-tracks-are-split-by-band).
 
 ```bash
 songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
@@ -393,6 +394,27 @@ songscribe-eval: test would be empty -- 7 songs is too few for a 0.2 hash split;
 Neither manifest is written and the exit is 1, so a corpus held out whole keeps its test
 manifest. Raising `--test-fraction` until something lands in test is choosing a test set by
 the number it gives, which is the thing a held-out set exists to prevent.
+
+### Backing tracks are split by band
+
+Every backing track is played by one trio (piano, bass, drums), and the same few trios play
+many songs. A hash split by song puts the same trio on both sides, so a model tuned on train has
+already heard the test set's players, and a test score overstates how it does on a new band.
+`eval/backing-track-train.json` and `eval/backing-track-test.json` are split by band instead:
+
+- **no trio plays on both sides**, and every version of a song stays on one side (`song_key`);
+- **some musicians play only in test**: 13 of 33, against 14 only in train; the 6 on both
+  sides never play in the same trio on both;
+- **test's mix of styles** (swing, ballad, latin, …) is within 0.10 of the collection's, as total
+  variation distance. Without that limit the most separable bands are the style specialists, and
+  test came out 31% latin against 5% in train, which would mix "new players" with "new styles";
+- test holds 40 of the 169 tracks (24%), 8 of the 21 bands.
+
+The line-ups are not public, so the split is made in the private data_extraction repository
+(`labels/band_split.py`, which tries every grouping of bands and keeps the best) and only its
+result, track ids, is committed here. The manifests carry `"split": "by band: …"`, and
+`songscribe-eval split` refuses a manifest that declares its split rather than replacing it with a
+hash split. When the collection changes, re-run `band_split.py` there, not `split` here.
 
 ## Scoring a chart played several times
 

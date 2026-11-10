@@ -1,9 +1,10 @@
 {
   "version": 1,
   "dataset": "backing-track-train",
-  "notes": "Every song of the jazz backing-track collection, one track per song. No chord references exist yet: each 'reference' is a placeholder path where the song's .lab will go, so survey reports them as missing until they are written. Identifiers only, no audio paths and no annotation text.",
+  "notes": "Every song of the jazz backing-track collection, one track per song. No chord references exist yet: each 'reference' is a placeholder path where the song's .lab will go, so survey reports them as missing until they are written. Identifiers only, no audio paths and no annotation text. Split by band, not by song hash: no trio plays on both sides, and some musicians play only in test. Written by data_extraction's labels/band_split.py from the app's line-ups; do not regenerate with `songscribe-eval split`.",
   "audio_root_env": "SONGSCRIBE_EVAL_ROOT",
   "annotation_root_env": "SONGSCRIBE_EVAL_ANNOTATIONS",
+  "split": "by band: no trio on both sides, written from the private line-ups by the data_extraction repo's labels/band_split.py",
   "tracks": [
     {
       "id": "labs/26_2",
@@ -14,12 +15,8 @@
       "reference": "labs/500_miles_high.lab"
     },
     {
-      "id": "labs/airegin",
-      "reference": "labs/airegin.lab"
-    },
-    {
-      "id": "labs/all_blues",
-      "reference": "labs/all_blues.lab"
+      "id": "labs/after_youve_gone",
+      "reference": "labs/after_youve_gone.lab"
     },
     {
       "id": "labs/all_of_me",
@@ -46,20 +43,12 @@
       "reference": "labs/almost_like_being_in_love.lab"
     },
     {
-      "id": "labs/alone_together",
-      "reference": "labs/alone_together.lab"
-    },
-    {
       "id": "labs/along_came_betty",
       "reference": "labs/along_came_betty.lab"
     },
     {
       "id": "labs/anthropology",
       "reference": "labs/anthropology.lab"
-    },
-    {
-      "id": "labs/ask_me_now",
-      "reference": "labs/ask_me_now.lab"
     },
     {
       "id": "labs/au_privave(f_bop_blues)",
@@ -88,6 +77,10 @@
     {
       "id": "labs/blues_for_alice",
       "reference": "labs/blues_for_alice.lab"
+    },
+    {
+      "id": "labs/body_and_soul",
+      "reference": "labs/body_and_soul.lab"
     },
     {
       "id": "labs/bolivia",
@@ -126,10 +119,6 @@
       "reference": "labs/corcovado.lab"
     },
     {
-      "id": "labs/cry_me_a_river",
-      "reference": "labs/cry_me_a_river.lab"
-    },
-    {
       "id": "labs/darn_that_dream",
       "reference": "labs/darn_that_dream.lab"
     },
@@ -146,6 +135,10 @@
       "reference": "labs/dolphin_dance.lab"
     },
     {
+      "id": "labs/donna_lee",
+      "reference": "labs/donna_lee.lab"
+    },
+    {
       "id": "labs/doxy",
       "reference": "labs/doxy.lab"
     },
@@ -154,12 +147,12 @@
       "reference": "labs/e_s_p.lab"
     },
     {
-      "id": "labs/east_of_the_sun(and_west_of_the_moon)",
-      "reference": "labs/east_of_the_sun(and_west_of_the_moon).lab"
-    },
-    {
       "id": "labs/emily",
       "reference": "labs/emily.lab"
+    },
+    {
+      "id": "labs/equinox",
+      "reference": "labs/equinox.lab"
     },
     {
       "id": "labs/every_day_i_have_the_blues",
@@ -178,32 +171,32 @@
       "reference": "labs/fee_fi_fo_fum.lab"
     },
     {
-      "id": "labs/for_tracy",
-      "reference": "labs/for_tracy.lab"
+      "id": "labs/footprints",
+      "reference": "labs/footprints.lab"
     },
     {
-      "id": "labs/gee_baby_aint_i_good_to_you",
-      "reference": "labs/gee_baby_aint_i_good_to_you.lab"
+      "id": "labs/for_tracy",
+      "reference": "labs/for_tracy.lab"
     },
     {
       "id": "labs/giant_steps",
       "reference": "labs/giant_steps.lab"
     },
     {
-      "id": "labs/got_a_match",
-      "reference": "labs/got_a_match.lab"
-    },
-    {
       "id": "labs/groovin_high",
       "reference": "labs/groovin_high.lab"
     },
     {
-      "id": "labs/how_deep_is_the_ocean",
-      "reference": "labs/how_deep_is_the_ocean.lab"
+      "id": "labs/have_you_met_miss_jones(medium_slow)",
+      "reference": "labs/have_you_met_miss_jones(medium_slow).lab"
     },
     {
-      "id": "labs/how_high_the_moon",
-      "reference": "labs/how_high_the_moon.lab"
+      "id": "labs/have_you_met_miss_jones(medium_up)",
+      "reference": "labs/have_you_met_miss_jones(medium_up).lab"
+    },
+    {
+      "id": "labs/how_deep_is_the_ocean",
+      "reference": "labs/how_deep_is_the_ocean.lab"
     },
     {
       "id": "labs/how_insensitive",
@@ -220,6 +213,10 @@
     {
       "id": "labs/i_thought_about_you",
       "reference": "labs/i_thought_about_you.lab"
+    },
+    {
+      "id": "labs/if_i_were_a_bell",
+      "reference": "labs/if_i_were_a_bell.lab"
     },
     {
       "id": "labs/ill_be_seeing_you",
@@ -254,32 +251,12 @@
       "reference": "labs/in_walked_bud.lab"
     },
     {
-      "id": "labs/in_your_own_sweet_way",
-      "reference": "labs/in_your_own_sweet_way.lab"
-    },
-    {
       "id": "labs/infant_eyes",
       "reference": "labs/infant_eyes.lab"
     },
     {
-      "id": "labs/inner_urge",
-      "reference": "labs/inner_urge.lab"
-    },
-    {
-      "id": "labs/invitation",
-      "reference": "labs/invitation.lab"
-    },
-    {
       "id": "labs/isfahan",
       "reference": "labs/isfahan.lab"
-    },
-    {
-      "id": "labs/isotope",
-      "reference": "labs/isotope.lab"
-    },
-    {
-      "id": "labs/it_could_happen_to_you",
-      "reference": "labs/it_could_happen_to_you.lab"
     },
     {
       "id": "labs/jeannine",
@@ -306,6 +283,10 @@
       "reference": "labs/just_one_of_those_things(fast_swing).lab"
     },
     {
+      "id": "labs/lady_bird",
+      "reference": "labs/lady_bird.lab"
+    },
+    {
       "id": "labs/like_someone_in_love(c)",
       "reference": "labs/like_someone_in_love(c).lab"
     },
@@ -314,8 +295,8 @@
       "reference": "labs/like_someone_in_love(eb).lab"
     },
     {
-      "id": "labs/little_sunflower",
-      "reference": "labs/little_sunflower.lab"
+      "id": "labs/lucky_southern",
+      "reference": "labs/lucky_southern.lab"
     },
     {
       "id": "labs/lullaby_of_birdland",
@@ -326,24 +307,24 @@
       "reference": "labs/maiden_voyage.lab"
     },
     {
-      "id": "labs/mambo_inn(full_rhythm_section)",
-      "reference": "labs/mambo_inn(full_rhythm_section).lab"
-    },
-    {
-      "id": "labs/mambo_inn(percussion_only)",
-      "reference": "labs/mambo_inn(percussion_only).lab"
-    },
-    {
-      "id": "labs/mambo_inn(without_percussion)",
-      "reference": "labs/mambo_inn(without_percussion).lab"
-    },
-    {
       "id": "labs/mercy_mercy_mercy",
       "reference": "labs/mercy_mercy_mercy.lab"
     },
     {
+      "id": "labs/misty(in_ab_concert)",
+      "reference": "labs/misty(in_ab_concert).lab"
+    },
+    {
+      "id": "labs/misty(in_eb_concert)",
+      "reference": "labs/misty(in_eb_concert).lab"
+    },
+    {
       "id": "labs/moments_notice",
       "reference": "labs/moments_notice.lab"
+    },
+    {
+      "id": "labs/monks_dream",
+      "reference": "labs/monks_dream.lab"
     },
     {
       "id": "labs/moodys_mood_for_love",
@@ -362,8 +343,12 @@
       "reference": "labs/mr_p_c(medium).lab"
     },
     {
-      "id": "labs/my_romance(medium_swing)",
-      "reference": "labs/my_romance(medium_swing).lab"
+      "id": "labs/my_funny_valentine",
+      "reference": "labs/my_funny_valentine.lab"
+    },
+    {
+      "id": "labs/my_one_and_only_love",
+      "reference": "labs/my_one_and_only_love.lab"
     },
     {
       "id": "labs/my_shining_hour",
@@ -394,8 +379,8 @@
       "reference": "labs/oleo.lab"
     },
     {
-      "id": "labs/on_the_sunny_side_of_the_street",
-      "reference": "labs/on_the_sunny_side_of_the_street.lab"
+      "id": "labs/on_green_dolphin_street",
+      "reference": "labs/on_green_dolphin_street.lab"
     },
     {
       "id": "labs/once_i_loved",
@@ -404,6 +389,10 @@
     {
       "id": "labs/one_note_samba",
       "reference": "labs/one_note_samba.lab"
+    },
+    {
+      "id": "labs/out_of_nowhere",
+      "reference": "labs/out_of_nowhere.lab"
     },
     {
       "id": "labs/peace",
@@ -422,24 +411,28 @@
       "reference": "labs/serenity.lab"
     },
     {
-      "id": "labs/shiny_stockings",
-      "reference": "labs/shiny_stockings.lab"
-    },
-    {
       "id": "labs/slow_blues_in_g",
       "reference": "labs/slow_blues_in_g.lab"
+    },
+    {
+      "id": "labs/softly_as_in_a_morning_sunrise(medium)",
+      "reference": "labs/softly_as_in_a_morning_sunrise(medium).lab"
+    },
+    {
+      "id": "labs/solar",
+      "reference": "labs/solar.lab"
+    },
+    {
+      "id": "labs/someday_my_prince_will_come",
+      "reference": "labs/someday_my_prince_will_come.lab"
     },
     {
       "id": "labs/song_for_bilbao",
       "reference": "labs/song_for_bilbao.lab"
     },
     {
-      "id": "labs/spain(solo_section)",
-      "reference": "labs/spain(solo_section).lab"
-    },
-    {
-      "id": "labs/speak_no_evil",
-      "reference": "labs/speak_no_evil.lab"
+      "id": "labs/song_for_my_father",
+      "reference": "labs/song_for_my_father.lab"
     },
     {
       "id": "labs/st_thomas",
@@ -450,28 +443,12 @@
       "reference": "labs/stablemates.lab"
     },
     {
-      "id": "labs/stella_by_starlight",
-      "reference": "labs/stella_by_starlight.lab"
-    },
-    {
       "id": "labs/stompin_at_the_savoy",
       "reference": "labs/stompin_at_the_savoy.lab"
     },
     {
       "id": "labs/summertime",
       "reference": "labs/summertime.lab"
-    },
-    {
-      "id": "labs/sunny",
-      "reference": "labs/sunny.lab"
-    },
-    {
-      "id": "labs/sunny(slow_jam)",
-      "reference": "labs/sunny(slow_jam).lab"
-    },
-    {
-      "id": "labs/take_the_a_train",
-      "reference": "labs/take_the_a_train.lab"
     },
     {
       "id": "labs/tenderly",
@@ -482,10 +459,6 @@
       "reference": "labs/tenor_madness.lab"
     },
     {
-      "id": "labs/the_chicken",
-      "reference": "labs/the_chicken.lab"
-    },
-    {
       "id": "labs/the_girl_from_ipanema(f_major)",
       "reference": "labs/the_girl_from_ipanema(f_major).lab"
     },
@@ -494,20 +467,16 @@
       "reference": "labs/the_jody_grind.lab"
     },
     {
+      "id": "labs/the_song_is_you",
+      "reference": "labs/the_song_is_you.lab"
+    },
+    {
       "id": "labs/there_is_no_greater_love",
       "reference": "labs/there_is_no_greater_love.lab"
     },
     {
       "id": "labs/there_will_never_be_another_you",
       "reference": "labs/there_will_never_be_another_you.lab"
-    },
-    {
-      "id": "labs/these_foolish_things",
-      "reference": "labs/these_foolish_things.lab"
-    },
-    {
-      "id": "labs/this_i_dig_of_you",
-      "reference": "labs/this_i_dig_of_you.lab"
     },
     {
       "id": "labs/time_after_time",
@@ -522,6 +491,14 @@
       "reference": "labs/turn_out_the_stars.lab"
     },
     {
+      "id": "labs/up_jumped_spring(bright)",
+      "reference": "labs/up_jumped_spring(bright).lab"
+    },
+    {
+      "id": "labs/up_jumped_spring(medium)",
+      "reference": "labs/up_jumped_spring(medium).lab"
+    },
+    {
       "id": "labs/wave",
       "reference": "labs/wave.lab"
     },
@@ -534,18 +511,6 @@
       "reference": "labs/what_is_this_thing_called_love.lab"
     },
     {
-      "id": "labs/whats_new",
-      "reference": "labs/whats_new.lab"
-    },
-    {
-      "id": "labs/windows",
-      "reference": "labs/windows.lab"
-    },
-    {
-      "id": "labs/woody_n_you",
-      "reference": "labs/woody_n_you.lab"
-    },
-    {
       "id": "labs/yes_or_no",
       "reference": "labs/yes_or_no.lab"
     },
@@ -556,10 +521,6 @@
     {
       "id": "labs/yesterdays(5_4)",
       "reference": "labs/yesterdays(5_4).lab"
-    },
-    {
-      "id": "labs/you_and_the_night_and_the_music",
-      "reference": "labs/you_and_the_night_and_the_music.lab"
     }
   ]
 }

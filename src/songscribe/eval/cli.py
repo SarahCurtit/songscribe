@@ -373,6 +373,15 @@ def _split(args: argparse.Namespace) -> int:
         print(f"songscribe-eval: {args.manifest} has no 'tracks' list", file=sys.stderr)
         return 1
 
+    # A corpus split some other way says so, and a hash split would silently undo it.
+    if "split" in manifest:
+        print(
+            f"songscribe-eval: {args.manifest} is split {manifest['split']}; "
+            "a hash split would replace that, so nothing is written",
+            file=sys.stderr,
+        )
+        return 1
+
     refusal = empty_side_refusal(manifest["tracks"], train, test, args.test_fraction)
     if refusal:
         for line in refusal:

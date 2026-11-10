@@ -9,6 +9,8 @@ from songscribe.eval import split
 
 EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
 CORPORA = ("jaah", "isophonics-beatles", "backing-track", "isophonics-zweieck")
+#: The corpora whose committed split is the hash split. backing-track is split by band instead.
+HASH_SPLIT = ("jaah", "isophonics-beatles", "isophonics-zweieck")
 IDS = [f"labs/song_{n}" for n in range(200)]
 
 
@@ -109,9 +111,44 @@ class TestCommittedSplits:
         assert test["tracks"]
         assert not in_train & in_test
 
-    def test_files_match_what_the_code_produces(self, name):
-        train, test = split.split_manifest(load(name))
-        assert (train, test) == (load(f"{name}-train"), load(f"{name}-test"))
+
+@pytest.mark.parametrize("name", HASH_SPLIT)
+def test_hash_split_files_match_what_the_code_produces(name):
+    train, test = split.split_manifest(load(name))
+    assert (train, test) == (load(f"{name}-train"), load(f"{name}-test"))
+
+
+class TestBackingTrackIsSplitByBand:
+    """The backing tracks are split so that no trio plays on both sides.
+
+    A hash split puts the same players on both sides, so a model tuned on train has already
+    heard test. The split is made from the band line-ups, which are private and live in the
+    data_extraction repo (labels/band_split.py); only its result, track ids, is committed
+    here. So it can't be regenerated from this repository, and `split` refuses to overwrite it.
+    """
+
+    CORPUS = "backing-track"
+
+    def test_the_manifests_say_how_they_are_split(self):
+        for name in (self.CORPUS, f"{self.CORPUS}-train", f"{self.CORPUS}-test"):
+            assert load(name)["split"].startswith("by band")
+
+    def test_it_is_not_the_hash_split(self):
+        _, by_hash = split.split_manifest(load(self.CORPUS))
+        assert by_hash["tracks"] != load(f"{self.CORPUS}-test")["tracks"]
+
+    def test_test_share_is_near_the_fraction(self):
+        share = len(load(f"{self.CORPUS}-test")["tracks"]) / len(load(self.CORPUS)["tracks"])
+        assert abs(share - split.TEST_FRACTION) <= 0.05
+
+    def test_split_refuses_a_manifest_that_declares_its_split(self, tmp_path, capsys):
+        from songscribe.eval import cli
+
+        path = tmp_path / "corpus.json"
+        path.write_text(json.dumps({**manifest(*IDS), "split": "by band"}), encoding="utf-8")
+        assert cli.main(["split", str(path)]) == 1
+        assert "is split by band" in capsys.readouterr().err
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["corpus.json"]
 
 
 class TestCaroleKingIsHeldOutWhole:
