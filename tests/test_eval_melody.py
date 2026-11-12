@@ -171,6 +171,12 @@ class TestBestTransposition:
         played = [NoteEvent(0.0, 8.0, 67), NoteEvent(8.0, 8.2, 61), NoteEvent(8.2, 8.4, 62)]
         assert best_transposition(written, played) == -5
 
+    def test_a_tie_goes_to_no_shift_rather_than_to_float_noise(self):
+        # Half the take in the chart's key and half a minor third up: 0 and 3 fit the
+        # content equally, and they differ by about 1e-16, which must not pick the key.
+        played = [*CHART, *[NoteEvent(n.start + 8.0, n.end + 8.0, n.pitch + 3) for n in CHART]]
+        assert best_transposition(CHART, played) == 0
+
     def test_an_empty_side_means_no_shift(self):
         assert best_transposition(CHART, []) == 0
         assert best_transposition([], CHART) == 0

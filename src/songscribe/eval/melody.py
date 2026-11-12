@@ -36,6 +36,11 @@ MELODY_ONSET_TOLERANCE_BEATS = 0.25
 #: Half a semitone, the MIREX standard for raw pitch accuracy.
 MELODY_PITCH_TOLERANCE_CENTS = 50.0
 
+#: Decimal places two key fits are compared at. The profiles are unit vectors, so a
+#: difference below this is float noise, and noise must not be what picks a key: two
+#: keys the pitch content really does support equally have to reach the tie-break.
+TRANSPOSITION_FIT_PRECISION = 12
+
 SEMITONES = 12
 CENTS_PER_OCTAVE = SEMITONES * CENTS_PER_SEMITONE
 
@@ -131,7 +136,12 @@ def best_transposition(
     # Normalised, so the correlation compares shapes rather than how much was played.
     written = written / np.linalg.norm(written)
     played = played / np.linalg.norm(played)
-    fit = {shift: float(np.roll(written, shift % SEMITONES) @ played) for shift in shifts}
+    fit = {
+        shift: round(
+            float(np.roll(written, shift % SEMITONES) @ played), TRANSPOSITION_FIT_PRECISION
+        )
+        for shift in shifts
+    }
     return min(fit, key=lambda shift: (-fit[shift], abs(shift), shift))
 
 

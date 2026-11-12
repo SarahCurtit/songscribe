@@ -95,9 +95,10 @@ def notes_from_f0(
 
     ``times`` are frame start times in seconds, evenly spaced as a tracker returns
     them; ``f0_hz`` is the pitch found in each frame, ``voiced`` whether one was found
-    at all. A note runs while the frames stay voiced and within ``tolerance_cents`` of
-    its running mean pitch, and is kept if it lasts ``min_duration``. Its pitch is the
-    median of its frames, rounded, so a few frames at the window's edge cannot shift it.
+    at all. A note runs while the frames stay voiced, stay within ``tolerance_cents`` of
+    its running mean pitch and stay contiguous, and is kept if it lasts ``min_duration``.
+    Its pitch is the median of its frames, rounded, so a few frames at the window's edge
+    cannot shift it.
     """
     times = np.asarray(times, dtype=float)
     f0_hz = np.asarray(f0_hz, dtype=float)
