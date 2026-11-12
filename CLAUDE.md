@@ -33,7 +33,7 @@ src/songscribe/
   beats.py      pluggable beat/downbeat backends behind track(); BeatGrid
   melody.py     pluggable melody backends behind transcribe(); frames -> notes
   tempo.py      BeatGrid vs a known tempo: octave-error check          (pure Python)
-  registry.py   name/setting checks shared by chords and beats       (pure Python)
+  registry.py   name/setting checks shared by the three stages      (pure Python)
   lyrics.py     faster-whisper wrapper, word-level timestamps
   align.py      chord timeline + word timeline -> printable sections   (pure Python)
   render.py     Song -> text or ChordPro                               (pure Python)
@@ -305,10 +305,10 @@ than the circumstances:
 - **Octave-blind by default.** The instrument may sit an octave from the written range, and
   an octave flip is a pitch tracker's commonest error — measured here: with pYIN's ceiling at
   C6, 10 of the demo's 32 notes come back an octave down; with it at C7 none do, which is why
-  `LEAD_FMAX_HZ` is a full octave above a sung lead. Raising the ceiling does not abolish
-  them — the same demo transposed up a major third still returns a quarter of its notes an
-  octave out — so the strict score is reported beside the blind one rather than folded into a
-  penalty.
+  `LEAD_FMAX_HZ` is a full octave above a sung lead. The strict score is reported beside the
+  blind one rather than folded into a penalty. A strict gap is not always the tracker: the
+  demo voices each bar's figure from a fixed octave, so a transposed take whose root wraps
+  past B plays it an octave down, exactly as a re-voicing band would.
 - **Transposition from pitch content, not from the score.** `best_transposition` correlates
   duration-weighted pitch-class profiles. `matching_transposition` — the shift that matches
   the most notes — is a diagnostic to print beside it, never the one scored with; a key chosen

@@ -186,8 +186,6 @@ def write_beats(path: str | Path, beats: Sequence[BeatEvent]) -> None:
     path.write_text(format_beats(beats), encoding="utf-8")
 
 
-# A melody caches and tests exactly like a chord timeline: same timebase, same
-# round trip, so the evaluation harness needs no model to be given an estimate.
 #: MIDI's own range. A pitch outside it is a conversion gone wrong -- a
 #: frequency written where a note number belongs, most likely -- not a note.
 MIN_PITCH, MAX_PITCH = 0, 127
@@ -270,9 +268,7 @@ def format_notes(notes: Sequence[NoteEvent]) -> str:
 
         0.000000    0.625000    72
 
-    The confidence column is written only when some note carries one, so a
-    hand-written fixture and a ground truth stay three plain columns while a
-    tracker's own output still round trips.
+    The confidence column is written only when some note carries one.
     """
     graded = any(n.confidence != DEFAULT_CONFIDENCE for n in notes)
     lines = []

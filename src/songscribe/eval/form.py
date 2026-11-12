@@ -170,12 +170,8 @@ def project_estimate(events: Sequence[_Event], chorus: Chorus, origin: float = 0
 
     Times are shifted to the chorus start and divided by ``chorus.scale``; ``origin`` is
     where the chart starts. Events outside the chorus are dropped and those crossing its
-    edges are cut.
-
-    Chords or notes: everything but the times is carried over untouched, so the melody
-    branch maps a chorus onto the chart with this and adds no alignment code of its own.
-    A note that *starts* before the chorus is cut like a chord, which moves its onset --
-    melody scoring drops those beforehand rather than scoring an onset nobody played.
+    edges are cut. Chords or notes alike: everything but the times is carried over. A note
+    cut at the start would be re-onset there, so ``melody.score_choruses`` drops those.
     """
     if not chorus.is_scored:
         raise ValueError(f"a {chorus.kind} block has no mapping onto the chart")

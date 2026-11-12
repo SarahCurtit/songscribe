@@ -57,22 +57,19 @@ ROOT_OCTAVE = 3
 # like a pure tone, which is unrealistically easy for a chord model.
 HARMONICS = (1.0, 0.5, 0.33, 0.25)
 
-# The lead line, when one is asked for: one note per beat, drawn from the bar's
-# own chord so the melody and the harmony cannot disagree. Indices into the
-# chord's intervals -- root, third, fifth, third -- which for a triad never
-# repeats a pitch across a bar line in the default progression, so the
-# segmenter is never handed two notes it cannot tell apart.
+# The lead line's figure, as indices into the bar's own chord: root, third,
+# fifth, third. Drawn from the chord so the melody and the harmony cannot
+# disagree, and with no pitch repeated across a bar line in the default
+# progression, so the segmenter is never handed two notes it cannot separate.
 MELODY_FIGURE = (0, 1, 2, 1)
 
 # Two octaves above the accompaniment's root: clear of the triads' own
 # fundamentals, and inside the range a lead instrument actually plays.
 MELODY_OCTAVE = 5
 
-# How far above the accompaniment the lead is mixed. Deliberately dominant: a
-# monophonic tracker follows whatever is loudest and periodic, so at equal
-# gain pYIN returns the bass line and the demo would be measuring that. Fixed
-# by measurement -- at gain 1 two thirds of the notes come back wrong, at 3 all
-# 32 of them are right.
+# How far above the accompaniment the lead is mixed. A monophonic tracker
+# follows whatever is loudest and periodic, so at equal gain pYIN returns the
+# bass line instead of the lead.
 MELODY_GAIN = 3.0
 
 
@@ -139,7 +136,12 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
 
 
 def melody_pitches(label: str, beats_per_bar: int, octave: int = MELODY_OCTAVE) -> list[int]:
-    """MIDI pitches of one bar's lead figure over ``label``: chord tones, one per beat."""
+    """MIDI pitches of one bar's lead figure over ``label``: chord tones, one per beat.
+
+    Voiced from ``octave`` whatever the root, so a transposed take whose root wraps past B
+    plays the figure an octave down -- as a band re-voicing would. A strict-octave
+    comparison against the chart has to allow for that; an octave-blind one does not.
+    """
     pitch_class, intervals = parse_chord(label)
     root = 12 * (octave + 1) + pitch_class
     return [
@@ -234,11 +236,7 @@ class Performance:
     ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
     ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
     A pickup is in ``events`` and ``beat_events()``, not ``reference``; ``intro_bars`` come first.
-
-    ``notes`` and ``reference_notes`` are the lead line the same way round, and are empty
-    unless a melody was asked for. The written melody is played on *every* chorus, solos
-    included -- this is test material for the metric, not a performance -- so a chorus
-    scored for novelty should come out at 0 here.
+    ``notes`` and ``reference_notes`` are the lead line the same way round, empty without one.
     """
 
     audio: np.ndarray
@@ -308,11 +306,7 @@ def synthesise_performance(
     notes (semitones above each root) to a whole chorus. ``tempo_drift`` is the relative
     tempo change from first to last bar. ``substitutions[repeat][bar]`` replaces one chord.
     The whole take, pickup included, is played ``transpose`` semitones above the chart.
-
-    ``melody`` adds a lead line over the choruses -- not the intro or the pickup, which is
-    where a real head has not started -- at ``melody_gain`` times the accompaniment, with
-    its notes as ground truth. It follows the chords actually played, so a substitution and
-    a transposed take move the melody with them.
+    ``melody`` adds a lead line over the choruses -- see :func:`melody_pitches`.
     """
     if not progression:
         raise ValueError("progression is empty")

@@ -6,15 +6,14 @@ one function per backend in :data:`BACKENDS`, its rate in
 ``**kwargs``. A backend returns :class:`~songscribe.types.NoteEvent` list on
 the recording's own seconds-from-start timeline.
 
-Pitch tracking and note segmentation are deliberately two steps. A tracker
-gives a pitch per frame; turning that into notes is a separate decision about
-how long a note has to be and how far it may wander, and keeping
-:func:`notes_from_f0` out of the backend is what makes that decision testable
-without audio -- and reusable by the next tracker.
+Pitch tracking and note segmentation are two steps. A tracker gives a pitch per
+frame; how long a note has to be and how far it may wander is a separate
+decision, and :func:`notes_from_f0` keeps it out of the backend, where it is
+testable without audio and reusable by the next tracker.
 
-``pyin`` is the default because it is the only backend, not because it earned
-it: it is a signal-processing tracker, the floor a model has to beat, in the
-same spirit as the ``template`` chord backend. See ``MODELS.md``.
+``pyin`` is the default of this stage because it is the only backend in it. It
+is a signal-processing tracker, the floor a model has to beat, like the
+``template`` chord backend. See ``MODELS.md``.
 """
 
 from __future__ import annotations
@@ -37,11 +36,9 @@ DEFAULT_BACKEND = "pyin"
 PYIN_SAMPLE_RATE = 22_050
 
 #: The f0 range a lead is searched in, in hertz: C2 to C7, a bass voice up to
-#: the top of a flute. The ceiling is an octave above a sung lead on purpose.
-#: pYIN reports the octave *below* for notes near its ceiling -- measured on
-#: the demo melody, where a C6 ceiling put 10 of 32 notes an octave down and a
-#: C7 ceiling none -- so a ceiling set just above the written range buys octave
-#: errors rather than safety.
+#: the top of a flute. The ceiling is an octave above a sung lead because pYIN
+#: reports the octave below for notes near its own ceiling, so one set at the
+#: written range buys octave errors rather than safety.
 LEAD_FMIN_HZ = 65.41
 LEAD_FMAX_HZ = 2093.0
 
@@ -70,9 +67,7 @@ CENTS_PER_SEMITONE = 100.0
 def hz_to_midi(hz: np.ndarray | float) -> np.ndarray | float:
     """Frequencies in hertz as (fractional) MIDI note numbers.
 
-    Hand-rolled rather than taken from librosa, which this module must not
-    import at module scope: a frequency is a logarithm away from a pitch, and
-    the whole package should not wait for librosa to say so.
+    Local rather than librosa's, which this module imports only inside the backend.
     """
     return 12.0 * np.log2(np.asarray(hz, dtype=float) / A4_HZ) + A4_MIDI
 
@@ -98,15 +93,11 @@ def notes_from_f0(
 ) -> list[NoteEvent]:
     """Segment a frame-wise f0 contour into notes.
 
-    ``times`` are frame start times in seconds, evenly spaced as a tracker
-    returns them; ``f0_hz`` the pitch found in each frame and ``voiced``
-    whether anything was found at all. A note runs while the frames stay
-    voiced and within ``tolerance_cents`` of the note's running mean pitch,
-    and is kept if it lasts ``min_duration``. Its pitch is the median of its
-    frames, rounded -- the median rather than the mean so that a few frames at
-    the edge of the window, where a tracker's errors live, cannot shift it.
-
-    Pure: no audio, no model, no librosa.
+    ``times`` are frame start times in seconds, evenly spaced as a tracker returns
+    them; ``f0_hz`` is the pitch found in each frame, ``voiced`` whether one was found
+    at all. A note runs while the frames stay voiced and within ``tolerance_cents`` of
+    its running mean pitch, and is kept if it lasts ``min_duration``. Its pitch is the
+    median of its frames, rounded, so a few frames at the window's edge cannot shift it.
     """
     times = np.asarray(times, dtype=float)
     f0_hz = np.asarray(f0_hz, dtype=float)
@@ -130,9 +121,9 @@ def notes_from_f0(
     if tolerance_cents <= 0:
         raise ValueError(f"tolerance_cents must be positive, got {tolerance_cents}")
 
-    # One hop for every frame, from the median gap: a frame's own end is not
-    # the next frame's start when frames have been dropped, and stretching it
-    # to cover the gap would invent sound that was never tracked.
+    # One hop for every frame, from the median gap, so a frame that happens to
+    # sit before a hole still ends one hop after it starts rather than
+    # stretching over sound nothing was tracked in.
     hop = float(np.median(np.diff(times))) if times.size > 1 else 0.0
     with np.errstate(divide="ignore", invalid="ignore"):
         pitches = hz_to_midi(np.where(f0_hz > 0, f0_hz, np.nan))
@@ -165,10 +156,9 @@ def notes_from_f0(
             close()
             continue
         if run:
-            # A hole in the contour ends the note. Frames can be missing --
-            # filtered out, or never tracked -- and a note welded across the
-            # hole would claim time nothing was heard in. Half a hop of slack,
-            # which is float noise rather than a gap.
+            # A gap in the frames ends the note: welding across it would claim
+            # time nothing was heard in. Half a hop of slack, which is float
+            # noise rather than a gap.
             hole = times[frame] - times[run[-1]] > 1.5 * hop
             # Against the mean of the frames so far, not the first frame:
             # vibrato swings either side of the pitch, and a note starting on
@@ -196,9 +186,8 @@ def pyin_f0(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run pYIN over ``audio``; return ``(times, f0_hz, voiced, confidence)``.
 
-    The contour before any note segmentation, so a tracker can be measured on
-    its own -- see ``eval.melody.raw_pitch_accuracy``. Otherwise a bad tracker
-    and a bad segmenter are one number.
+    The contour before any segmentation, which is what
+    ``eval.melody.raw_pitch_accuracy`` measures a tracker on.
     """
     import librosa
 
@@ -237,15 +226,13 @@ def _transcribe_pyin(
 ) -> list[NoteEvent]:
     """Probabilistic YIN pitch tracking, then :func:`notes_from_f0`.
 
-    Not a model: pYIN is signal processing, framework-free, and already
-    installed because librosa is a core dependency. It is monophonic, so on a
-    full mix it tracks whatever is loudest and periodic -- usually the bass,
-    not the lead. Run it on a separated stem, or narrow ``fmin``/``fmax`` to
-    the lead's own range.
+    Signal processing rather than a model, and installed already since librosa is
+    a core dependency. It is monophonic, so on a full mix it tracks whatever is
+    loudest and periodic, usually the bass. Run it on a separated stem, or narrow
+    ``fmin``/``fmax`` to the lead's own range.
     """
-    # No sample-rate check, unlike the chord and beat backends: pYIN is not a
-    # trained model and works at whatever rate it is handed. BACKEND_SAMPLE_RATES
-    # says which rate the caller is asked to load, and that is all it is.
+    # pYIN is not a trained model and works at whatever rate it is handed;
+    # BACKEND_SAMPLE_RATES only says which rate the caller is asked to load.
     times, f0, voiced, confidence = pyin_f0(
         audio,
         sample_rate,
@@ -276,7 +263,7 @@ BACKEND_SAMPLE_RATES = {
 
 _REGISTRY = Registry("melody", BACKENDS, BACKEND_SAMPLE_RATES)
 
-# The checks live in :mod:`songscribe.registry`, shared with the chord and beat
+# The checks live in :mod:`songscribe.registry`, shared with the other
 # stages; these are this module's public names for them.
 _check_backend = _REGISTRY.check_backend
 _check_options = _REGISTRY.check_options

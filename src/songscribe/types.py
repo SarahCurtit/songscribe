@@ -52,13 +52,10 @@ class BeatEvent:
 class NoteEvent:
     """One sounded note of a monophonic line, e.g. MIDI 72 from 4.2s to 4.7s.
 
-    ``pitch`` is a MIDI note number rather than a frequency: transposing is
-    then addition and folding octaves away is ``% 12``, which is what comparing
-    a played line against a written one needs. Hz would make both a conversion.
-    Time stays in seconds from the start, like every other event here.
-
-    ``confidence`` is how sure the tracker was, averaged over the note's
-    frames; a backend with nothing to say about it leaves it at 1.0.
+    ``pitch`` is a MIDI note number rather than a frequency, so transposing is
+    addition and folding octaves away is ``% 12`` -- both of which comparing a
+    played line with a written one needs. ``confidence`` is how sure the tracker
+    was, averaged over the note's frames, and 1.0 from one with nothing to say.
     """
 
     start: float

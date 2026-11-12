@@ -1,4 +1,4 @@
-"""The backend registry contract, shared by :mod:`~songscribe.chords` and :mod:`~songscribe.beats`.
+"""The backend registry contract, shared by the chord, beat and melody stages.
 
 A stage keeps its own ``BACKENDS`` and ``BACKEND_SAMPLE_RATES`` dicts and wraps them in a
 :class:`Registry`, which owns the checks on a name or a setting. Pure Python.
