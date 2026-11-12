@@ -13,6 +13,17 @@ from songscribe.viewer import melody, score
 
 # MIDI numbers used throughout, named so the expectations read as music.
 C4, CS4, D4, E4, F4, A4, AS4, B3, C5, F5, G2, A3 = 60, 61, 62, 64, 65, 69, 70, 59, 72, 77, 43, 57
+# Far under the treble staff: sixteen steps, which is where a tracker that has
+# slipped onto the bass puts a note.
+C2 = 36
+
+
+def line(*pitches: int, seconds: float = 1.0) -> list[NoteEvent]:
+    """Invented notes, one after another, each ``seconds`` long."""
+    return [
+        NoteEvent(index * seconds, (index + 1) * seconds, pitch)
+        for index, pitch in enumerate(pitches)
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -94,12 +105,85 @@ def test_ledger_steps(step: int, expected: tuple[int, ...]) -> None:
 
 
 def test_choose_clef_follows_the_range() -> None:
-    assert score.choose_clef([E4, A4, F5]) == "treble"
-    assert score.choose_clef([G2, 45, 47]) == "bass"
+    assert score.choose_clef(line(E4, A4, F5)) == "treble"
+    assert score.choose_clef(line(G2, 45, 47)) == "bass"
     assert score.choose_clef([]) == "treble"
     # Middle C is one ledger line off either staff: a tie goes to the treble,
     # where a lead sits.
-    assert score.choose_clef([C4]) == "treble"
+    assert score.choose_clef(line(C4)) == "treble"
+
+
+def test_choose_clef_weighs_seconds_not_notes() -> None:
+    """A tracker that drops onto the bass must not outvote the melody.
+
+    It chops a wandering line into many short notes while a phrase is a few
+    long ones, so counting notes would hand the staff to the wrong voice.
+    """
+    melody = [NoteEvent(0.0, 4.0, A4), NoteEvent(4.0, 8.0, E4)]
+    fragments = [NoteEvent(8.0 + i * 0.2, 8.2 + i * 0.2, 45) for i in range(8)]
+    assert score.choose_clef(melody + fragments) == "treble"
+    # And where the weight really is in the bass, it goes there.
+    assert score.choose_clef([*melody, NoteEvent(8.0, 20.0, 45)]) == "bass"
+
+
+@pytest.mark.parametrize(
+    ("step", "shift"),
+    [
+        (0, 0),
+        (8, 0),
+        (13, 0),
+        (14, 1),
+        (20, 1),
+        (21, 2),
+        (-5, 0),
+        (-6, -1),
+        (-12, -1),
+        (-16, -2),
+    ],
+)
+def test_octave_shift(step: int, shift: int) -> None:
+    assert score.octave_shift(step) == shift
+    # However far out it started, it is written within reach of the staff.
+    assert -6 <= step - shift * score.STEPS_PER_OCTAVE <= 14
+
+
+@pytest.mark.parametrize(
+    ("shift", "label"),
+    [(0, ""), (1, "8va"), (-1, "8vb"), (2, "15ma"), (-2, "15mb")],
+)
+def test_octave_label(shift: int, label: str) -> None:
+    assert score.octave_label(shift) == label
+
+
+def test_a_lone_note_far_out_keeps_its_ledger_lines() -> None:
+    """One note under the staff is a slip, and should look like one."""
+    engraved = score.engrave(line(A4, C2, A4, A4), clef="treble", beat_seconds=1.0)
+    assert [n["octave"] for n in engraved["notes"]] == [0, 0, 0, 0]
+    assert engraved["octaves"] == []
+    assert engraved["notes"][1]["step"] == score.staff_step(C2, "treble")
+
+
+def test_a_passage_far_out_is_written_in_and_bracketed() -> None:
+    engraved = score.engrave(line(A4, C2, C2, C2, C2, A4), clef="treble", beat_seconds=1.0)
+    assert [n["octave"] for n in engraved["notes"]] == [0, -2, -2, -2, -2, 0]
+    (span,) = engraved["octaves"]
+    assert (span["label"], span["start"], span["end"]) == ("15mb", 1.0, 5.0)
+    # Every head is now within reach of the staff rather than far beneath it.
+    assert all(-6 <= n["step"] <= 14 for n in engraved["notes"])
+
+
+def test_a_bracket_never_covers_a_note_left_where_it_sounds() -> None:
+    """Two runs split by a note on the staff stay two brackets.
+
+    One bracket across the gap would have the note under it read an octave out.
+    """
+    engraved = score.engrave(
+        line(C2, C2, C2, C2, A4, C2, C2, C2, C2), clef="treble", beat_seconds=1.0
+    )
+    first, second = engraved["octaves"]
+    assert first["end"] <= 4.0
+    assert second["start"] >= 5.0
+    assert engraved["notes"][4]["octave"] == 0
 
 
 def test_staff_step_at_interpolates_between_semitones() -> None:

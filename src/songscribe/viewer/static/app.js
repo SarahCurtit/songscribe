@@ -13,9 +13,6 @@ const H = { ruler: 30, truth: 38, alt: 28, pred: 34, strip: 8, gap: 6 };
 // measures a note's position in, so one multiplication places a note head.
 const STAFF = { step: 4, pad: 8, headRx: 5, headRy: 3.6, stem: 26, flagGap: 5 };
 const STAFF_TOP_LINE = 8;
-// Clear space above and below the five lines, for notes on ledger lines. An
-// octave is seven steps, so eight leaves a little past an octave error.
-const STAFF_HEIGHT = (2 * STAFF.pad + STAFF_TOP_LINE) * STAFF.step;
 // Below this many px per bar, bar numbers would collide; show every Nth.
 const MIN_BAR_LABEL_PX = 22;
 // Follow mode keeps the playhead between these fractions of the visible width.
@@ -44,6 +41,10 @@ const SPACE_PX = 2 * STAFF.step;
 const CLEF_INSET_PX = 2;
 const CLEF_PAD_MARGIN_PX = 1;
 const CLEF_DOT_R_PX = 1.5;
+// How far inside a staff lane's edge an octave bracket sits, in px.
+const OCTAVE_SIGN_INSET_PX = 8;
+// Steps of extra room a lane keeps when it carries octave brackets.
+const OCTAVE_SIGN_STEPS = 3;
 // Clefs are drawn, not typed: no font here carries U+1D11E, so a glyph would
 // come out as a box. Paths are in staff spaces, with (0,0) on the line the
 // clef names -- the G line for the treble, the F line for the bass -- and
@@ -351,13 +352,12 @@ function lanes() {
       list.push({ kind: "pred", backend, height: H.pred + H.strip + H.gap, label: backend });
     }
   }
-  const staff = STAFF_HEIGHT + H.gap;
   if (t?.melody_score) {
-    list.push({ kind: "staff", source: "written", height: staff, label: "Melody (written)" });
+    list.push(staffLane({ kind: "staff", source: "written", label: "Melody (written)" }));
   }
   for (const backend of state.backends.melody) {
     if (state.selected.melody.has(backend)) {
-      list.push({ kind: "staff", source: "backend", backend, height: staff, label: backend });
+      list.push(staffLane({ kind: "staff", source: "backend", backend, label: backend }));
     }
   }
   return list;
@@ -420,7 +420,7 @@ function render() {
     } else if (lane.kind === "staff") {
       const data = staffData(lane);
       if (data?.score) {
-        drawStaff(data, y, px, width);
+        drawStaff(data, lane, y, px, width);
         const figures = staffNote(data);
         if (figures) div.append(figures);
       }
@@ -566,40 +566,89 @@ function levelName(segment) {
 // --------------------------------------------------------------------------- //
 
 // Where a staff step sits inside its lane. Step 0 is the bottom line and 8 the
-// top one, so the y axis runs the other way from the step axis.
-function stepY(step) {
-  return (STAFF.pad + STAFF_TOP_LINE - step) * STAFF.step;
+// top one, so the y axis runs the other way from the step axis. `pad` is the
+// lane's own clearance, which grows with how far its notes reach.
+function stepY(step, pad = STAFF.pad) {
+  return (pad + STAFF_TOP_LINE - step) * STAFF.step;
 }
 
-function drawStaff(data, laneY, px, width) {
+// A staff lane is as tall as its notes need. An isolated note far outside the
+// staff keeps its ledger lines rather than being moved, so the lane has to
+// hold it or it would be drawn over its neighbour.
+function staffLane(lane) {
+  const data = staffData(lane);
+  let padTop = STAFF.pad;
+  let padBottom = STAFF.pad;
+  for (const note of [...(data?.score?.notes ?? []), ...(data?.missed?.notes ?? [])]) {
+    padTop = Math.max(padTop, note.step - STAFF_TOP_LINE + 2);
+    padBottom = Math.max(padBottom, 2 - note.step);
+  }
+  // Each side is measured on its own: a line that dips far below the staff
+  // should not leave as much blank above it.
+  const spans = data?.score?.octaves ?? [];
+  if (spans.some((span) => span.shift > 0)) padTop += OCTAVE_SIGN_STEPS;
+  if (spans.some((span) => span.shift < 0)) padBottom += OCTAVE_SIGN_STEPS;
+  const height = (padTop + STAFF_TOP_LINE + padBottom) * STAFF.step + H.gap;
+  return { ...lane, padTop, height };
+}
+
+function drawStaff(data, lane, laneY, px, width) {
   const staff = el("g", { class: "staff" });
   for (let step = 0; step <= STAFF_TOP_LINE; step += 2) {
-    const y = laneY + stepY(step);
+    const y = laneY + stepY(step, lane.padTop);
     el("line", { class: "staffline", x1: 0, x2: width, y1: y, y2: y }, staff);
   }
-  for (const note of data.score.notes) drawNote(note, laneY, px, staff);
+  for (const note of data.score.notes) drawNote(note, laneY, px, staff, lane.padTop);
   // Written notes this backend found nothing for, drawn where they belong.
-  for (const note of data.missed?.notes ?? []) drawNote(note, laneY, px, staff);
-  drawClef(data.score.clef, laneY, staff);
+  for (const note of data.missed?.notes ?? []) drawNote(note, laneY, px, staff, lane.padTop);
+  drawOctaves(data.score.octaves ?? [], lane, laneY, px, staff);
+  drawClef(data.score.clef, laneY, staff, lane.padTop);
+}
+
+// 8va and friends: a passage written an octave or two in, with a bracket
+// saying so. Isolated notes are never moved, so a bracket always covers a run.
+function drawOctaves(spans, lane, laneY, px, parent) {
+  for (const span of spans) {
+    const above = span.shift > 0;
+    const y = above
+      ? laneY + OCTAVE_SIGN_INSET_PX
+      : laneY + lane.height - H.gap - OCTAVE_SIGN_INSET_PX;
+    const x = span.start * px;
+    // Not "octave": a note an octave out already wears that as a level.
+    const group = el("g", { class: "octave-sign" }, parent);
+    const label = el("text", { class: "octave-label", x, y: y + 4 }, group);
+    label.textContent = span.label;
+    const from = x + label.getComputedTextLength() + 3;
+    const to = span.end * px;
+    if (to > from) {
+      el("line", { class: "octave-line", x1: from, x2: to, y1: y, y2: y }, group);
+      // A tick turning towards the staff closes the bracket.
+      el("line", { class: "octave-line", x1: to, x2: to, y1: y, y2: y + (above ? 5 : -5) }, group);
+    }
+    hoverable(
+      group,
+      `<b>${escape(span.label)}</b><br><span class="muted">${fmt(span.start)} – ${fmt(span.end)}</span>`,
+    );
+  }
 }
 
 // The clef, pinned to the left edge rather than left behind at the start of
 // the staff: on a proportional staff the opening bar scrolls away in seconds.
 // It is drawn last and over a pad, since the notes it covers are whichever
 // happen to fall at the left of the view.
-function drawClef(name, laneY, parent) {
+function drawClef(name, laneY, parent, pad) {
   const clef = CLEF[name];
   if (!clef) return;
   const group = el("g", { class: "clef" }, parent);
-  const reference = laneY + stepY(clef.step);
-  const pad = CLEF_INSET_PX + clef.width * SPACE_PX + CLEF_PAD_MARGIN_PX;
+  const reference = laneY + stepY(clef.step, pad);
+  const padWidth = CLEF_INSET_PX + clef.width * SPACE_PX + CLEF_PAD_MARGIN_PX;
   el(
     "rect",
     {
       class: "clef-pad",
       x: 0,
       y: reference + clef.top * SPACE_PX - CLEF_PAD_MARGIN_PX,
-      width: pad,
+      width: padWidth,
       height: (clef.bottom - clef.top) * SPACE_PX + 2 * CLEF_PAD_MARGIN_PX,
     },
     group,
@@ -607,8 +656,8 @@ function drawClef(name, laneY, parent) {
   // The staff runs behind a clef, so the pad lays its own stretch of the five
   // lines back down and they travel with it.
   for (let step = 0; step <= STAFF_TOP_LINE; step += 2) {
-    const y = laneY + stepY(step);
-    el("line", { class: "staffline", x1: 0, x2: pad, y1: y, y2: y }, group);
+    const y = laneY + stepY(step, pad);
+    el("line", { class: "staffline", x1: 0, x2: padWidth, y1: y, y2: y }, group);
   }
   const art = el(
     "g",
@@ -624,9 +673,9 @@ function drawClef(name, laneY, parent) {
   state.clefs.push(group);
 }
 
-function drawNote(note, laneY, px, parent) {
+function drawNote(note, laneY, px, parent, pad) {
   const x = note.start * px;
-  const cy = laneY + stepY(note.step);
+  const cy = laneY + stepY(note.step, pad);
   const cx = x + STAFF.headRx;
   const group = el("g", { class: `note ${note.level || "plain"}` }, parent);
 
@@ -646,7 +695,7 @@ function drawNote(note, laneY, px, parent) {
     group,
   );
   for (const step of note.ledger) {
-    const y = laneY + stepY(step);
+    const y = laneY + stepY(step, pad);
     el(
       "line",
       { class: "ledger", x1: cx - STAFF.headRx - 3.5, x2: cx + STAFF.headRx + 3.5, y1: y, y2: y },
@@ -705,9 +754,23 @@ function noteTip(note) {
     ? `${note.dots ? "dotted " : ""}${note.value}`
     : "rhythm unknown";
   const level = note.level ? `<br>${NOTE_LEVEL_NAMES[note.level] ?? note.level}` : "";
+  if (note.octave) return noteTipWithOctave(note, written, level);
   return (
     `<b>${escape(note.name)}</b> <span class="muted">MIDI ${note.pitch} · ${escape(written)}` +
     `</span>${level}<br><span class="muted">${fmt(note.start)} – ${fmt(note.end)}</span>`
+  );
+}
+
+// A displaced note's head is not where it sounds, so the tooltip says so.
+function noteTipWithOctave(note, written, level) {
+  const sign = note.octave > 0 ? "8va" : "8vb";
+  const octaves = Math.abs(note.octave) === 1 ? "an octave" : `${Math.abs(note.octave)} octaves`;
+  const way = note.octave > 0 ? "above" : "below";
+  return (
+    `<b>${escape(note.name)}</b> <span class="muted">MIDI ${note.pitch} · ${escape(written)}` +
+    `</span>${level}<br><span class="muted">written ${octaves} ${way}, under the ` +
+    `${escape(sign)} bracket</span><br><span class="muted">${fmt(note.start)} – ${fmt(note.end)}` +
+    `</span>`
   );
 }
 

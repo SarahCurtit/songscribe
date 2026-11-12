@@ -213,6 +213,13 @@ the glyph, so one would come out as a box — and pinned to the left edge, since
 staff scrolls its opening bar away within seconds. **Melody only** puts the chord lanes away
 and leaves the staves and the bar grid, which is the view to read as a score.
 
+The clef is whichever holds more of the line **by sounding time**. Counting notes instead
+hands the staff to the wrong voice: a monophonic tracker that drops onto the bass for a
+stretch chops it into many short notes, which outvote a melody of a few long ones. A passage
+that still sits far outside the staff is written an octave or two in under an `8va`/`8vb`
+bracket; a lone note far out keeps its ledger lines, because it is usually the tracker
+slipping and it should look like it.
+
 Ticking a model runs it on that recording the first time and caches the result in
 `~/.cache/songscribe/viewer/`. It binds to localhost only; on a remote machine, forward the
 port (`ssh -L 8765:localhost:8765 <host>`) and open `http://localhost:8765`.

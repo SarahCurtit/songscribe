@@ -11,7 +11,8 @@ with it: C#4 and Db4 sit a step apart.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from math import floor, log2
+from itertools import groupby
+from math import ceil, floor, log2
 from typing import Any
 
 from ..types import NoteEvent
@@ -76,6 +77,18 @@ NOTE_VALUES = (
     ("eighth", 0, 0.5),
     ("sixteenth", 0, 0.25),
 )
+
+#: How far outside the staff a note may sit before it is written an octave in
+#: and bracketed: five steps is about three ledger lines.
+OCTAVE_SIGN_MARGIN = 5
+
+#: A displaced run shorter than this keeps its ledger lines instead. A bracket
+#: covers a passage; over one or two notes it is more to read than it saves,
+#: and a lone note far from the staff is usually a slip and should look like one.
+MIN_OCTAVE_SIGN_NOTES = 4
+
+#: What one and two octaves of displacement are called, before the a or b.
+OCTAVE_SIGN_NAMES = {1: "8v", 2: "15m"}
 
 #: Each value's head and stem: ``(filled, stem, flags)``.
 NOTE_HEADS = {
@@ -142,21 +155,62 @@ def staff_step_at(pitch: float, clef: str = DEFAULT_CLEF, sharps: bool = True) -
     return base + (pitch - low) * (staff_step(low + 1, clef, sharps) - base)
 
 
-def choose_clef(pitches: Sequence[int], sharps: bool = True) -> str:
-    """The clef that leaves the fewest notes off the staff.
-
-    A lead tracked an octave low -- pYIN's commonest error, and the bass line
-    on an unseparated mix -- belongs in the bass clef rather than on eight
-    ledger lines. Ties go to the treble, where a sung or played lead sits.
-    """
-    if not pitches:
-        return DEFAULT_CLEF
-    return min(
-        CLEF_BOTTOM_LINE,
-        key=lambda clef: sum(
-            not BOTTOM_LINE <= staff_step(p, clef, sharps) <= TOP_LINE for p in pitches
-        ),
+def time_on_staff(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
+    """Seconds of ``notes`` that land on ``clef``'s own five lines."""
+    return sum(
+        note.duration
+        for note in notes
+        if BOTTOM_LINE <= staff_step(note.pitch, clef, sharps) <= TOP_LINE
     )
+
+
+def choose_clef(notes: Sequence[NoteEvent], sharps: bool = True) -> str:
+    """The clef that holds the most of the line on its own lines, by time.
+
+    Counting notes instead would let a tracker that follows the bass for a
+    stretch outvote the melody, since a wandering line is chopped into many
+    short notes while a sung phrase is a few long ones. Time is what the ear
+    gives each note. Anything still far outside gets an octave sign rather
+    than a say in the clef, so a handful of stray notes cannot move it.
+    Ties go to the treble, where a lead sits.
+    """
+    if not notes:
+        return DEFAULT_CLEF
+    return max(CLEF_BOTTOM_LINE, key=lambda clef: time_on_staff(notes, clef, sharps))
+
+
+def octave_shift(step: int) -> int:
+    """Octaves to write a note in by so it lands near the staff; 0 for most.
+
+    Positive means it sounds that many octaves above where it is written, as
+    ``8va`` does. The margin is about three ledger lines, which is where a
+    note stops being quicker to read than to count.
+    """
+    above = step - TOP_LINE - OCTAVE_SIGN_MARGIN
+    if above > 0:
+        return ceil(above / STEPS_PER_OCTAVE)
+    below = BOTTOM_LINE - OCTAVE_SIGN_MARGIN - step
+    if below > 0:
+        # Negative: the note is written above where it sounds, as 8vb is.
+        return -ceil(below / STEPS_PER_OCTAVE)
+    return 0
+
+
+def passage_shifts(steps: Sequence[int]) -> list[int]:
+    """The octave shift for each step, kept only where a run shares one."""
+    kept: list[int] = []
+    for shift, group in groupby(octave_shift(step) for step in steps):
+        run = sum(1 for _ in group)
+        kept.extend([shift if run >= MIN_OCTAVE_SIGN_NOTES else 0] * run)
+    return kept
+
+
+def octave_label(shift: int) -> str:
+    """``1`` -> ``8va``, ``-2`` -> ``15mb``; ``""`` for no displacement."""
+    if not shift:
+        return ""
+    name = OCTAVE_SIGN_NAMES.get(abs(shift), f"{7 * abs(shift) + 1}m")
+    return f"{name}a" if shift > 0 else f"{name}b"
 
 
 def ledger_steps(step: int) -> tuple[int, ...]:
@@ -204,15 +258,16 @@ def engrave(
     quarter notes nothing measured.
     """
     if clef is None:
-        clef = choose_clef([n.pitch for n in notes], sharps)
+        clef = choose_clef(notes, sharps)
     elif clef not in CLEF_BOTTOM_LINE:
         raise ValueError(f"unknown clef {clef!r}, expected one of {sorted(CLEF_BOTTOM_LINE)}")
     if beat_seconds is not None and beat_seconds <= 0:
         raise ValueError(f"beat_seconds must be positive, got {beat_seconds}")
 
+    shifts = passage_shifts([staff_step(n.pitch, clef, sharps) for n in notes])
     glyphs: list[dict[str, Any]] = []
-    for note in notes:
-        step = staff_step(note.pitch, clef, sharps)
+    for note, shift in zip(notes, shifts, strict=True):
+        step = staff_step(note.pitch, clef, sharps) - shift * STEPS_PER_OCTAVE
         if beat_seconds is None or note.duration <= 0:
             value, dots, head = None, 0, (True, False, 0)
         else:
@@ -237,6 +292,7 @@ def engrave(
                 # stays inside the staff instead of running off the top.
                 "stem_down": step > MIDDLE_LINE,
                 "ledger": list(ledger_steps(step)),
+                "octave": shift,
             }
         )
     return {
@@ -245,4 +301,37 @@ def engrave(
         "beat_seconds": beat_seconds,
         "bottom_line": CLEF_BOTTOM_LINE[clef],
         "notes": glyphs,
+        "octaves": octave_spans(glyphs),
     }
+
+
+def octave_spans(glyphs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One bracket per run of neighbouring notes written at the same octave.
+
+    A bracket covers a passage, not a note, so notes that follow one another
+    under the same displacement share one.
+    """
+    spans: list[dict[str, Any]] = []
+    # The index of the last note taken into the open span: a bracket may only
+    # run over neighbours, or an undisplaced note between two runs would fall
+    # under it and be read an octave out.
+    previous = None
+    for index, glyph in enumerate(glyphs):
+        shift = glyph["octave"]
+        if not shift:
+            previous = None
+            continue
+        last = spans[-1] if spans else None
+        if last and previous == index - 1 and last["shift"] == shift:
+            last["end"] = max(last["end"], glyph["end"])
+        else:
+            spans.append(
+                {
+                    "start": glyph["start"],
+                    "end": glyph["end"],
+                    "shift": shift,
+                    "label": octave_label(shift),
+                }
+            )
+        previous = index
+    return spans

@@ -43,6 +43,10 @@ SAME_LETTER_BAR = OCTAVE_BAR + len(MELODY_PITCHES)
 OCTAVE_PX = 28
 # The bar the sparse tracker finds nothing in.
 MISSED_BAR = 4
+# Bars the dropping tracker puts two octaves down, as a slip onto a lower
+# voice looks: long enough to be a passage rather than a stray note.
+DROPPED_BARS = range(8, 13)
+DROPPED_BY = 24
 
 
 def grid_payload() -> dict:
@@ -96,6 +100,18 @@ def sparse_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
     return [n for n in written_melody() if int(n.start / BAR_SECONDS) != MISSED_BAR]
 
 
+def dropped_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+    """The written line with one passage dropped onto a lower voice."""
+    return [
+        NoteEvent(
+            note.start,
+            note.end,
+            note.pitch - (DROPPED_BY if int(note.start / BAR_SECONDS) in DROPPED_BARS else 0),
+        )
+        for note in written_melody()
+    ]
+
+
 @pytest.fixture(scope="module")
 def browser():
     with sync_api.sync_playwright() as playwright:
@@ -138,7 +154,11 @@ def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]:
         monkeypatch.setitem(chords.BACKENDS, name, backend)
         monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, name, 8_000)
-    for name, backend in [("fakeline", fake_line), ("sparseline", sparse_line)]:
+    for name, backend in [
+        ("fakeline", fake_line),
+        ("sparseline", sparse_line),
+        ("droppedline", dropped_line),
+    ]:
         monkeypatch.setitem(melody_stage.BACKENDS, name, backend)
         monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, name, 8_000)
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
@@ -468,3 +488,30 @@ def test_the_clef_sits_on_the_staff_rather_than_in_a_gap(page) -> None:
     pad, art = boxes["pad"], boxes["art"]
     assert pad["top"] <= art["top"] and pad["bottom"] >= art["bottom"], (pad, art)
     assert pad["left"] <= art["left"] and pad["right"] >= art["right"], (pad, art)
+
+
+def test_a_dropped_passage_is_written_in_under_a_bracket(page) -> None:
+    page.check(".backend[data-backend='droppedline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.octave-sign').length > 0")
+
+    # One passage, so one bracket, and the clef still follows the melody.
+    assert page.locator("#svg g.octave-sign").count() == 1
+    assert page.locator("#svg g.octave-sign text.octave-label").text_content() == "8vb"
+    # Two strokes is a treble clef: the melody still rules the staff, not the
+    # passage that dropped out of it.
+    model_clef = "#svg g.staff:last-of-type g.clef path.clef-stroke"
+    assert page.locator(model_clef).count() == 2
+
+    # The dropped notes are drawn near the staff rather than far beneath it.
+    spread = page.evaluate(
+        """() => {
+            const staff = document.querySelectorAll('#svg g.staff')[1];
+            const lines = [...staff.querySelectorAll(':scope > line.staffline')]
+                .map((l) => Number(l.getAttribute('y1')));
+            const heads = [...staff.querySelectorAll('g.note ellipse.head')]
+                .map((e) => Number(e.getAttribute('cy')));
+            return { bottom: Math.max(...lines), lowest: Math.max(...heads) };
+        }"""
+    )
+    # Four staff steps is a space and a half: nothing has run away downwards.
+    assert spread["lowest"] - spread["bottom"] < 6 * 4, spread

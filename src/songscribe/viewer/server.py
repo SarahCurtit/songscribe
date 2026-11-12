@@ -247,7 +247,7 @@ def _grade_melody(reply: dict[str, Any], truth: dict[str, Any]) -> None:
     played = _notes(reply["events"])
     written = _notes(truth["melody"])
     sharps = truth["sharps"]
-    clef = score.choose_clef([n.pitch for n in (written or played)], sharps)
+    clef = score.choose_clef(written or played, sharps)
     beat = truth["beat_seconds"]
     reply["score"] = score.engrave(played, beat_seconds=beat, clef=clef, sharps=sharps)
     if not written:

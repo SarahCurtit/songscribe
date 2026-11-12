@@ -344,7 +344,11 @@ is the written note, that note an octave out, or a different note. A written not
 found nothing for is drawn as an outline where it belongs. Octave errors get a colour of their
 own because they are the mistake a pitch tracker makes most, and a staff is where they show.
 Each staff carries a clef, drawn as a path because no font in a plain install has U+1D11E, and
-pinned to the left edge so it survives scrolling; **Melody only** hides the chord lanes.
+pinned to the left edge so it survives scrolling; **Melody only** hides the chord lanes. The
+clef follows sounding time rather than note count, so a tracker that drops onto the bass for a
+stretch cannot outvote the melody with the fragments it makes there, and a passage still far
+outside is bracketed `8va`/`8vb` rather than stacked on ledger lines — one note on its own is
+left where it sounds, since that is what a slip looks like.
 The notation decisions live in `viewer/score.py` and the page only draws them, so they are
 testable without a browser — `tests/test_viewer_melody.py` is all invented notes. The viewer's
 note agreement is a quick read, not the metric: `eval/melody.py` is what measures a backend.
