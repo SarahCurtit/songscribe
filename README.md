@@ -178,17 +178,36 @@ the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATIO
 setup and how the metrics work.
 ## Compare backends by ear and eye
 
-`songscribe-viewer` is a small local web app for annotated recordings: pick one, play it, and
-watch the reference chords, any alternate chords, and each backend's predictions scroll past
-on one timeline, with a strip under each prediction marking where it agrees.
+`songscribe-viewer` is a small local web app for recordings: pick one, play it, and watch the
+reference chords, any alternate chords, and each backend's output scroll past on one timeline,
+with a strip under each chord prediction marking where it agrees. A melody backend gets a
+**staff** on that same timeline — note heads, accidentals and ledger lines at their onsets —
+so a transcribed line can be read against the written one.
 
 ```bash
+# a directory of annotated grids
 songscribe-viewer --examples path/to/examples    # repeatable; serves http://127.0.0.1:8765
+
+# or one recording, with whatever is annotated beside it
+songscribe-demo --melody -o audio/demo/demo.wav
+songscribe-viewer --audio audio/demo/demo.wav
 ```
 
-It reads a directory of `<song>/gridN_chords.json` + `gridN_audio.wav` (optionally
-`gridN_screenshot.png`), wherever it lives — the recordings never need to be copied into this
-repo. Ticking a model runs it on that recording the first time and caches the result in
+`--examples` reads a directory of `<song>/gridN_audio.wav` plus any of `gridN_chords.json`,
+`gridN_melody.notes`, `gridN_beats.beats` and `gridN_screenshot.png`. `--audio` takes a single
+recording and picks up the `.lab`, `.notes` and `.beats` that share its stem — exactly what
+`songscribe-demo --melody` writes, so those two commands together are the quickest way to see
+the melody branch working. Audio is the only file either form needs: a recording with nothing
+annotated still plays, and a model still runs on it.
+
+The staff is **proportional** rather than engraved into bars of equal width — a note's x is its
+onset — so it stays lined up with the audio, the chord lanes and the playhead. Note values come
+from the beat, taken from a stated tempo, a `.beats` file or the bar length; when nothing
+measures the beat the lane says *rhythm unknown* instead of printing a rhythm nothing supports.
+Where a melody is written too, each head is coloured by whether it is the written note, that
+note an octave out, or a different note.
+
+Ticking a model runs it on that recording the first time and caches the result in
 `~/.cache/songscribe/viewer/`. It binds to localhost only; on a remote machine, forward the
 port (`ssh -L 8765:localhost:8765 <host>`) and open `http://localhost:8765`.
 

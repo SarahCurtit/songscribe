@@ -1,9 +1,13 @@
 """HTTP server for the grid viewer: a JSON API, the audio, and one static page.
 
-Standard library only, so the viewer adds no dependencies. Chord backends run
-on demand in a background thread and their output is cached on disk, keyed by
-the audio file's size and mtime, so re-opening a grid is instant and a
-re-recorded grid is recomputed.
+Standard library only, so the viewer adds no dependencies. Backends run on
+demand in a background thread and their output is cached on disk, keyed by the
+audio file's size and mtime, so re-opening a grid is instant and a re-recorded
+grid is recomputed.
+
+Two stages are runnable, chords and melody, behind one :class:`Stage`
+descriptor each: the server never names a backend, only the registry it comes
+from, so a stage gains a backend without this file changing.
 
 Binds to localhost by default: it serves whatever audio it is pointed at, and
 that is rarely audio that may be shared.
@@ -20,6 +24,7 @@ import re
 import sys
 import threading
 import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,8 +32,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from ..chords import BACKENDS
-from . import agreement, examples
+from .. import chords as chords_stage
+from .. import melody as melody_stage
+from ..types import NoteEvent
+from . import agreement, examples, melody, score
 
 log = logging.getLogger(__name__)
 
@@ -42,9 +49,62 @@ CACHE_VERSION = 1
 # small enough that a seek abandons little already-sent data.
 CHUNK_SIZE = 256 * 1024
 
+
+# --------------------------------------------------------------------------- #
+# Stages
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True, slots=True)
+class Stage:
+    """One pluggable stage the viewer can run, and how to talk to its registry.
+
+    ``run`` returns that stage's event type and ``serialise`` turns it into the
+    JSON the cache and the page hold. Both come from the stage's own module, so
+    adding a backend there is all a new model needs.
+    """
+
+    name: str
+    backends: dict[str, Callable[..., Any]]
+    sample_rate_for: Callable[[str], int]
+    run: Callable[[Any, int, str], Sequence[Any]]
+    serialise: Callable[[Sequence[Any]], list[dict[str, Any]]]
+
+
+def _run_chords(audio: Any, rate: int, backend: str) -> Sequence[Any]:
+    return chords_stage.recognise(audio, rate, backend=backend)
+
+
+def _run_melody(audio: Any, rate: int, backend: str) -> Sequence[Any]:
+    return melody_stage.transcribe(audio, rate, backend=backend)
+
+
+STAGES = {
+    "chords": Stage(
+        name="chords",
+        backends=chords_stage.BACKENDS,
+        sample_rate_for=chords_stage.sample_rate_for,
+        run=_run_chords,
+        serialise=lambda events: [
+            {"start": e.start, "end": e.end, "label": e.label} for e in events
+        ],
+    ),
+    "melody": Stage(
+        name="melody",
+        backends=melody_stage.BACKENDS,
+        sample_rate_for=melody_stage.sample_rate_for,
+        run=_run_melody,
+        serialise=lambda notes: [
+            {"start": n.start, "end": n.end, "pitch": n.pitch, "confidence": n.confidence}
+            for n in notes
+        ],
+    ),
+}
+
 GRID_ID = r"\d+/[^/]+/\d+"
+STAGE_NAMES = "|".join(STAGES)
 API_GRID = re.compile(rf"/api/grids/({GRID_ID})")
-API_PREDICT = re.compile(rf"/api/grids/({GRID_ID})/predict")
+API_PREDICT = re.compile(rf"/api/grids/({GRID_ID})/predict/({STAGE_NAMES})")
 MEDIA = re.compile(rf"/media/({GRID_ID})/(audio|screenshot)")
 RANGE = re.compile(r"bytes=(\d*)-(\d*)")
 
@@ -64,35 +124,33 @@ class Job:
 
 
 class Predictor:
-    """Runs chord backends in the background and caches what they return."""
+    """Runs backends in the background and caches what they return."""
 
     def __init__(self, cache: Path) -> None:
         self.cache = cache
-        self._jobs: dict[tuple[str, str], Job] = {}
+        self._jobs: dict[tuple[str, str, str], Job] = {}
         self._lock = threading.Lock()
 
-    def start(self, grid: examples.Grid, backend: str) -> None:
+    def start(self, grid: examples.Grid, stage: Stage, backend: str) -> None:
         """Begin a run unless one is going or a fresh result is cached.
 
         Raises :class:`ValueError` for an unknown backend, from the registry
         itself -- never a fallback to some other model.
         """
-        from ..chords import sample_rate_for
-
-        sample_rate_for(backend)  # validates the name
-        key = (grid.id, backend)
+        stage.sample_rate_for(backend)  # validates the name
+        key = (grid.id, stage.name, backend)
         with self._lock:
             job = self._jobs.get(key)
-            if (job and job.status == "running") or self._cached(grid, backend):
+            if (job and job.status == "running") or self._cached(grid, stage, backend):
                 return
             self._jobs[key] = Job("running", time.monotonic())
-        threading.Thread(target=self._run, args=(grid, backend), daemon=True).start()
+        threading.Thread(target=self._run, args=(grid, stage, backend), daemon=True).start()
 
-    def status(self, grid: examples.Grid, backend: str) -> dict[str, Any]:
-        cached = self._cached(grid, backend)
+    def status(self, grid: examples.Grid, stage: Stage, backend: str) -> dict[str, Any]:
+        cached = self._cached(grid, stage, backend)
         if cached is not None:
             return {"status": "done", **cached}
-        job = self._jobs.get((grid.id, backend))
+        job = self._jobs.get((grid.id, stage.name, backend))
         if job is None:
             return {"status": "absent"}
         return {
@@ -101,25 +159,25 @@ class Predictor:
             "elapsed": round(time.monotonic() - job.started, 1),
         }
 
-    def _run(self, grid: examples.Grid, backend: str) -> None:
+    def _run(self, grid: examples.Grid, stage: Stage, backend: str) -> None:
         from ..audio import load
-        from ..chords import recognise, sample_rate_for
 
-        key = (grid.id, backend)
+        key = (grid.id, stage.name, backend)
         started = time.monotonic()
         try:
             stat = grid.audio.stat()
-            audio, rate = load(grid.audio, sample_rate_for(backend))
-            events = recognise(audio, rate, backend=backend)
+            audio, rate = load(grid.audio, stage.sample_rate_for(backend))
+            events = stage.run(audio, rate, backend)
             payload = {
                 "version": CACHE_VERSION,
+                "stage": stage.name,
                 "backend": backend,
                 "audio_size": stat.st_size,
                 "audio_mtime": stat.st_mtime,
                 "seconds": round(time.monotonic() - started, 1),
-                "events": [{"start": e.start, "end": e.end, "label": e.label} for e in events],
+                "events": stage.serialise(events),
             }
-            path = self._cache_path(grid, backend)
+            path = self._cache_path(grid, stage, backend)
             path.parent.mkdir(parents=True, exist_ok=True)
             # Write then rename, so a poll never reads a half-written file.
             partial = path.with_suffix(".tmp")
@@ -128,19 +186,19 @@ class Predictor:
             with self._lock:
                 self._jobs[key].status = "done"
         except Exception as error:  # surfaced to the page, not swallowed
-            log.exception("backend %s failed on %s", backend, grid.id)
+            log.exception("%s backend %s failed on %s", stage.name, backend, grid.id)
             with self._lock:
                 self._jobs[key].status = "error"
                 self._jobs[key].error = f"{type(error).__name__}: {error}"
 
-    def _cache_path(self, grid: examples.Grid, backend: str) -> Path:
+    def _cache_path(self, grid: examples.Grid, stage: Stage, backend: str) -> Path:
         # Hash the absolute path: cache names stay opaque, and two example
         # roots with a same-named song cannot collide.
         digest = hashlib.sha1(str(grid.audio.resolve()).encode()).hexdigest()[:16]
-        return self.cache / f"{digest}_{backend}.json"
+        return self.cache / f"{digest}_{stage.name}_{backend}.json"
 
-    def _cached(self, grid: examples.Grid, backend: str) -> dict[str, Any] | None:
-        path = self._cache_path(grid, backend)
+    def _cached(self, grid: examples.Grid, stage: Stage, backend: str) -> dict[str, Any] | None:
+        path = self._cache_path(grid, stage, backend)
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -152,6 +210,54 @@ class Predictor:
             and payload.get("audio_mtime") == stat.st_mtime
         )
         return payload if fresh else None
+
+
+# --------------------------------------------------------------------------- #
+# Grading a reply
+# --------------------------------------------------------------------------- #
+
+
+def _notes(events: Sequence[dict[str, Any]]) -> list[NoteEvent]:
+    return [NoteEvent(e["start"], e["end"], e["pitch"], e.get("confidence", 1.0)) for e in events]
+
+
+def _grade_chords(reply: dict[str, Any], truth: dict[str, Any]) -> None:
+    """Add the agreement strip and the chart's spelling to a chord reply."""
+    reply["agreement"] = agreement.compare(truth["events"], reply["events"], truth["alternates"])
+    for event, shown in zip(
+        reply["events"], agreement.respell(reply["events"], truth["events"]), strict=True
+    ):
+        event["display"] = shown
+
+
+def _grade_melody(reply: dict[str, Any], truth: dict[str, Any]) -> None:
+    """Add the staff and, where a melody is written, the note-by-note agreement.
+
+    The written line picks the clef, so the two staves read against each other;
+    with nothing written, the transcription picks its own.
+    """
+    played = _notes(reply["events"])
+    written = _notes(truth["melody"])
+    clef = score.choose_clef([n.pitch for n in (written or played)])
+    reply["score"] = score.engrave(played, beat_seconds=truth["beat_seconds"], clef=clef)
+    if not written:
+        return
+    reply["agreement"] = melody.compare(written, played)
+    for glyph, graded in zip(reply["score"]["notes"], reply["agreement"]["played"], strict=True):
+        glyph["level"] = graded["level"]
+
+
+GRADERS = {"chords": _grade_chords, "melody": _grade_melody}
+
+
+def truth_reply(grid: examples.Grid) -> dict[str, Any]:
+    """A grid's ground truth, with the written melody already engraved."""
+    truth = examples.ground_truth(grid)
+    written = _notes(truth["melody"])
+    truth["melody_score"] = (
+        score.engrave(written, beat_seconds=truth["beat_seconds"]) if written else None
+    )
+    return truth
 
 
 # --------------------------------------------------------------------------- #
@@ -186,14 +292,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/grids":
             return self._json([examples.summary(g) for g in self.server.grids.values()])
         if path == "/api/backends":
-            return self._json(sorted(BACKENDS))
+            return self._json({name: sorted(s.backends) for name, s in STAGES.items()})
         if match := API_PREDICT.fullmatch(path):
-            grid = self._grid(match.group(1))
-            reply = None if grid is None else self._prediction(grid, query)
-            return None if reply is None else self._json(reply)
+            return self._predict_reply(match, query)
         if match := API_GRID.fullmatch(path):
             grid = self._grid(match.group(1))
-            return None if grid is None else self._json(examples.ground_truth(grid))
+            return None if grid is None else self._json(truth_reply(grid))
         if match := MEDIA.fullmatch(path):
             grid = self._grid(match.group(1))
             if grid is None:
@@ -212,12 +316,12 @@ class Handler(BaseHTTPRequestHandler):
         grid = self._grid(match.group(1))
         if grid is None:
             return None
-        backend = query.get("backend", "")
+        stage = STAGES[match.group(2)]
         try:
-            self.server.predictor.start(grid, backend)
+            self.server.predictor.start(grid, stage, query.get("backend", ""))
         except ValueError as error:
             return self._error(HTTPStatus.BAD_REQUEST, str(error))
-        reply = self._prediction(grid, query)
+        reply = self._prediction(grid, stage, query)
         return None if reply is None else self._json(reply, HTTPStatus.ACCEPTED)
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -236,21 +340,23 @@ class Handler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, f"no grid {grid_id!r}")
         return grid
 
-    def _prediction(self, grid: examples.Grid, query: dict[str, str]) -> dict[str, Any] | None:
-        backend = query.get("backend", "")
-        if backend not in BACKENDS:
-            self._error(HTTPStatus.BAD_REQUEST, f"unknown backend {backend!r}")
+    def _predict_reply(self, match: re.Match[str], query: dict[str, str]) -> None:
+        grid = self._grid(match.group(1))
+        if grid is None:
             return None
-        reply = self.server.predictor.status(grid, backend)
+        reply = self._prediction(grid, STAGES[match.group(2)], query)
+        return None if reply is None else self._json(reply)
+
+    def _prediction(
+        self, grid: examples.Grid, stage: Stage, query: dict[str, str]
+    ) -> dict[str, Any] | None:
+        backend = query.get("backend", "")
+        if backend not in stage.backends:
+            self._error(HTTPStatus.BAD_REQUEST, f"unknown {stage.name} backend {backend!r}")
+            return None
+        reply = self.server.predictor.status(grid, stage, backend)
         if reply["status"] == "done":
-            truth = examples.ground_truth(grid)
-            reply["agreement"] = agreement.compare(
-                truth["events"], reply["events"], truth["alternates"]
-            )
-            for event, shown in zip(
-                reply["events"], agreement.respell(reply["events"], truth["events"]), strict=True
-            ):
-                event["display"] = shown
+            GRADERS[stage.name](reply, truth_reply(grid))
         return reply
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
@@ -318,15 +424,21 @@ class Handler(BaseHTTPRequestHandler):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="songscribe-viewer",
-        description="Listen to annotated grids and compare chord backends against them.",
+        description="Listen to recordings and compare chord and melody backends against them.",
     )
     parser.add_argument(
         "-e",
         "--examples",
         type=Path,
         action="append",
-        required=True,
-        help="directory of <song>/gridN_{chords.json,audio.wav} (repeatable)",
+        help="directory of <song>/gridN_{audio.wav,chords.json,melody.notes} (repeatable)",
+    )
+    parser.add_argument(
+        "-a",
+        "--audio",
+        type=Path,
+        action="append",
+        help="a single recording, with any .lab/.notes/.beats beside it (repeatable)",
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help="default: %(default)s")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="default: %(default)s")
@@ -339,8 +451,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    if not args.examples and not args.audio:
+        print("songscribe-viewer: pass --examples DIR or --audio FILE", file=sys.stderr)
+        return 1
     try:
-        grids = examples.discover(args.examples)
+        grids = examples.discover(args.examples, args.audio)
         server = Viewer((args.host, args.port), grids, args.cache)
     except (ValueError, OSError) as error:
         print(f"songscribe-viewer: {error}", file=sys.stderr)

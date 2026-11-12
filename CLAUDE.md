@@ -61,8 +61,13 @@ src/songscribe/
     viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
-  viewer/       local web app: play an annotated grid, compare backends to its ground truth
-                (stdlib http.server + vanilla JS; example dirs passed in with --examples)
+  viewer/       local web app: play a recording, compare chord and melody backends to its
+                ground truth; a melody is drawn as a staff on the shared timeline
+    score.py      notes -> clef, staff position, accidental, note value  (pure Python)
+    melody.py     a transcribed line against the written one, note by note (pure Python)
+    agreement.py  a chord estimate against the chart, over time           (pure Python)
+    examples.py   finds recordings and loads whatever is annotated beside them
+    server.py     stdlib http.server; one Stage descriptor per runnable stage
 eval/           committed manifests: track ids + relative paths, no content
 notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
@@ -151,6 +156,7 @@ pytest -m e2e              # viewer in headless Chromium, audio at 16x; run afte
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 songscribe-demo --melody -o /tmp/demo/demo.wav  # audio + .lab + .beats + .notes
+songscribe-viewer --audio /tmp/demo/demo.wav    # play it: chord lanes and a melody staff
 
 # run from the repo root; $PWD makes the path absolute, so it works from any directory
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
@@ -330,6 +336,16 @@ than the circumstances:
 `octave_blind`), and exists so a wandering tracker and a chopping segmenter are two numbers
 rather than one. `melody.notes_from_f0` is the segmenter, kept out of the backend so it can be
 tested on invented contours — which is most of `tests/test_melody.py`.
+
+To look at a line rather than score it, `songscribe-viewer` draws it on a staff on the
+recording's own timeline. `--audio demo.wav` picks up the `.notes` beside it; ticking a melody
+backend puts its transcription on a second staff below, with each head coloured by whether it
+is the written note, that note an octave out, or a different note. Octave errors get a colour
+of their own because they are the mistake a pitch tracker makes most, and a staff is where they
+are obvious at a glance. The notation decisions live in `viewer/score.py` and the page only
+draws them, so they are testable without a browser — `tests/test_viewer_melody.py` is all
+invented notes. The viewer's note agreement is an at-a-glance score, not the metric:
+`eval/melody.py` is what measures a backend.
 
 Like `placement_score`, it is **not** wired into `songscribe-eval`: no corpus here has melody
 annotations. It needs a time-aligned written melody for one recording, which means a manifest

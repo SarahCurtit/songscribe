@@ -13,8 +13,11 @@
       <span>Grid</span>
       <select id="grid-select"></select>
     </label>
-    <fieldset class="field" id="backends">
-      <legend>Models</legend>
+    <fieldset class="field" id="chord-backends">
+      <legend>Chord models</legend>
+    </fieldset>
+    <fieldset class="field" id="melody-backends">
+      <legend>Melody models</legend>
     </fieldset>
   </header>
 
@@ -35,11 +38,17 @@
           <input id="follow" type="checkbox" checked>
           <span>Follow playhead</span>
         </label>
-        <ul class="legend" aria-label="Agreement levels">
+        <ul class="legend" id="chord-legend" aria-label="Chord agreement levels">
           <li><i class="swatch exact"></i>exact chord</li>
           <li><i class="swatch majmin"></i>same triad</li>
           <li><i class="swatch root"></i>same root</li>
           <li><i class="swatch miss"></i>wrong</li>
+        </ul>
+        <ul class="legend" id="melody-legend" aria-label="Melody agreement levels" hidden>
+          <li><i class="swatch exact"></i>exact note</li>
+          <li><i class="swatch octave"></i>octave out</li>
+          <li><i class="swatch miss"></i>wrong note</li>
+          <li><i class="swatch extra"></i>not written</li>
         </ul>
       </div>
       <div class="timeline">
@@ -48,7 +57,8 @@
           <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
         </div>
       </div>
-      <p class="hint">Click the timeline to seek · Space to play/pause · Hover a chord for details</p>
+      <p class="hint">Click the timeline to seek · Space to play/pause · Hover a chord or note
+        for details · a staff is proportional, so a note's position is its onset in time</p>
     </section>
 
     <details class="screenshot" id="screenshot-panel" hidden>

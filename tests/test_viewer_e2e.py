@@ -1,4 +1,4 @@
-"""Grid viewer in a real browser: playback, follow, seeking, model lanes.
+"""Grid viewer in a real browser: playback, follow, seeking, chord and staff lanes.
 
 Runs headless Chromium through Playwright, and skips itself when Playwright or
 its browser is not installed -- CI installs core deps only. Audio plays at
@@ -15,8 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from songscribe import chords
-from songscribe.types import ChordEvent
+from songscribe import chords, lab
+from songscribe import melody as melody_stage
+from songscribe.types import ChordEvent, NoteEvent
 from songscribe.viewer import examples
 from songscribe.viewer.server import Viewer
 from tests.test_viewer import write_grid
@@ -32,6 +33,14 @@ BAR_SECONDS = 2.0
 VIEWPORT = {"width": 1000, "height": 800}
 PROGRESSION = ["C:maj", "A:min", "F:maj7", "G:7"]
 GRID_ID = "0/lantern-reel/3"
+# An invented lead line, one whole note a bar: C5, D5, E5, F5.
+MELODY_PITCHES = [72, 74, 76, 77]
+# Bars the fake tracker gets wrong, and how: an octave up, then a semitone.
+OCTAVE_BAR, WRONG_BAR = 1, 2
+# A later bar carrying the same letter as OCTAVE_BAR, transcribed as written.
+SAME_LETTER_BAR = OCTAVE_BAR + len(MELODY_PITCHES)
+# An octave is seven staff steps, at four px a step (STAFF.step in app.js).
+OCTAVE_PX = 28
 
 
 def grid_payload() -> dict:
@@ -59,6 +68,27 @@ def grid_payload() -> dict:
     }
 
 
+def written_melody() -> list[NoteEvent]:
+    """The lead line the chart prints: one whole note a bar, right through."""
+    return [
+        NoteEvent(
+            bar * BAR_SECONDS,
+            (bar + 1) * BAR_SECONDS,
+            MELODY_PITCHES[bar % len(MELODY_PITCHES)],
+        )
+        for bar in range(int(TRACK_SECONDS / BAR_SECONDS))
+    ]
+
+
+def fake_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+    """The written line, but one bar an octave out and one a semitone wrong."""
+    notes = []
+    for note in written_melody():
+        shift = {OCTAVE_BAR: 12, WRONG_BAR: 1}.get(int(note.start / BAR_SECONDS), 0)
+        notes.append(NoteEvent(note.start, note.end, note.pitch + shift))
+    return notes
+
+
 @pytest.fixture(scope="module")
 def browser():
     with sync_api.sync_playwright() as playwright:
@@ -76,6 +106,7 @@ def browser():
 def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     root = tmp_path / "examples"
     write_grid(root / "lantern-reel", 3, grid_payload(), seconds=TRACK_SECONDS)
+    lab.write_notes(root / "lantern-reel" / "grid3_melody.notes", written_melody())
 
     def fake_backend(audio, sample_rate, **kwargs) -> list[ChordEvent]:
         # Right on bar 1, plays bar 2's alternate (Dm7) as a triad, then C
@@ -100,6 +131,8 @@ def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]:
         monkeypatch.setitem(chords.BACKENDS, name, backend)
         monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, name, 8_000)
+    monkeypatch.setitem(melody_stage.BACKENDS, "fakeline", fake_line)
+    monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "fakeline", 8_000)
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
 
     viewer = Viewer(("127.0.0.1", 0), examples.discover([root]), tmp_path / "cache")
@@ -219,7 +252,7 @@ def test_model_lane_runs_and_scores(page) -> None:
     assert "agree exact" in levels
     assert "agree miss" in levels
     assert "models=fake" in page.evaluate("location.hash")
-    score = page.locator("#lane-labels .score").inner_text()
+    score = page.locator("#lane-labels .score:not(.staff)").inner_text()
     assert score.endswith("%")
 
 
@@ -245,3 +278,91 @@ def test_alternate_match_is_not_a_mistake(page) -> None:
     tooltip = page.locator("#tooltip")
     assert tooltip.is_visible()
     assert tooltip.inner_text().startswith("same triad (alternate)")
+
+
+# --------------------------------------------------------------------------- #
+# The staff
+# --------------------------------------------------------------------------- #
+
+
+def note_classes(page) -> list[str]:
+    return page.eval_on_selector_all("#svg g.note", "els => els.map(e => e.getAttribute('class'))")
+
+
+def test_the_written_melody_is_drawn_before_any_model_runs(page) -> None:
+    # The label carries the clef beside its name, so match the start of it.
+    labels = page.locator("#lane-labels div").all_text_contents()
+    assert any(text.startswith("Melody (written)") for text in labels)
+    # One staff, five lines, and one head per written note.
+    assert page.locator("#svg g.staff").count() == 1
+    assert page.locator("#svg g.staff line.staffline").count() == 5
+    assert page.locator("#svg g.note").count() == len(written_melody())
+    # 120 bpm, so a 2s bar is four beats and each note is a whole note: hollow,
+    # and with no flag.
+    assert page.locator("#svg g.note ellipse.head.filled").count() == 0
+    assert page.locator("#svg g.note path.flag").count() == 0
+
+
+def test_melody_lane_runs_and_grades_every_note(page) -> None:
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
+
+    classes = note_classes(page)
+    assert "note exact" in classes
+    assert "note octave" in classes
+    assert "note miss" in classes
+    assert page.locator("#svg g.staff").count() == 2, "written and transcribed staves"
+    assert "melody=fakeline" in page.evaluate("location.hash")
+
+
+def test_an_octave_error_is_drawn_an_octave_higher(page) -> None:
+    """The point of a staff: a wrong octave is visible as height, not a label."""
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.octave').length > 0")
+    heads = page.eval_on_selector_all(
+        "#svg g.staff:last-of-type g.note ellipse.head",
+        "els => els.map(e => Number(e.getAttribute('cy')))",
+    )
+    # Both bars carry the same letter, and only OCTAVE_BAR was moved, so the
+    # two heads are exactly an octave apart on one staff. y grows downwards,
+    # so the higher note is the smaller number.
+    assert heads[OCTAVE_BAR] < heads[SAME_LETTER_BAR]
+    assert heads[SAME_LETTER_BAR] - heads[OCTAVE_BAR] == pytest.approx(OCTAVE_PX, abs=1)
+
+
+def test_a_note_tooltip_names_the_pitch_and_the_value(page) -> None:
+    zoom(page, 50)
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
+    head = page.locator("#svg g.staff:last-of-type g.note").first.bounding_box()
+    page.mouse.move(head["x"] + head["width"] / 2, head["y"] + head["height"] / 2)
+    tooltip = page.locator("#tooltip")
+    assert tooltip.is_visible()
+    text = tooltip.inner_text()
+    assert text.startswith("C5")
+    assert "whole" in text
+    assert "exact note" in text
+
+
+def test_the_melody_score_is_reported_beside_the_lane(page) -> None:
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
+    staff = page.locator("#lane-labels .score.staff").all_inner_texts()
+    assert len(staff) == 2, f"written and transcribed staves, got {staff}"
+    # 16 bars, one an octave out and one plain wrong: 14/16 exact, 15/16 by
+    # pitch class, and one transcribed note per written one.
+    assert "88%" in staff[-1]
+    assert "94%" in staff[-1]
+    assert "16/16 notes" in staff[-1]
+
+
+def test_the_playhead_readout_names_the_sounding_note(page) -> None:
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
+    names = page.locator("#now .card .name").all_inner_texts()
+    assert "Melody (written)" in names
+    assert "fakeline" in names
+    chords_shown = page.locator("#now .card .chord").all_inner_texts()
+    # At time 0 the first written note is sounding, and the model agrees.
+    assert chords_shown[names.index("Melody (written)")] == "C5"
+    assert chords_shown[names.index("fakeline")] == "C5"

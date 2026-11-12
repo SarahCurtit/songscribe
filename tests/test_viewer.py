@@ -16,8 +16,9 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from songscribe import chords
-from songscribe.types import ChordEvent
+from songscribe import chords, lab
+from songscribe import melody as melody_stage
+from songscribe.types import BeatEvent, ChordEvent, NoteEvent
 from songscribe.viewer import agreement, examples
 from songscribe.viewer.server import Viewer
 
@@ -25,6 +26,7 @@ SAMPLE_RATE = 8_000
 
 
 def write_silence(path: Path, seconds: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(1)
         handle.setsampwidth(2)
@@ -225,12 +227,18 @@ def server(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Real loading would pull in librosa; the fake backend ignores the audio.
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
 
-    viewer = Viewer(("127.0.0.1", 0), examples.discover([root]), tmp_path / "cache")
-    thread = threading.Thread(target=viewer.serve_forever, daemon=True)
-    thread.start()
-    yield f"http://127.0.0.1:{viewer.server_address[1]}"
-    viewer.shutdown()
-    viewer.server_close()
+    yield from _serve(examples.discover([root]), tmp_path / "cache")
+
+
+def _serve(grids: dict[str, examples.Grid], cache: Path):
+    """Run a viewer on a free port for the duration of one test."""
+    viewer = Viewer(("127.0.0.1", 0), grids, cache)
+    threading.Thread(target=viewer.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{viewer.server_address[1]}"
+    finally:
+        viewer.shutdown()
+        viewer.server_close()
 
 
 def get(url: str, **headers: str):
@@ -252,7 +260,7 @@ def test_api_lists_and_loads_grids(server: str) -> None:
     assert [g["song"] for g in grids] == ["Paper Lantern Waltz", "Quiet Harbour"]
     truth = get_json(f"{server}/api/grids/0/paper-lantern-waltz/2")
     assert len(truth["events"]) == 3
-    assert "fake" in get_json(f"{server}/api/backends")
+    assert "fake" in get_json(f"{server}/api/backends")["chords"]
 
 
 def test_page_and_static_files_are_served(server: str) -> None:
@@ -302,7 +310,7 @@ def test_unknown_paths_are_404(server: str, path: str) -> None:
 
 
 def test_prediction_runs_caches_and_scores(server: str) -> None:
-    url = f"{server}/api/grids/0/paper-lantern-waltz/2/predict?backend=fake"
+    url = f"{server}/api/grids/0/paper-lantern-waltz/2/predict/chords?backend=fake"
     assert get_json(url)["status"] == "absent"
 
     status, reply = post_json(url)
@@ -329,7 +337,7 @@ def test_prediction_failure_is_reported(server: str, monkeypatch: pytest.MonkeyP
 
     monkeypatch.setitem(chords.BACKENDS, "broken", broken)
     monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, "broken", SAMPLE_RATE)
-    url = f"{server}/api/grids/0/paper-lantern-waltz/2/predict?backend=broken"
+    url = f"{server}/api/grids/0/paper-lantern-waltz/2/predict/chords?backend=broken"
     reply = post_json(url)[1]
     deadline = time.monotonic() + 5
     while reply["status"] == "running" and time.monotonic() < deadline:
@@ -341,5 +349,165 @@ def test_prediction_failure_is_reported(server: str, monkeypatch: pytest.MonkeyP
 
 def test_unknown_backend_is_rejected(server: str) -> None:
     with pytest.raises(HTTPError) as error:
-        post_json(f"{server}/api/grids/0/paper-lantern-waltz/2/predict?backend=nope")
+        post_json(f"{server}/api/grids/0/paper-lantern-waltz/2/predict/chords?backend=nope")
     assert error.value.code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Melody
+# --------------------------------------------------------------------------- #
+
+# An invented lead line: three notes over the annotated bars, as a chart would
+# print them. C5, D5, E5.
+WRITTEN = [NoteEvent(0.5, 1.5, 72), NoteEvent(1.5, 2.5, 74), NoteEvent(2.5, 3.5, 76)]
+
+
+@pytest.fixture
+def melody_server(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    lab.write_notes(root / "paper-lantern-waltz" / "grid2_melody.notes", WRITTEN)
+
+    def fake_melody(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+        return [
+            NoteEvent(0.5, 1.5, 72),  # the written note
+            NoteEvent(1.5, 2.5, 86),  # D6: the written D5 an octave up
+            NoteEvent(2.5, 3.5, 77),  # F5 where E5 was written
+        ]
+
+    monkeypatch.setitem(melody_stage.BACKENDS, "fakeline", fake_melody)
+    monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "fakeline", SAMPLE_RATE)
+    monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
+    yield from _serve(examples.discover([root]), tmp_path / "cache")
+
+
+def test_melody_backends_are_listed_under_their_own_stage(melody_server: str) -> None:
+    backends = get_json(f"{melody_server}/api/backends")
+    assert "fakeline" in backends["melody"]
+    assert "fakeline" not in backends["chords"]
+
+
+def test_written_melody_is_engraved_with_the_ground_truth(melody_server: str) -> None:
+    truth = get_json(f"{melody_server}/api/grids/0/paper-lantern-waltz/2")
+    assert truth["has_melody"] is True
+    assert [n["pitch"] for n in truth["melody"]] == [72, 74, 76]
+    # 240 bpm, so a beat is 0.25s and each 1s note is a whole note.
+    score = truth["melody_score"]
+    assert score["clef"] == "treble"
+    assert [n["name"] for n in score["notes"]] == ["C5", "D5", "E5"]
+    assert {n["value"] for n in score["notes"]} == {"whole"}
+
+
+def test_melody_prediction_engraves_and_grades(melody_server: str) -> None:
+    url = f"{melody_server}/api/grids/0/paper-lantern-waltz/2/predict/melody?backend=fakeline"
+    status, reply = post_json(url)
+    assert status == 202
+    deadline = time.monotonic() + 5
+    while reply["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        reply = get_json(url)
+
+    assert reply["status"] == "done"
+    assert [e["pitch"] for e in reply["events"]] == [72, 86, 77]
+    # The written line picks the clef, so both staves read against each other.
+    assert reply["score"]["clef"] == "treble"
+    assert [n["level"] for n in reply["score"]["notes"]] == ["exact", "octave", "miss"]
+    assert [n["name"] for n in reply["score"]["notes"]] == ["C5", "D6", "F5"]
+    totals = reply["agreement"]["totals"]
+    assert totals["exact"] == pytest.approx(1 / 3)
+    assert totals["octave"] == pytest.approx(2 / 3)
+    assert totals["extra"] == 0
+
+
+def test_a_grid_without_a_melody_still_runs_the_stage(server: str) -> None:
+    """Nothing written means a staff but no agreement, not an error."""
+
+    def flat(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+        return [NoteEvent(0.5, 1.5, 72)]
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(melody_stage.BACKENDS, "flat", flat)
+        patch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "flat", SAMPLE_RATE)
+        url = f"{server}/api/grids/0/paper-lantern-waltz/2/predict/melody?backend=flat"
+        reply = post_json(url)[1]
+        deadline = time.monotonic() + 5
+        while reply["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.05)
+            reply = get_json(url)
+
+    assert reply["status"] == "done"
+    assert reply["score"]["notes"][0]["name"] == "C5"
+    assert "agreement" not in reply
+    assert "level" not in reply["score"]["notes"][0]
+
+
+def test_unknown_melody_backend_is_rejected(melody_server: str) -> None:
+    with pytest.raises(HTTPError) as error:
+        post_json(f"{melody_server}/api/grids/0/paper-lantern-waltz/2/predict/melody?backend=nope")
+    assert error.value.code == 400
+
+
+def test_an_unknown_stage_is_not_an_endpoint(server: str) -> None:
+    with pytest.raises(HTTPError) as error:
+        get(f"{server}/api/grids/0/paper-lantern-waltz/2/predict/lyrics?backend=fake")
+    assert error.value.code == 404
+
+
+# --------------------------------------------------------------------------- #
+# A single recording, with whatever sits beside it
+# --------------------------------------------------------------------------- #
+
+
+def test_single_audio_file_picks_up_its_sidecars(tmp_path: Path) -> None:
+    write_silence(tmp_path / "quiet-harbour.wav", 4.0)
+    lab.write(tmp_path / "quiet-harbour.lab", [ChordEvent(0.0, 2.0, "G:maj")])
+    lab.write_notes(tmp_path / "quiet-harbour.notes", WRITTEN)
+
+    (grid,) = examples.discover(audio=[tmp_path / "quiet-harbour.wav"]).values()
+    assert grid.id == "0/quiet-harbour/1"
+    assert grid.song == "quiet-harbour"
+    assert (grid.chart, grid.beats) == (None, None)
+
+    truth = examples.ground_truth(grid)
+    assert [e["short"] for e in truth["events"]] == ["G"]
+    assert [n["pitch"] for n in truth["melody"]] == [72, 74, 76]
+    # No tempo, no bar grid and no .beats: the rhythm is left unwritten rather
+    # than guessed from the note lengths themselves.
+    assert truth["beat_seconds"] is None
+    assert truth["bars"] == []
+
+
+def test_a_beats_sidecar_supplies_the_bar_grid_and_the_beat(tmp_path: Path) -> None:
+    write_silence(tmp_path / "lantern-reel.wav", 4.0)
+    beats = [BeatEvent(time=index * 0.5, position=index % 4 + 1) for index in range(8)]
+    lab.write_beats(tmp_path / "lantern-reel.beats", beats)
+
+    (grid,) = examples.discover(audio=[tmp_path / "lantern-reel.wav"]).values()
+    truth = examples.ground_truth(grid)
+    assert truth["bars"] == [0.0, 2.0]
+    assert truth["beat_seconds"] == pytest.approx(0.5)
+    assert truth["events"] == []
+    assert truth["has_chords"] is False
+
+
+def test_bare_audio_is_viewable_with_nothing_annotated(tmp_path: Path) -> None:
+    write_silence(tmp_path / "untitled.wav", 2.0)
+    (grid,) = examples.discover(audio=[tmp_path / "untitled.wav"]).values()
+    truth = examples.ground_truth(grid)
+    assert (truth["has_chords"], truth["has_melody"]) == (False, False)
+    assert truth["melody"] == []
+    assert truth["annotated_end"] == 0.0
+
+
+def test_discover_needs_something_to_show(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="nothing to view"):
+        examples.discover()
+    with pytest.raises(ValueError, match="audio file not found"):
+        examples.discover(audio=[tmp_path / "nope.wav"])
+
+
+def test_a_grid_is_discovered_by_its_audio_alone(root: Path, tmp_path: Path) -> None:
+    """Audio is the only required file, so an unannotated grid still lists."""
+    write_silence(root / "lantern-reel" / "grid7_audio.wav", 2.0)
+    grids = examples.discover([root])
+    assert "0/lantern-reel/7" in grids
+    assert grids["0/lantern-reel/7"].song == "lantern-reel"
+    assert examples.summary(grids["0/lantern-reel/7"])["has_chords"] is False
