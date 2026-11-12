@@ -57,9 +57,10 @@ estimates/
 # suffix, so this one rule covers them all.
 *.words.json
 # Corpora land here: downloaded annotation archives and their extracted trees.
+# Anchored like /eval/ above, so tests/data/ and src/songscribe/data/ stay addable.
 # Ignored wholesale rather than by extension, because Isophonics also ships
 # .ttl, .svl and .txt alongside the .lab files.
-data/
+/data/
 
 .DS_Store
 .idea/

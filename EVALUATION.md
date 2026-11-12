@@ -195,14 +195,13 @@ speed, which shifts every boundary. See [Checking the alignment](#checking-the-a
 ```bash
 export SONGSCRIBE_EVAL_ROOT=~/music/beatles                 # your recordings
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"   # the directory containing chordlab/
-export MANIFESTS="$PWD/eval"                                # wherever you keep manifests
 ```
 
 The annotation root is the directory containing `chordlab/`, not `chordlab/` itself.
 `--audio` and `--annotations` override the variables per command. A manifest, by contrast, is
-an ordinary path argument: `$MANIFESTS` below is this doc's shorthand, not something the CLI
-reads. `SONGSCRIBE_EVAL_MANIFESTS` names the same directory for the notebook and for the tests
-that check a corpus's committed split.
+an ordinary path argument, and the steps below use the one step 4 builds.
+`SONGSCRIBE_EVAL_MANIFESTS` is read by the notebook and by the tests that check a corpus's
+committed split: it is the directory where you keep manifests, wherever that is.
 
 **4. Build a manifest.**
 
@@ -261,7 +260,7 @@ the manifest. `backing-track-audio{,-train,-test}.json` beside it is one track p
 **5. Survey.** Needs no audio or model:
 
 ```bash
-songscribe-eval survey "$MANIFESTS"/isophonics-beatles.json
+songscribe-eval survey eval/isophonics.json
 ```
 
 It reports annotated time, distinct labels, whether every label parses, and for each
@@ -314,11 +313,13 @@ repository's JSON identifies by MusicBrainz id and `duration`. A different relea
 can start at another offset or run at another speed; see
 [Checking the alignment](#checking-the-alignment).
 
-**3. Survey.** `jaah.json` is references-only:
+**3. Survey.** Built without `--audio`, the manifest is references-only, which is all `survey`
+needs:
 
 ```bash
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/jaah"   # the directory containing labs/
-songscribe-eval survey "$MANIFESTS"/jaah.json
+songscribe-eval manifest data/jaah --name jaah --output eval/jaah.json
+songscribe-eval survey eval/jaah.json
 ```
 
 It reports that 93.5% of the annotated time is expressible in `majmin` and 93.3% in `sevenths`;
