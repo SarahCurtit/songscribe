@@ -148,6 +148,14 @@ class Predictor:
         job = self._jobs.get((grid.id, stage.name, backend))
         if job is None:
             return {"status": "absent"}
+        if job.status == "done":
+            # The run writes its cache before marking the job done, so a poll
+            # can read the cache a moment too early and the job a moment too
+            # late. Look once more rather than answer "done" with no events,
+            # which is a reply the page cannot draw; if it is still not there
+            # the result is gone and the run is offered again.
+            again = self._cached(grid, stage, backend)
+            return {"status": "done", **again} if again else {"status": "absent"}
         return {
             "status": job.status,
             "error": job.error,

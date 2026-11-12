@@ -20,7 +20,7 @@ from songscribe import chords, lab
 from songscribe import melody as melody_stage
 from songscribe.types import BeatEvent, ChordEvent, NoteEvent
 from songscribe.viewer import agreement, examples
-from songscribe.viewer.server import Viewer, truth_reply
+from songscribe.viewer.server import STAGES, Job, Predictor, Viewer, truth_reply
 
 SAMPLE_RATE = 8_000
 
@@ -552,3 +552,17 @@ def test_a_flat_chart_spells_the_staff_with_flats(
     assert truth["sharps"] is False
     (note,) = truth["melody_score"]["notes"]
     assert (note["name"], note["accidental"]) == ("Bb4", "b")
+
+
+def test_a_done_job_without_its_result_is_not_reported_as_done(root: Path, tmp_path: Path) -> None:
+    """A poll can read the cache before the run writes it and the job after.
+
+    Answering "done" there hands the page a reply with no events in it, which
+    is what it draws from.
+    """
+    predictor = Predictor(tmp_path / "cache")
+    grid = examples.discover([root])["0/paper-lantern-waltz/2"]
+    predictor._jobs[(grid.id, "chords", "fake")] = Job("done", time.monotonic())
+
+    reply = predictor.status(grid, STAGES["chords"], "fake")
+    assert reply == {"status": "absent"}
