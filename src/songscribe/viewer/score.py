@@ -156,30 +156,42 @@ def staff_step_at(pitch: float, clef: str = DEFAULT_CLEF, sharps: bool = True) -
     return base + (pitch - low) * (staff_step(low + 1, clef, sharps) - base)
 
 
-def time_in_reach(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
-    """Seconds of ``notes`` that ``clef`` can carry without an octave sign.
-
-    The five lines and the ledger lines either side of them, since a line
-    sitting just under a staff is read there rather than moved.
-    """
+def time_on_staff(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
+    """Seconds of ``notes`` that land on ``clef``'s own five lines."""
     return sum(
         note.duration
         for note in notes
-        if BOTTOM_LINE - OCTAVE_SIGN_MARGIN
-        <= staff_step(note.pitch, clef, sharps)
-        <= TOP_LINE + OCTAVE_SIGN_MARGIN
+        if BOTTOM_LINE <= staff_step(note.pitch, clef, sharps) <= TOP_LINE
     )
 
 
+def ledger_distance(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
+    """Seconds-weighted steps by which ``notes`` fall outside the five lines."""
+    total = 0.0
+    for note in notes:
+        step = staff_step(note.pitch, clef, sharps)
+        total += note.duration * max(0, step - TOP_LINE, BOTTOM_LINE - step)
+    return total
+
+
 def choose_clef(notes: Sequence[NoteEvent], sharps: bool = True) -> str:
-    """The clef that carries the most of the line, by time.
+    """The clef that carries the most of the line on its five lines, by time.
 
     Counting notes would let a line chopped into many short ones outvote a
-    melody of a few long ones. Ties go to the treble.
+    melody of a few long ones. Counting the ledger lines too would let a part
+    that strays far below one staff and only just below the other take the
+    second, so they only break a tie -- which is what a line sitting off both
+    staves gives. Ties go to the treble.
     """
     if not notes:
         return DEFAULT_CLEF
-    return max(CLEF_BOTTOM_LINE, key=lambda clef: time_in_reach(notes, clef, sharps))
+    return max(
+        CLEF_BOTTOM_LINE,
+        key=lambda clef: (
+            time_on_staff(notes, clef, sharps),
+            -ledger_distance(notes, clef, sharps),
+        ),
+    )
 
 
 def octave_shift(step: int) -> int:

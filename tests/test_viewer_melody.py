@@ -408,3 +408,19 @@ def test_each_note_carries_the_name_of_its_own_bracket() -> None:
     assert all(n["octave_label"] == "15ma" for n in engraved["notes"])
     # 8va and friends are written below where they sound.
     assert engraved["notes"][0]["step"] < score.staff_step(100, "treble")
+
+
+def test_a_tracker_slipping_to_a_lower_voice_does_not_take_the_clef() -> None:
+    """A monophonic tracker drops onto the bass and the melody keeps the staff.
+
+    C2 is sixteen steps below the treble staff and only four below the bass
+    one, so counting the ledger lines on both would hand the staff to the
+    voice it strayed onto even where the melody sounds longer.
+    """
+    melody = [NoteEvent(0.0, 4.0, A4), NoteEvent(4.0, 8.0, E4)]
+    strayed = [NoteEvent(8.0 + index, 9.0 + index, C2) for index in range(10)]
+
+    assert score.choose_clef([*melody, *strayed]) == "treble"
+    # The strayed notes sit off both staves, so neither counts them.
+    assert score.time_on_staff([*melody, *strayed], "bass") == 0.0
+    assert score.time_on_staff([*melody, *strayed], "treble") == pytest.approx(8.0)
