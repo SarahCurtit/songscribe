@@ -195,10 +195,14 @@ speed, which shifts every boundary. See [Checking the alignment](#checking-the-a
 ```bash
 export SONGSCRIBE_EVAL_ROOT=~/music/beatles                 # your recordings
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"   # the directory containing chordlab/
+export MANIFESTS="$PWD/eval"                                # wherever you keep manifests
 ```
 
 The annotation root is the directory containing `chordlab/`, not `chordlab/` itself.
-`--audio` and `--annotations` override the variables per command.
+`--audio` and `--annotations` override the variables per command. A manifest, by contrast, is
+an ordinary path argument: `$MANIFESTS` below is this doc's shorthand, not something the CLI
+reads. `SONGSCRIBE_EVAL_MANIFESTS` names the same directory for the notebook and for the tests
+that check a corpus's committed split.
 
 **4. Build a manifest.**
 
@@ -213,12 +217,12 @@ root or in a folder named for the artist or album. Tracks that cannot be paired 
 reported, not guessed: no file with that title, a title whose folders name neither artist nor
 album, or a title found under several albums. `--list-unpaired` lists every one.
 
-The manifest holds paths that follow your library, so it belongs with the corpus rather than in
-this repo, which commits none; `eval/` is gitignored for exactly that. This project's own
-manifests live in the private data_extraction repo's `eval/`: one references-only per corpus,
-as downloaded, and an `-audio` pairing beside it that adds the audio path of every track a
-recording was found for. A references-only manifest (no `audio` paths) works for `survey` and
-`score --estimates`; `score -c` needs the pairing.
+The manifest holds paths that follow your library, so it lives with the corpus rather than in
+this repo, which commits none. This project's own are in the private data_extraction repo's
+`eval/`: one references-only per corpus, as downloaded, and an `-audio` pairing beside it that
+adds the audio path of each track a recording was found for. Every corpus there has one except
+Zweieck, whose record nobody has. A references-only manifest (no `audio` paths) works for
+`survey` and `score --estimates`; `score -c` needs the pairing.
 
 One archive holds several artists, and `--include` takes one of them as its own corpus. That
 is how the per-artist manifests were built, and how to rebuild one:
@@ -257,7 +261,7 @@ the manifest. `backing-track-audio{,-train,-test}.json` beside it is one track p
 **5. Survey.** Needs no audio or model:
 
 ```bash
-songscribe-eval survey isophonics-beatles.json
+songscribe-eval survey "$MANIFESTS"/isophonics-beatles.json
 ```
 
 It reports annotated time, distinct labels, whether every label parses, and for each
@@ -314,7 +318,7 @@ can start at another offset or run at another speed; see
 
 ```bash
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/jaah"   # the directory containing labs/
-songscribe-eval survey jaah.json
+songscribe-eval survey "$MANIFESTS"/jaah.json
 ```
 
 It reports that 93.5% of the annotated time is expressible in `majmin` and 93.3% in `sevenths`;

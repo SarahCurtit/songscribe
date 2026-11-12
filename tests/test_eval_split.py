@@ -8,20 +8,23 @@ import pytest
 
 from songscribe.eval import split
 
-#: No manifest is committed here: each lives with the corpus it names, which for this project
-#: is the private data_extraction repo's eval/. Point SONGSCRIBE_EVAL_MANIFESTS at them and the
-#: checks over the committed splits run; without it they skip, and the rest of the file — the
-#: split code itself, on invented ids — still runs, which is what CI needs.
-EVAL_DIR = Path(
-    os.environ.get("SONGSCRIBE_EVAL_MANIFESTS") or Path(__file__).resolve().parent.parent / "eval"
-)
-committed_only = pytest.mark.skipif(
-    not sorted(EVAL_DIR.glob("*.json")) if EVAL_DIR.is_dir() else True,
-    reason=f"no manifests at {EVAL_DIR} — set SONGSCRIBE_EVAL_MANIFESTS to where they live",
-)
 CORPORA = ("jaah", "isophonics-beatles", "backing-track", "isophonics-zweieck")
 #: The corpora whose committed split is the hash split. backing-track is split by band instead.
 HASH_SPLIT = ("jaah", "isophonics-beatles", "isophonics-zweieck")
+#: Held out whole, so it has a test manifest and no train one.
+WHOLE = "isophonics-carole-king"
+#: A manifest names a corpus's own files, so it lives with the corpus rather than here, and
+#: SONGSCRIBE_EVAL_MANIFESTS says where. The checks over them need every one, so a directory
+#: holding a manifest someone built locally does not start them against a missing file.
+EVAL_DIR = Path(
+    os.environ.get("SONGSCRIBE_EVAL_MANIFESTS") or Path(__file__).resolve().parent.parent / "eval"
+)
+NEEDED = [f"{name}{side}" for name in CORPORA for side in ("", "-train", "-test")]
+NEEDED += [WHOLE, f"{WHOLE}-test"]
+committed_only = pytest.mark.skipif(
+    not all((EVAL_DIR / f"{name}.json").is_file() for name in NEEDED),
+    reason=f"manifests missing from {EVAL_DIR} — set SONGSCRIBE_EVAL_MANIFESTS",
+)
 IDS = [f"labs/song_{n}" for n in range(200)]
 
 
@@ -175,7 +178,7 @@ class TestCaroleKingIsHeldOutWhole:
     is a reason to keep them off the tuning side rather than to average them in.
     """
 
-    CORPUS = "isophonics-carole-king"
+    CORPUS = WHOLE
 
     def test_the_test_manifest_holds_every_track_in_order(self):
         full, test = load(self.CORPUS), load(f"{self.CORPUS}-test")

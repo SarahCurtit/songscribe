@@ -41,12 +41,13 @@ out/
 
 # Evaluation: manifests, reference annotations and model estimates. The
 # annotations are other people's work under their own licences, and the
-# estimates are derived from audio -- neither belongs in the repo. Manifests are
-# no longer committed here either: they name a corpus's own files, so they live
-# with the corpus (for this project, the private data_extraction repo's eval/),
-# and EVALUATION.md says how to build one. eval/ is where `manifest --output`
-# writes by habit, so it is ignored wholesale rather than by name.
-eval/
+# estimates are derived from audio -- neither belongs in the repo. A manifest
+# names a corpus's own files, so it lives with the corpus; EVALUATION.md says
+# how to build one. The whole directory goes, because it is where `manifest
+# --output` writes by habit. Anchored with a leading slash: `eval/` on its own
+# would also ignore src/songscribe/eval/, and a new module there would never be
+# added.
+/eval/
 *.lab
 annotations/
 estimates/
