@@ -200,7 +200,15 @@ swappable:
    sung when it changes, and gaps over 2s become instrumental breaks.
 
 Adding a chord model means writing one function returning `list[ChordEvent]` and registering
-it in `chords.BACKENDS`. Nothing else in the pipeline needs to know.
+it in `chords.BACKENDS`. Nothing else in the pipeline needs to know. The beat and melody
+stages keep the same contract.
+
+Two stages are not in that diagram, because nothing on the chart consumes them yet:
+`beats.py` supplies the bar grid the evaluation works in, and `melody.py` transcribes a
+monophonic lead line (`librosa.pyin` today, with note segmentation kept separate so the next
+tracker can reuse it). The melody is measured — `eval/melody.py` compares it with a lead
+sheet's own in bars and beats — but not printed: a chart from here is still chords over
+words. `songscribe-demo --melody` is the test material for it.
 
 ## What to expect
 

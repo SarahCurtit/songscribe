@@ -171,6 +171,7 @@ values but not identical, so do not mix the two in one table.
 
 ```bash
 songscribe-demo -o demo.wav
+songscribe-demo --melody -o demo.wav   # also a lead line, in demo.notes
 ```
 
 Run `songscribe-demo --help` for the options (progression, tempo, repeats, intro, key, noise).
@@ -497,3 +498,81 @@ metrics.placement_score(reference_chords, estimate_chords, words)
 
 `placement` is not part of `songscribe-eval`; it needs a recording with both time-aligned
 words and chords. A self-recorded track is the simplest source.
+
+## Melody
+
+`eval/melody.py` compares a played lead line with the written one. Both sides are
+`NoteEvent` lists — MIDI pitch and seconds — and both must be on the same timeline, which
+for a multi-chorus recording means projecting each chorus onto the chart first (see
+*Scoring a chart played several times*).
+
+```python
+from songscribe import lab, melody
+from songscribe.eval import melody as scoring
+
+written = lab.read_notes("beautiful-love.reference.notes")  # the lead sheet's melody
+played = melody.transcribe(audio, 22_050)  # or lab.read_notes(...)
+
+scoring.melody_score(written, played, downbeats, beats_per_bar=4)
+scoring.melody_score(written, played, downbeats, 4, octave_blind=False)  # strict
+```
+
+`downbeats` are the chart's bar lines: the written melody and the played one are placed on
+them in **bars and beats**, so a chorus at another tempo and any time offset cost nothing.
+A note matches when the pitches agree — by pitch class unless `octave_blind=False` — and
+the onsets are within `MELODY_ONSET_TOLERANCE_BEATS` (0.25 beats). `MelodyScore` reports
+`matched`, `reference_notes` and `estimate_notes`, with `recall`, `precision` and `f1` off
+them, so corpus totals are summed rather than averaged.
+
+**Read the pair, not one number.** The octave-blind score answers "the right notes?" and
+the strict one "in the right octave?". A high blind score next to a near-zero strict one is
+an octave error in the tracker or an instrument an octave from the sheet, not a wrong
+melody — the same reading as `majmin` against `sevenths` on the chord side.
+
+Transposition comes from pitch content, never from the match count:
+
+```python
+scoring.best_transposition(written, played)  # scored with
+scoring.matching_transposition(written, played, downbeats, 4)  # diagnostic only
+```
+
+Print both. A disagreement means the lead was mistracked, or this is not the tune the chart
+says it is; averaging them, or scoring with the second, makes the score partly a measure of
+itself.
+
+Over a whole recording, `score_choruses` takes `form.Chorus` blocks and scores the **heads**
+only, reporting every other scored block as `novelty` (`1 - recall`):
+
+```python
+results = scoring.score_choruses(written, played, blocks, downbeats, 4)
+total = scoring.head_score(results)  # the heads summed from their counts
+[r.novelty for r in results if not r.is_head]
+```
+
+Novelty is **descriptive**. A soloist who played the written melody would be the anomaly, so
+a high novelty is the expected reading and a low one is what to look at — it usually means
+the block is a head that `form` labelled a solo. Never average novelty with a head's score.
+
+To measure the tracker alone, before any note segmentation:
+
+```python
+times, f0, voiced, confidence = melody.pyin_f0(audio, 22_050)
+scoring.raw_pitch_accuracy(reference_f0, f0)  # MIREX raw pitch
+scoring.raw_pitch_accuracy(reference_f0, f0, octave_blind=True)  # raw chroma
+```
+
+Both sides are hertz per frame on the same hop, `nan` or 0 where nothing sounds. Without
+this a tracker that wanders and a segmenter that chops are one number, and neither can be
+fixed first.
+
+Two things to know before believing any of it:
+
+- **The default backend is a baseline, not a model.** `pyin` is signal processing, and it is
+  the default only because it is the only melody backend. It is also monophonic: on a full
+  mix it follows whatever is loudest and periodic, usually the bass. Run it on a separated
+  stem — for an instrumental head the lead is in `other`, not `vocals` — or narrow
+  `fmin`/`fmax` to the lead's own range. `MODELS.md` records `torchcrepe` as the upgrade.
+- **Melody is not part of `songscribe-eval`**, for the same reason `placement` is not: no
+  corpus here has melody annotations. It needs a time-aligned written melody for one
+  recording, which means a `.notes` file beside the chart and a manifest field to find it
+  by.
