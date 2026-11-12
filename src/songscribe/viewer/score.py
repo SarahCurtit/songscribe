@@ -79,16 +79,17 @@ NOTE_VALUES = (
 )
 
 #: How far outside the staff a note may sit before it is written an octave in
-#: and bracketed: five steps is about three ledger lines.
+#: and bracketed: five steps is two ledger lines.
 OCTAVE_SIGN_MARGIN = 5
 
 #: A displaced run shorter than this keeps its ledger lines instead. A bracket
-#: covers a passage; over one or two notes it is more to read than it saves,
-#: and a lone note far from the staff is usually a slip and should look like one.
+#: covers a passage; over a short run it is more to read than it saves, and a
+#: lone note far from the staff is usually a slip and should look like one.
 MIN_OCTAVE_SIGN_NOTES = 4
 
-#: What one and two octaves of displacement are called, before the a or b.
-OCTAVE_SIGN_NAMES = {1: "8v", 2: "15m"}
+#: What one octave of displacement is called, before the a or b. Wider
+#: displacements are named from the interval, which is 8, 15, 22, ...
+OCTAVE_SIGN_NAMES = {1: "8v"}
 
 #: Each value's head and stem: ``(filled, stem, flags)``.
 NOTE_HEADS = {
@@ -155,36 +156,37 @@ def staff_step_at(pitch: float, clef: str = DEFAULT_CLEF, sharps: bool = True) -
     return base + (pitch - low) * (staff_step(low + 1, clef, sharps) - base)
 
 
-def time_on_staff(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
-    """Seconds of ``notes`` that land on ``clef``'s own five lines."""
+def time_in_reach(notes: Sequence[NoteEvent], clef: str, sharps: bool = True) -> float:
+    """Seconds of ``notes`` that ``clef`` can carry without an octave sign.
+
+    The five lines and the ledger lines either side of them, since a line
+    sitting just under a staff is read there rather than moved.
+    """
     return sum(
         note.duration
         for note in notes
-        if BOTTOM_LINE <= staff_step(note.pitch, clef, sharps) <= TOP_LINE
+        if BOTTOM_LINE - OCTAVE_SIGN_MARGIN
+        <= staff_step(note.pitch, clef, sharps)
+        <= TOP_LINE + OCTAVE_SIGN_MARGIN
     )
 
 
 def choose_clef(notes: Sequence[NoteEvent], sharps: bool = True) -> str:
-    """The clef that holds the most of the line on its own lines, by time.
+    """The clef that carries the most of the line, by time.
 
-    Counting notes instead would let a tracker that follows the bass for a
-    stretch outvote the melody, since a wandering line is chopped into many
-    short notes while a sung phrase is a few long ones. Time is what the ear
-    gives each note. Anything still far outside gets an octave sign rather
-    than a say in the clef, so a handful of stray notes cannot move it.
-    Ties go to the treble, where a lead sits.
+    Counting notes would let a line chopped into many short ones outvote a
+    melody of a few long ones. Ties go to the treble.
     """
     if not notes:
         return DEFAULT_CLEF
-    return max(CLEF_BOTTOM_LINE, key=lambda clef: time_on_staff(notes, clef, sharps))
+    return max(CLEF_BOTTOM_LINE, key=lambda clef: time_in_reach(notes, clef, sharps))
 
 
 def octave_shift(step: int) -> int:
     """Octaves to write a note in by so it lands near the staff; 0 for most.
 
     Positive means it sounds that many octaves above where it is written, as
-    ``8va`` does. The margin is about three ledger lines, which is where a
-    note stops being quicker to read than to count.
+    ``8va`` does.
     """
     above = step - TOP_LINE - OCTAVE_SIGN_MARGIN
     if above > 0:
@@ -248,14 +250,15 @@ def engrave(
     beat_seconds: float | None = None,
     clef: str | None = None,
     sharps: bool = True,
+    octave_signs: bool = True,
 ) -> dict[str, Any]:
     """``notes`` as staff glyphs, ready to draw on the seconds timeline.
 
+    ``notes`` are in time order and do not overlap, as a monophonic line is.
     ``clef`` defaults to whichever fits the line; pass one to pin it. Without
-    ``beat_seconds`` -- no bar grid and no tempo for this recording -- the
-    rhythm is not guessed: every note gets a stemless head, ``value`` is
-    ``None``, and the page says the rhythm is unknown rather than printing
-    quarter notes nothing measured.
+    ``beat_seconds`` the rhythm is not guessed: every note gets a stemless
+    head and ``value`` is ``None``. ``octave_signs=False`` leaves every note
+    where it sounds, for a line drawn beside another that carries the signs.
     """
     if clef is None:
         clef = choose_clef(notes, sharps)
@@ -264,7 +267,8 @@ def engrave(
     if beat_seconds is not None and beat_seconds <= 0:
         raise ValueError(f"beat_seconds must be positive, got {beat_seconds}")
 
-    shifts = passage_shifts([staff_step(n.pitch, clef, sharps) for n in notes])
+    steps = [staff_step(n.pitch, clef, sharps) for n in notes]
+    shifts = passage_shifts(steps) if octave_signs else [0] * len(steps)
     glyphs: list[dict[str, Any]] = []
     for note, shift in zip(notes, shifts, strict=True):
         step = staff_step(note.pitch, clef, sharps) - shift * STEPS_PER_OCTAVE
@@ -293,6 +297,7 @@ def engrave(
                 "stem_down": step > MIDDLE_LINE,
                 "ledger": list(ledger_steps(step)),
                 "octave": shift,
+                "octave_label": octave_label(shift),
             }
         )
     return {
@@ -327,7 +332,7 @@ def octave_spans(glyphs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         else:
             spans.append(
                 {
-                    "start": glyph["start"],
+                    "start": min(glyph["start"], glyph["end"]),
                     "end": glyph["end"],
                     "shift": shift,
                     "label": octave_label(shift),

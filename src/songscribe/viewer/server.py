@@ -260,7 +260,11 @@ def _grade_melody(reply: dict[str, Any], truth: dict[str, Any]) -> None:
         for note, graded in zip(written, reply["agreement"]["written"], strict=True)
         if graded["level"] == "missing"
     ]
-    reply["missed"] = score.engrave(missed, beat_seconds=beat, clef=clef, sharps=sharps)
+    # No octave signs: these are drawn beside the played line to show where a
+    # note should have been, so they stay where they sound.
+    reply["missed"] = score.engrave(
+        missed, beat_seconds=beat, clef=clef, sharps=sharps, octave_signs=False
+    )
     for glyph in reply["missed"]["notes"]:
         glyph["level"] = "missing"
 

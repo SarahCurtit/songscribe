@@ -376,3 +376,35 @@ def test_compare_with_nothing_written_has_no_denominator() -> None:
 )
 def test_spell_with_sharps_follows_the_chart(labels: list[str], sharps: bool) -> None:
     assert score.spell_with_sharps(labels) is sharps
+
+
+def test_a_line_just_under_the_bass_staff_is_read_there() -> None:
+    """Two ledger lines under the bass staff is still a bass line.
+
+    Counting only the five lines scored this zero on both staves, and the tie
+    sent it to the treble, where it needed a bracket to be read at all.
+    """
+    low = line(C2, 38, 40)
+    assert score.choose_clef(low) == "bass"
+    assert score.engrave(low)["octaves"] == []
+
+
+def test_octave_signs_can_be_left_off() -> None:
+    """A line drawn beside one that carries the signs stays where it sounds."""
+    notes = line(C2, C2, C2, C2)
+    assert [n["octave"] for n in score.engrave(notes, clef="treble")["notes"]] == [-2] * 4
+
+    plain = score.engrave(notes, clef="treble", octave_signs=False)
+    assert [n["octave"] for n in plain["notes"]] == [0, 0, 0, 0]
+    assert plain["octaves"] == []
+    assert all(n["step"] == score.staff_step(C2, "treble") for n in plain["notes"])
+
+
+def test_each_note_carries_the_name_of_its_own_bracket() -> None:
+    """Two octaves out is 15ma, and the note must not claim to be 8va."""
+    engraved = score.engrave(line(100, 100, 100, 100), clef="treble", beat_seconds=1.0)
+    (span,) = engraved["octaves"]
+    assert span["label"] == "15ma"
+    assert all(n["octave_label"] == "15ma" for n in engraved["notes"])
+    # 8va and friends are written below where they sound.
+    assert engraved["notes"][0]["step"] < score.staff_step(100, "treble")

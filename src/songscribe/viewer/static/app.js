@@ -13,6 +13,7 @@ const H = { ruler: 30, truth: 38, alt: 28, pred: 34, strip: 8, gap: 6 };
 // measures a note's position in, so one multiplication places a note head.
 const STAFF = { step: 4, pad: 8, headRx: 5, headRy: 3.6, stem: 26, flagGap: 5 };
 const STAFF_TOP_LINE = 8;
+const BOTTOM_LINE_STEP = 0;
 // Below this many px per bar, bar numbers would collide; show every Nth.
 const MIN_BAR_LABEL_PX = 22;
 // Follow mode keeps the playhead between these fractions of the visible width.
@@ -568,7 +569,7 @@ function levelName(segment) {
 // Where a staff step sits inside its lane. Step 0 is the bottom line and 8 the
 // top one, so the y axis runs the other way from the step axis. `pad` is the
 // lane's own clearance, which grows with how far its notes reach.
-function stepY(step, pad = STAFF.pad) {
+function stepY(step, pad) {
   return (pad + STAFF_TOP_LINE - step) * STAFF.step;
 }
 
@@ -606,13 +607,16 @@ function drawStaff(data, lane, laneY, px, width) {
 }
 
 // 8va and friends: a passage written an octave or two in, with a bracket
-// saying so. Isolated notes are never moved, so a bracket always covers a run.
+// saying so.
 function drawOctaves(spans, lane, laneY, px, parent) {
   for (const span of spans) {
     const above = span.shift > 0;
-    const y = above
-      ? laneY + OCTAVE_SIGN_INSET_PX
-      : laneY + lane.height - H.gap - OCTAVE_SIGN_INSET_PX;
+    // Just clear of the staff, not at the lane's edge: the lane grows with
+    // any outlier, and the bracket belongs beside the notes it covers.
+    const step = above
+      ? STAFF_TOP_LINE + OCTAVE_SIGN_STEPS
+      : BOTTOM_LINE_STEP - OCTAVE_SIGN_STEPS;
+    const y = laneY + stepY(step, lane.padTop);
     const x = span.start * px;
     // Not "octave": a note an octave out already wears that as a level.
     const group = el("g", { class: "octave-sign" }, parent);
@@ -762,15 +766,15 @@ function noteTip(note) {
 }
 
 // A displaced note's head is not where it sounds, so the tooltip says so.
+// A positive shift is 8va: the note sounds above where it is written.
 function noteTipWithOctave(note, written, level) {
-  const sign = note.octave > 0 ? "8va" : "8vb";
   const octaves = Math.abs(note.octave) === 1 ? "an octave" : `${Math.abs(note.octave)} octaves`;
-  const way = note.octave > 0 ? "above" : "below";
+  const way = note.octave > 0 ? "below" : "above";
   return (
     `<b>${escape(note.name)}</b> <span class="muted">MIDI ${note.pitch} · ${escape(written)}` +
     `</span>${level}<br><span class="muted">written ${octaves} ${way}, under the ` +
-    `${escape(sign)} bracket</span><br><span class="muted">${fmt(note.start)} – ${fmt(note.end)}` +
-    `</span>`
+    `${escape(note.octave_label)} bracket</span><br><span class="muted">${fmt(note.start)} – ` +
+    `${fmt(note.end)}</span>`
   );
 }
 

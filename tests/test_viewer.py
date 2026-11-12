@@ -597,3 +597,31 @@ def test_a_run_finishing_mid_poll_is_not_reported_as_done(root: Path, tmp_path: 
     assert job.reads == 1, "the job was read more than once"
     assert reply["status"] == "running"
     assert "events" not in reply
+
+
+def test_a_missed_note_is_engraved_where_it_sounds(melody_server: str) -> None:
+    """Missed notes are not a passage, so they take no octave sign.
+
+    They are drawn to show where the note should have been; moving them an
+    octave to tidy them up would put them somewhere it never was.
+    """
+
+    def nothing(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+        return []
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(melody_stage.BACKENDS, "silent", nothing)
+        patch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "silent", SAMPLE_RATE)
+        url = f"{melody_server}/api/grids/0/paper-lantern-waltz/2/predict/melody?backend=silent"
+        reply = post_json(url)[1]
+        deadline = time.monotonic() + 5
+        while reply["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.05)
+            reply = get_json(url)
+
+    assert reply["status"] == "done"
+    assert [n["level"] for n in reply["agreement"]["written"]] == ["missing"] * 3
+    missed = reply["missed"]
+    assert missed["octaves"] == []
+    assert all(n["octave"] == 0 for n in missed["notes"])
+    assert [n["name"] for n in missed["notes"]] == ["C5", "D5", "E5"]
