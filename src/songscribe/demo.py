@@ -305,8 +305,7 @@ def synthesise_performance(
     ``intro`` (one chord per bar) or, with none, a stub before bar 0. ``colour[repeat]`` adds
     notes (semitones above each root) to a whole chorus. ``tempo_drift`` is the relative
     tempo change from first to last bar. ``substitutions[repeat][bar]`` replaces one chord.
-    The whole take, pickup included, is played ``transpose`` semitones above the chart, with
-    ``melody`` adding a lead line over the choruses (see :func:`melody_pitches`).
+    The whole take, pickup included, is played ``transpose`` semitones above the chart.
     """
     if not progression:
         raise ValueError("progression is empty")
