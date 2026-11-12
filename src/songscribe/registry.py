@@ -9,6 +9,8 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from math import isfinite
+from numbers import Real
 
 from .tempo import is_count
 
@@ -42,6 +44,27 @@ def whole_at_least(value: object, unit: str, floor: int = 1) -> str | None:
 def whole_number(unit: str, floor: int = 1) -> SettingRule:
     """A rule accepting a whole count of ``unit`` of at least ``floor``."""
     return lambda value: whole_at_least(value, unit, floor)
+
+
+def above_zero(value: object, unit: str) -> str | None:
+    """Fault in ``value`` as a positive, finite measure of ``unit``, or None.
+
+    For a setting that is a quantity rather than a count -- a frequency, a
+    duration -- where a fraction is meaningful but zero and infinity are not.
+    """
+    # bool is an int in Python, and True is not a frequency.
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return f"must be a number of {unit}, got {value!r}"
+    if not isfinite(value):
+        return f"must be a finite number of {unit}, got {value!r}"
+    if value <= 0:
+        return f"must be greater than 0 {unit}, got {value!r}"
+    return None
+
+
+def positive_number(unit: str) -> SettingRule:
+    """A rule accepting a positive, finite measure of ``unit``."""
+    return lambda value: above_zero(value, unit)
 
 
 def setting_rules(**rules: SettingRule):
