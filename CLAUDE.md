@@ -61,6 +61,13 @@ src/songscribe/
     viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
+  viewer/       local web app: play a recording, compare chord and melody backends to its
+                ground truth; a melody is drawn as a staff on the shared timeline
+    score.py      notes -> clef, staff position, accidental, note value  (pure Python)
+    melody.py     a transcribed line against the written one, note by note (pure Python)
+    agreement.py  a chord estimate against the chart, over time           (pure Python)
+    examples.py   finds recordings and loads whatever is annotated beside them
+    server.py     stdlib http.server; one Stage descriptor per runnable stage
 eval/           committed manifests: track ids + relative paths, no content
 notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
@@ -145,9 +152,11 @@ Corpus decisions (settled; don't re-open them):
 pip install -e '.[dev]'    # all models + pytest + ruff; compiles madmom, ~30s
 pytest                     # fast, no weights, no audio
 pytest -k align            # one stage
+pytest -m e2e              # viewer in headless Chromium, audio at 16x; run after ANY viewer change
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 songscribe-demo --melody -o /tmp/demo/demo.wav  # audio + .lab + .beats + .notes
+songscribe-viewer --audio /tmp/demo/demo.wav    # play it: chord lanes and a melody staff
 
 # run from the repo root; $PWD makes the path absolute, so it works from any directory
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
@@ -215,6 +224,10 @@ backend. `MODELS.md` records why, and the dead ends, so they don't get retried.
 
 CI runs `ruff check`, `ruff format --check`, and `pytest` on 3.10–3.12, installing only the
 core deps — so **tests must not require model weights or network access**.
+
+The viewer's e2e tests (`tests/test_viewer_e2e.py`) skip themselves without Playwright, so CI
+never runs them — run them locally. Setup: `pip install playwright==1.48.0` then
+`playwright install chromium`. The pin is for Ubuntu 20.04, which newer Playwright refuses.
 
 ## Conventions
 
@@ -323,6 +336,22 @@ than the circumstances:
 `octave_blind`), and exists so a wandering tracker and a chopping segmenter are two numbers
 rather than one. `melody.notes_from_f0` is the segmenter, kept out of the backend so it can be
 tested on invented contours — which is most of `tests/test_melody.py`.
+
+To look at a line rather than score it, `songscribe-viewer` draws it on a staff on the
+recording's own timeline. `--audio demo.wav` picks up the `.notes` beside it; ticking a melody
+backend puts its transcription on a second staff below, with each head coloured by whether it
+is the written note, that note an octave out, or a different note. A written note the backend
+found nothing for is drawn as an outline where it belongs. Octave errors get a colour of their
+own because they are the mistake a pitch tracker makes most, and a staff is where they show.
+Each staff carries a clef, drawn as a path because no font in a plain install has U+1D11E, and
+pinned to the left edge so it survives scrolling; **Melody only** hides the chord lanes. The
+clef follows sounding time rather than note count, so a tracker that drops onto the bass for a
+stretch cannot outvote the melody with the fragments it makes there, and a passage still far
+outside is bracketed `8va`/`8vb` rather than stacked on ledger lines — one note on its own is
+left where it sounds, since that is what a slip looks like.
+The notation decisions live in `viewer/score.py` and the page only draws them, so they are
+testable without a browser — `tests/test_viewer_melody.py` is all invented notes. The viewer's
+note agreement is a quick read, not the metric: `eval/melody.py` is what measures a backend.
 
 Like `placement_score`, it is **not** wired into `songscribe-eval`: no corpus here has melody
 annotations. It needs a time-aligned written melody for one recording, which means a manifest

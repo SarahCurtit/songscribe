@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>songscribe viewer</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>songscribe viewer</h1>
+    <label class="field">
+      <span>Grid</span>
+      <select id="grid-select"></select>
+    </label>
+    <fieldset class="field" id="chord-backends">
+      <legend>Chord models</legend>
+    </fieldset>
+    <fieldset class="field" id="melody-backends">
+      <legend>Melody models</legend>
+    </fieldset>
+  </header>
+
+  <main>
+    <section class="transport">
+      <audio id="audio" controls preload="auto"></audio>
+      <div class="now" id="now" aria-live="off"></div>
+    </section>
+
+    <section class="timeline-panel">
+      <div class="timeline-tools">
+        <label class="field inline">
+          <span>Zoom</span>
+          <input id="zoom" type="range" min="10" max="200" step="5" value="60">
+          <output id="zoom-value"></output>
+        </label>
+        <label class="field inline">
+          <input id="follow" type="checkbox" checked>
+          <span>Follow playhead</span>
+        </label>
+        <label class="field inline">
+          <input id="melody-only" type="checkbox">
+          <span>Melody only</span>
+        </label>
+        <ul class="legend" id="chord-legend" aria-label="Chord agreement levels">
+          <li><i class="swatch exact"></i>exact chord</li>
+          <li><i class="swatch majmin"></i>same triad</li>
+          <li><i class="swatch root"></i>same root</li>
+          <li><i class="swatch miss"></i>wrong</li>
+        </ul>
+        <ul class="legend" id="melody-legend" aria-label="Melody agreement levels" hidden>
+          <li><i class="swatch exact"></i>exact note</li>
+          <li><i class="swatch octave"></i>octave out</li>
+          <li><i class="swatch miss"></i>wrong note</li>
+          <li><i class="swatch extra"></i>not written</li>
+          <li><i class="swatch missing"></i>not transcribed</li>
+        </ul>
+      </div>
+      <div class="timeline">
+        <div class="lane-labels" id="lane-labels"></div>
+        <div class="scroller" id="scroller">
+          <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+      <p class="hint">Click the timeline to seek · Space to play/pause · Hover a chord or note
+        for details · a staff is proportional, so a note's position is its onset in time</p>
+    </section>
+
+    <details class="screenshot" id="screenshot-panel" hidden>
+      <summary>Chart screenshot</summary>
+      <img id="screenshot" alt="Chart screenshot this grid's ground truth was read from">
+    </details>
+
+    <p class="error" id="error" hidden></p>
+  </main>
+
+  <div class="tooltip" id="tooltip" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

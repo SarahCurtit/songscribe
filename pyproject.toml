@@ -57,6 +57,7 @@ dev = [
 songscribe = "songscribe.cli:main"
 songscribe-demo = "songscribe.demo:main"
 songscribe-eval = "songscribe.eval.cli:main"
+songscribe-viewer = "songscribe.viewer.server:main"
 
 [project.urls]
 Homepage = "https://github.com/SarahCurtit/songscribe"
@@ -73,6 +74,9 @@ allow-direct-references = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+markers = [
+    "e2e: drives the viewer in headless Chromium; skipped unless Playwright is installed",
+]
 
 [tool.ruff]
 line-length = 100

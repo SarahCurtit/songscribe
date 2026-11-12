@@ -177,6 +177,53 @@ Manifests hold track identifiers and relative paths — **no audio, no annotatio
 the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
 setup and how the metrics work.
 
+## Compare backends by ear and eye
+
+`songscribe-viewer` is a small local web app for recordings: pick one, play it, and watch the
+reference chords, any alternate chords, and each backend's output scroll past on one timeline,
+with a strip under each chord prediction marking where it agrees. A melody backend gets a
+**staff** on that same timeline — note heads, accidentals and ledger lines at their onsets —
+so a transcribed line can be read against the written one.
+
+```bash
+# a directory of annotated grids
+songscribe-viewer --examples path/to/examples    # repeatable; serves http://127.0.0.1:8765
+
+# or one recording, with whatever is annotated beside it
+songscribe-demo --melody -o audio/demo/demo.wav
+songscribe-viewer --audio audio/demo/demo.wav
+```
+
+`--examples` reads a directory of `<song>/gridN_audio.wav` plus any of `gridN_chords.json`,
+`gridN_melody.notes`, `gridN_beats.beats` and `gridN_screenshot.png`. `--audio` takes a single
+recording and picks up the `.lab`, `.notes` and `.beats` that share its stem — exactly what
+`songscribe-demo --melody` writes, so those two commands together are the quickest way to see
+the melody branch working. Audio is the only file either form needs: a recording with nothing
+annotated still plays, and a model still runs on it.
+
+The staff is **proportional** rather than engraved into bars of equal width — a note's x is its
+onset — so it stays lined up with the audio, the chord lanes and the playhead. Note values come
+from the beat, taken from a stated tempo, a `.beats` file or the bar length; when nothing
+measures the beat the lane says *rhythm unknown* instead of printing a rhythm nothing supports.
+Where a melody is written too, each head is coloured by whether it is the written note, that
+note an octave out, or a different note.
+
+Each staff carries its clef, drawn rather than typed — no font in a plain Linux install has
+the glyph, so one would come out as a box — and pinned to the left edge, since a proportional
+staff scrolls its opening bar away within seconds. **Melody only** puts the chord lanes away
+and leaves the staves and the bar grid, which is the view to read as a score.
+
+The clef is whichever holds more of the line **by sounding time**. Counting notes instead
+hands the staff to the wrong voice: a monophonic tracker that drops onto the bass for a
+stretch chops it into many short notes, which outvote a melody of a few long ones. A passage
+that still sits far outside the staff is written an octave or two in under an `8va`/`8vb`
+bracket; a lone note far out keeps its ledger lines, because it is usually the tracker
+slipping and it should look like it.
+
+Ticking a model runs it on that recording the first time and caches the result in
+`~/.cache/songscribe/viewer/`. It binds to localhost only; on a remote machine, forward the
+port (`ssh -L 8765:localhost:8765 <host>`) and open `http://localhost:8765`.
+
 ## How it works
 
 ```
