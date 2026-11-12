@@ -250,12 +250,9 @@ no chords at all, so it never reaches a manifest.
 Carole King is Tapestry's first seven tracks (01–07).
 
 `backing-track.json` lists every song of a jazz backing-track collection, one track per song,
-with tempo and key variants as separate tracks. Each `reference` is `labs/<id>.lab` under the
-data repo's `references/`, written there from the app's own chord sheets. A song whose sheet
-has not been converted yet has no file at that path: the loader accepts a missing reference and
-`survey` lists it as unreadable, so writing the `.lab` makes the track count with no change to
-the manifest. `backing-track-audio{,-train,-test}.json` beside it is one track per recorded
-*grid* — one chorus of the chart — paired with the audio of that chorus.
+with tempo and key variants as separate tracks. `backing-track-audio{,-train,-test}.json`
+beside it is one track per recorded *grid* — one chorus of the chart — paired with that
+chorus's audio. Both are in the private data repo, beside the references they name.
 
 **5. Survey.** Needs no audio or model:
 
@@ -383,9 +380,9 @@ Recordings of one song always go to the same set. A trailing parenthesis is igno
 `autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together, and a leading track
 number is ignored in either spelling Isophonics ships (`05_-_Dig_It`, `05 Beautiful`), so a
 song is not tied to its position on the album. The set comes from a hash of the song name, so
-a manifest built locally splits like the one beside the corpus. If file names hide that two recordings
-are one song, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again,
-before tuning.
+a manifest built locally splits like the one beside the corpus. If file names hide that two
+recordings are one song, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run
+`split` again, before tuning.
 
 **Carole King is held out whole**, as `isophonics-carole-king-test.json` with no train
 manifest: score it, never tune on it. Seven songs cannot carry a hash split — the lowest of
@@ -426,9 +423,10 @@ already heard the test set's players, and a test score overstates how it does on
 
 The line-ups are not public, so the split is made in the private data_extraction repository
 (`labels/band_split.py`, which tries every grouping of bands and keeps the best), and its
-result, track ids, is committed there beside the other manifests. They carry `"split": "by band: …"`, and
-`songscribe-eval split` refuses a manifest that declares its split rather than replacing it with a
-hash split. When the collection changes, re-run `band_split.py` there, not `split` here.
+result, track ids, is committed there beside the other manifests. They carry
+`"split": "by band: …"`, and `songscribe-eval split` refuses a manifest that declares its split
+rather than replacing it with a hash split. When the collection changes, re-run `band_split.py`
+there, not `split` here.
 
 ## Scoring a chart played several times
 
