@@ -61,8 +61,8 @@ src/songscribe/
     viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
-  viewer/       local web app: play a recording, compare chord and melody backends to its
-                ground truth; a melody is drawn as a staff on the shared timeline
+  viewer/       local web app: play a recording, compare chord, melody and beat backends
+                to its ground truth; a melody is drawn as a staff on the shared timeline
     score.py      notes -> clef, staff position, accidental, note value  (pure Python)
     melody.py     a transcribed line against the written one, note by note (pure Python)
     agreement.py  a chord estimate against the chart, over time           (pure Python)
@@ -349,9 +349,11 @@ clef follows sounding time rather than note count, so a tracker that drops onto 
 stretch cannot outvote the melody with the fragments it makes there, and a passage still far
 outside is bracketed `8va`/`8vb` rather than stacked on ledger lines — one note on its own is
 left where it sounds, since that is what a slip looks like.
-The notation decisions live in `viewer/score.py` and the page only draws them, so they are
-testable without a browser — `tests/test_viewer_melody.py` is all invented notes. The viewer's
-note agreement is a quick read, not the metric: `eval/melody.py` is what measures a backend.
+A recording with no bar grid of its own gets one from **Bars from**, which runs the beat stage
+and hands its grid to the ruler and to every staff's note values; an annotation or a `.beats`
+file outranks it. The notation decisions live in `viewer/score.py` and the page only draws them,
+so they are testable without a browser — `tests/test_viewer_melody.py` is all invented notes.
+The viewer's note agreement is a quick read, not the metric: `eval/melody.py` measures a backend.
 
 Like `placement_score`, it is **not** wired into `songscribe-eval`: no corpus here has melody
 annotations. It needs a time-aligned written melody for one recording, which means a manifest

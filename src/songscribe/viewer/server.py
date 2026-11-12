@@ -2,9 +2,9 @@
 
 Standard library only, so the viewer adds no dependencies. Backends run in a
 background thread and their output is cached on disk, keyed by the audio file's
-size and mtime, so a re-recorded grid is recomputed. Chords and melody each sit
-behind a :class:`Stage` descriptor holding their registry, so this file names no
-backend. Binds to localhost by default: it serves whatever audio it is pointed
+size and mtime, so a re-recorded grid is recomputed. Chords, melody and beats
+each sit behind a :class:`Stage` descriptor holding their registry, so this file
+names no backend. Binds to localhost by default: it serves whatever audio it is pointed
 at, which is rarely audio that may be shared.
 """
 
@@ -23,13 +23,16 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from math import isnan
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from .. import beats as beats_stage
 from .. import chords as chords_stage
 from .. import melody as melody_stage
-from ..types import NoteEvent
+from ..beats import grid as bar_grid
+from ..types import BeatEvent, NoteEvent
 from . import agreement, examples, melody, score
 
 log = logging.getLogger(__name__)
@@ -74,6 +77,10 @@ def _run_melody(audio: Any, rate: int, backend: str) -> Sequence[Any]:
     return melody_stage.transcribe(audio, rate, backend=backend)
 
 
+def _run_beats(audio: Any, rate: int, backend: str) -> Sequence[Any]:
+    return beats_stage.track(audio, rate, backend=backend)
+
+
 STAGES = {
     "chords": Stage(
         name="chords",
@@ -93,6 +100,13 @@ STAGES = {
             {"start": n.start, "end": n.end, "pitch": n.pitch, "confidence": n.confidence}
             for n in notes
         ],
+    ),
+    "beats": Stage(
+        name="beats",
+        backends=beats_stage.BACKENDS,
+        sample_rate_for=beats_stage.sample_rate_for,
+        run=_run_beats,
+        serialise=lambda beats: [{"time": b.time, "position": b.position} for b in beats],
     ),
 }
 
@@ -269,12 +283,38 @@ def _grade_melody(reply: dict[str, Any], truth: dict[str, Any]) -> None:
         glyph["level"] = "missing"
 
 
-GRADERS = {"chords": _grade_chords, "melody": _grade_melody}
+def _beat_events(events: Sequence[dict[str, Any]]) -> list[BeatEvent]:
+    return [BeatEvent(time=e["time"], position=e["position"]) for e in events]
 
 
-def truth_reply(grid: examples.Grid) -> dict[str, Any]:
+def _grade_beats(reply: dict[str, Any], truth: dict[str, Any]) -> None:
+    """Add the bar grid a tracked beat timeline implies.
+
+    ``nan`` is what :class:`~songscribe.beats.BeatGrid` reports with nothing
+    to measure, and JSON has no word for it, so those come back as ``None``.
+    """
+    found = bar_grid(_beat_events(reply["events"]))
+    reply["grid"] = {
+        "downbeats": list(found.downbeats),
+        "bars": found.bars,
+        "beats_per_bar": found.beats_per_bar,
+        "bar_length": _number(found.bar_length),
+        "tempo": _number(found.tempo),
+        "plausible": found.is_plausible,
+        "unreliable": list(found.unreliable_bars()),
+    }
+
+
+def _number(value: float) -> float | None:
+    return None if isnan(value) else round(value, 3)
+
+
+GRADERS = {"chords": _grade_chords, "melody": _grade_melody, "beats": _grade_beats}
+
+
+def truth_reply(grid: examples.Grid, tracked: Sequence[BeatEvent] = ()) -> dict[str, Any]:
     """A grid's ground truth, with the written melody already engraved."""
-    truth = examples.ground_truth(grid)
+    truth = examples.ground_truth(grid, tracked)
     # Follow the chart's own spelling, as the chord lane does.
     truth["sharps"] = score.spell_with_sharps([e["short"] for e in truth["events"]])
     written = _notes(truth["melody"])
@@ -323,7 +363,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._predict_reply(match, query)
         if match := API_GRID.fullmatch(path):
             grid = self._grid(match.group(1))
-            return None if grid is None else self._json(truth_reply(grid))
+            if grid is None:
+                return None
+            return self._json(truth_reply(grid, self._tracked(grid, query)))
         if match := MEDIA.fullmatch(path):
             grid = self._grid(match.group(1))
             if grid is None:
@@ -382,8 +424,21 @@ class Handler(BaseHTTPRequestHandler):
             return None
         reply = self.server.predictor.status(grid, stage, backend)
         if reply["status"] == "done":
-            GRADERS[stage.name](reply, truth_reply(grid))
+            GRADERS[stage.name](reply, truth_reply(grid, self._tracked(grid, query)))
         return reply
+
+    def _tracked(self, grid: examples.Grid, query: dict[str, str]) -> list[BeatEvent]:
+        """The beats the chosen tracker found, if it has already run.
+
+        A run still going is not waited for: the reply says what is known now,
+        and the page asks again when the tracker reports done.
+        """
+        backend = query.get("beats", "")
+        stage = STAGES["beats"]
+        if backend not in stage.backends:
+            return []
+        reply = self.server.predictor.status(grid, stage, backend)
+        return _beat_events(reply["events"]) if reply["status"] == "done" else []
 
     def _json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode()
@@ -450,14 +505,14 @@ class Handler(BaseHTTPRequestHandler):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="songscribe-viewer",
-        description="Listen to recordings and compare chord and melody backends against them.",
+        description="Listen to recordings and compare chord, melody and beat backends.",
     )
     parser.add_argument(
         "-e",
         "--examples",
         type=Path,
         action="append",
-        help="directory of <song>/gridN_{audio.wav,chords.json,melody.notes} (repeatable)",
+        help="directory of <song>/gridN_{audio.wav,chords.json,melody.notes,beats.beats}",
     )
     parser.add_argument(
         "-a",
