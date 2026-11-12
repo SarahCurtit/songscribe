@@ -49,6 +49,34 @@ class BeatEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class NoteEvent:
+    """One sounded note of a monophonic line, e.g. MIDI 72 from 4.2s to 4.7s.
+
+    ``pitch`` is a MIDI note number rather than a frequency: transposing is
+    then addition and folding octaves away is ``% 12``, which is what comparing
+    a played line against a written one needs. Hz would make both a conversion.
+    Time stays in seconds from the start, like every other event here.
+
+    ``confidence`` is how sure the tracker was, averaged over the note's
+    frames; a backend with nothing to say about it leaves it at 1.0.
+    """
+
+    start: float
+    end: float
+    pitch: int
+    confidence: float = 1.0
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
+
+    @property
+    def pitch_class(self) -> int:
+        """The pitch with its octave folded away; 0 is C."""
+        return self.pitch % 12
+
+
+@dataclass(frozen=True, slots=True)
 class Word:
     """A single transcribed word with its own timing."""
 

@@ -5,7 +5,7 @@ import logging
 import pytest
 
 from songscribe import beats, lab
-from songscribe.types import BeatEvent, ChordEvent
+from songscribe.types import BeatEvent, ChordEvent, NoteEvent
 
 
 class TestParse:
@@ -225,5 +225,87 @@ class TestWriteBeats:
 
     def test_ends_with_exactly_one_newline(self):
         text = lab.format_beats([BeatEvent(0.0, 1)])
+        assert text.endswith("\n")
+        assert not text.endswith("\n\n")
+
+
+class TestParseNotes:
+    def test_reads_start_end_pitch(self):
+        notes = lab.parse_notes("0.0\t0.5\t72\n0.5\t1.0\t74\n")
+        assert notes == [NoteEvent(0.0, 0.5, 72), NoteEvent(0.5, 1.0, 74)]
+
+    def test_a_missing_confidence_means_certain(self):
+        assert lab.parse_notes("0.0 0.5 72")[0].confidence == lab.DEFAULT_CONFIDENCE
+
+    def test_reads_an_optional_confidence(self):
+        assert lab.parse_notes("0.0 0.5 72 0.25")[0].confidence == pytest.approx(0.25)
+
+    def test_skips_blank_lines_and_comments(self):
+        assert len(lab.parse_notes("# tracked\n\n0.0 0.5 72\n\n0.5 1.0 74\n")) == 2
+
+    @pytest.mark.parametrize("line", ["0.0 0.5", "0.0 0.5 72 0.5 extra"])
+    def test_rejects_the_wrong_number_of_fields(self, line):
+        with pytest.raises(lab.LabFormatError, match="start end pitch"):
+            lab.parse_notes(line)
+
+    def test_rejects_a_fractional_pitch(self):
+        # A tracker's f0 belongs in a .notes file as a note, not as a pitch
+        # with a fraction left on it: rounding is the segmenter's decision.
+        with pytest.raises(lab.LabFormatError, match="not a whole MIDI note"):
+            lab.parse_notes("0.0 0.5 72.4")
+
+    @pytest.mark.parametrize("pitch", ["-1", "128", "440"])
+    def test_rejects_a_pitch_outside_midi(self, pitch):
+        # 440 is the giveaway: a frequency written where a note number goes.
+        with pytest.raises(lab.LabFormatError, match="outside MIDI"):
+            lab.parse_notes(f"0.0 0.5 {pitch}")
+
+    @pytest.mark.parametrize("line", ["nan 0.5 72", "0.0 inf 72", "0.0 0.5 nan"])
+    def test_rejects_non_finite_numbers(self, line):
+        with pytest.raises(lab.LabFormatError):
+            lab.parse_notes(line)
+
+    def test_rejects_a_reversed_note(self):
+        with pytest.raises(lab.LabFormatError, match="precedes start"):
+            lab.parse_notes("5.0 1.0 72")
+
+    def test_skips_a_hairline_reversal(self, caplog):
+        # The same tolerance as the chord reader's, for the same reason.
+        with caplog.at_level(logging.WARNING):
+            notes = lab.parse_notes("0.0 0.5 72\n1.0 0.999 74\n")
+        assert [n.pitch for n in notes] == [72]
+        assert "skipping note reversed" in caplog.text
+
+    def test_error_names_the_line_number(self):
+        with pytest.raises(lab.LabFormatError, match="line 3"):
+            lab.parse_notes("0.0 0.5 72\n0.5 1.0 74\nbroken\n")
+
+    def test_names_the_file_when_it_has_one(self):
+        with pytest.raises(lab.LabFormatError, match=r"lead\.notes:1"):
+            lab.parse_notes("broken", source="lead.notes")
+
+
+class TestWriteNotes:
+    def test_round_trips_through_a_file(self, tmp_path):
+        line = [NoteEvent(0.0, 0.625, 72), NoteEvent(0.625, 1.25, 76)]
+        path = tmp_path / "nested" / "song.notes"
+        lab.write_notes(path, line)
+        assert lab.read_notes(path) == line
+
+    def test_a_certain_line_stays_three_columns(self):
+        text = lab.format_notes([NoteEvent(0.0, 0.5, 72)])
+        assert len(text.split("\n")[0].split()) == 3
+
+    def test_a_tracked_line_keeps_its_confidence(self, tmp_path):
+        tracked = [NoteEvent(0.0, 0.5, 72, 0.4), NoteEvent(0.5, 1.0, 74, 1.0)]
+        path = tmp_path / "song.notes"
+        lab.write_notes(path, tracked)
+        assert [n.confidence for n in lab.read_notes(path)] == pytest.approx([0.4, 1.0])
+
+    def test_empty_timeline_writes_nothing(self):
+        assert lab.format_notes([]) == ""
+
+    def test_ends_with_exactly_one_newline(self):
+        text = lab.format_notes([NoteEvent(0.0, 0.5, 72)])
         assert text.endswith("\n")
         assert not text.endswith("\n\n")
