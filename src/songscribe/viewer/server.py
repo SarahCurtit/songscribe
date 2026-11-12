@@ -1,16 +1,11 @@
 """HTTP server for the grid viewer: a JSON API, the audio, and one static page.
 
-Standard library only, so the viewer adds no dependencies. Backends run on
-demand in a background thread and their output is cached on disk, keyed by the
-audio file's size and mtime, so re-opening a grid is instant and a re-recorded
-grid is recomputed.
-
-Two stages are runnable, chords and melody, behind one :class:`Stage`
-descriptor each: the server never names a backend, only the registry it comes
-from, so a stage gains a backend without this file changing.
-
-Binds to localhost by default: it serves whatever audio it is pointed at, and
-that is rarely audio that may be shared.
+Standard library only, so the viewer adds no dependencies. Backends run in a
+background thread and their output is cached on disk, keyed by the audio file's
+size and mtime, so a re-recorded grid is recomputed. Chords and melody each sit
+behind a :class:`Stage` descriptor holding their registry, so this file names no
+backend. Binds to localhost by default: it serves whatever audio it is pointed
+at, which is rarely audio that may be shared.
 """
 
 from __future__ import annotations
@@ -233,18 +228,29 @@ def _grade_chords(reply: dict[str, Any], truth: dict[str, Any]) -> None:
 def _grade_melody(reply: dict[str, Any], truth: dict[str, Any]) -> None:
     """Add the staff and, where a melody is written, the note-by-note agreement.
 
-    The written line picks the clef, so the two staves read against each other;
-    with nothing written, the transcription picks its own.
+    The written line picks the clef and the spelling, so the two staves read
+    against each other. Notes the backend did not find are engraved too, under
+    ``missed``, so the staff can show where they should have been.
     """
     played = _notes(reply["events"])
     written = _notes(truth["melody"])
-    clef = score.choose_clef([n.pitch for n in (written or played)])
-    reply["score"] = score.engrave(played, beat_seconds=truth["beat_seconds"], clef=clef)
+    sharps = truth["sharps"]
+    clef = score.choose_clef([n.pitch for n in (written or played)], sharps)
+    beat = truth["beat_seconds"]
+    reply["score"] = score.engrave(played, beat_seconds=beat, clef=clef, sharps=sharps)
     if not written:
         return
     reply["agreement"] = melody.compare(written, played)
     for glyph, graded in zip(reply["score"]["notes"], reply["agreement"]["played"], strict=True):
         glyph["level"] = graded["level"]
+    missed = [
+        note
+        for note, graded in zip(written, reply["agreement"]["written"], strict=True)
+        if graded["level"] == "missing"
+    ]
+    reply["missed"] = score.engrave(missed, beat_seconds=beat, clef=clef, sharps=sharps)
+    for glyph in reply["missed"]["notes"]:
+        glyph["level"] = "missing"
 
 
 GRADERS = {"chords": _grade_chords, "melody": _grade_melody}
@@ -253,9 +259,13 @@ GRADERS = {"chords": _grade_chords, "melody": _grade_melody}
 def truth_reply(grid: examples.Grid) -> dict[str, Any]:
     """A grid's ground truth, with the written melody already engraved."""
     truth = examples.ground_truth(grid)
+    # Follow the chart's own spelling, as the chord lane does.
+    truth["sharps"] = score.spell_with_sharps([e["short"] for e in truth["events"]])
     written = _notes(truth["melody"])
     truth["melody_score"] = (
-        score.engrave(written, beat_seconds=truth["beat_seconds"]) if written else None
+        score.engrave(written, beat_seconds=truth["beat_seconds"], sharps=truth["sharps"])
+        if written
+        else None
     )
     return truth
 

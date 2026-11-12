@@ -341,9 +341,14 @@ svg .note .sounded { fill: currentColor; opacity: 0.22; }
 svg .note:hover .sounded { opacity: 0.5; }
 svg .note:hover .head { stroke: var(--accent); }
 
+/* A written note nothing was transcribed for: an outline where it belongs. */
+svg .note.missing .head { fill: none; stroke-dasharray: 2 2; }
+svg .note.missing .sounded { opacity: 0.1; }
+
 .swatch.octave { background: var(--majmin); }
 .swatch.extra { background: var(--muted); }
+.swatch.missing { background: var(--root); }
 
 @media (forced-colors: active) {
-  .swatch.octave, .swatch.extra { forced-color-adjust: none; }
+  .swatch.octave, .swatch.extra, .swatch.missing { forced-color-adjust: none; }
 }

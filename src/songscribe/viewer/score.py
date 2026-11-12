@@ -1,23 +1,11 @@
 """Staff notation for a melody: which line a note sits on, and how it is written.
 
-Pure Python and pure music theory. This module decides a note's *notation* --
-clef, staff position, accidental, note value -- and leaves every pixel to the
-page that draws it. That split is what makes a score testable without a
-browser, the way :mod:`songscribe.viewer.agreement` is testable without audio.
-
-Positions are in **staff steps**: diatonic steps above the staff's bottom line,
-so 0 is the bottom line, 1 the space above it, and 8 the top line. One step is
-half a staff space, which is the only vertical unit a renderer needs.
-
-The staff is drawn on the recording's own seconds-from-start clock, not reflowed
-into measures of equal width: a note's x is its onset, so the score stays lined
-up with the audio, the chord lanes and the playhead. It is proportional
-notation, which is what a viewer with a playhead needs; engraved sheet music
-would have to break that alignment to justify its bars.
-
-No key signature is printed, so every accidental is written next to its note.
-``sharps`` picks the spelling, which also picks the line: C#4 and Db4 are the
-same pitch on different lines, as they are on paper.
+Decides clef, staff position, accidental and note value, leaving every pixel to
+the page. Positions are in **staff steps**: diatonic steps above the staff's
+bottom line, so 0 is that line and 8 the top one. A note's x is its onset in
+seconds, so the staff is proportional, not reflowed into bars of equal width.
+No key signature is printed, so ``sharps`` picks the accidental and the line
+with it: C#4 and Db4 sit a step apart.
 """
 
 from __future__ import annotations
@@ -102,6 +90,15 @@ NOTE_HEADS = {
 def spelling(sharps: bool = True) -> tuple[tuple[int, str], ...]:
     """The pitch-class table ``sharps`` selects."""
     return SHARP_SPELLING if sharps else FLAT_SPELLING
+
+
+def spell_with_sharps(labels: Sequence[str]) -> bool:
+    """Whether a staff should use sharps, following the chart's chord roots.
+
+    A chart in F prints ``Bb``, and its melody should not print ``A#`` beside
+    it. One flat root decides it: a key is spelled one way throughout.
+    """
+    return not any(label[1:2] == "b" for label in labels)
 
 
 def pitch_name(pitch: int, sharps: bool = True) -> str:

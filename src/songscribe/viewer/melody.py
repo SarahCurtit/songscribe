@@ -4,27 +4,16 @@ Every note of the estimate gets one level against the written line, and every
 written note gets one against the estimate:
 
 ``exact``    same MIDI pitch
-``octave``   same pitch class, wrong octave -- a pitch tracker's commonest
-             error, and the one a staff makes obvious, so it is named rather
-             than lumped in with a wrong note
+``octave``   same pitch class, wrong octave
 ``miss``     a different pitch class
 ``extra``    (estimate only) nothing was written here
 ``missing``  (written only) nothing was transcribed here
 
-Two notes are compared when one's **midpoint** falls inside the other, rather
-than on any overlap: boundaries from a segmenter jitter, and a 20 ms clip of
-the next note is not a reading of this one. The rule runs both ways, and does
-not pair notes off one-to-one: a long written note split into three short ones
-is three exact notes and no extras, because every fragment really is the note
-that was written. Over-segmentation gives itself away in ``played_notes``
-against ``written_notes``, and on the staff, rather than in ``extra`` -- which
-asks the narrower question of whether anything was written there at all.
-
-Totals count notes, not seconds -- a melody is a sequence of events, and one
-long note is not worth four short ones when the question is whether the line
-was transcribed. This is a viewer's at-a-glance score, not the evaluation
-metric: :mod:`songscribe.eval.melody` scores in bars and beats, against a
-chart, which is what a measurement needs and what a viewer cannot assume.
+Two notes are compared when one's **midpoint** falls inside the other, not on
+any overlap, since a segmenter's boundaries jitter. Notes are not paired off
+one-to-one, so a held note split into three is three exact notes; the note
+counts are what show that. Totals count notes rather than seconds.
+:mod:`songscribe.eval.melody` is what measures a backend.
 """
 
 from __future__ import annotations
@@ -81,13 +70,10 @@ def _graded(
 def compare(written: Sequence[NoteEvent], played: Sequence[NoteEvent]) -> dict[str, Any]:
     """Grade ``played`` against ``written``, both ways round.
 
-    Returns ``played`` and ``written`` -- each note with its ``level``, for
-    colouring the heads on the staff -- and ``totals``, as fractions of the
-    written notes: ``exact``, ``octave`` (exact *or* an octave out, so it reads
-    as "right note, any octave") and ``found`` (anything transcribed there at
-    all). ``extra`` is a count of played notes nothing was written for, and is
-    ``None`` for every total when nothing was written, since there is then no
-    denominator rather than a score of zero.
+    Returns each note with its ``level``, and ``totals`` as fractions of the
+    written notes: ``exact``, ``octave`` (exact or an octave out) and ``found``
+    (anything transcribed there). ``extra`` counts played notes nothing was
+    written for. The fractions are ``None`` when nothing was written.
     """
     graded_played = _graded(played, written, "extra")
     graded_written = _graded(written, played, "missing")

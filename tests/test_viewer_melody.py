@@ -277,3 +277,18 @@ def test_compare_with_nothing_written_has_no_denominator() -> None:
     assert totals["extra"] == 1
     assert totals["written_notes"] == 0
     assert totals["played_notes"] == 1
+
+
+@pytest.mark.parametrize(
+    ("labels", "sharps"),
+    [
+        ([], True),
+        (["C", "Am", "G7"], True),
+        (["F", "Bb", "C7"], False),  # a chart in F
+        (["C#m", "F#"], True),
+        (["Ebm7", "Ab"], False),
+        (["N"], True),  # no chord has no root to follow
+    ],
+)
+def test_spell_with_sharps_follows_the_chart(labels: list[str], sharps: bool) -> None:
+    assert score.spell_with_sharps(labels) is sharps

@@ -176,6 +176,7 @@ nor the default madmom model can emit a seventh, so each guesses the triad every
 Manifests hold track identifiers and relative paths — **no audio, no annotation text** — so
 the harness is shareable while the corpus stays yours. [EVALUATION.md](EVALUATION.md) covers
 setup and how the metrics work.
+
 ## Compare backends by ear and eye
 
 `songscribe-viewer` is a small local web app for recordings: pick one, play it, and watch the

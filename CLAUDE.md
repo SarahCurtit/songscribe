@@ -340,12 +340,12 @@ tested on invented contours — which is most of `tests/test_melody.py`.
 To look at a line rather than score it, `songscribe-viewer` draws it on a staff on the
 recording's own timeline. `--audio demo.wav` picks up the `.notes` beside it; ticking a melody
 backend puts its transcription on a second staff below, with each head coloured by whether it
-is the written note, that note an octave out, or a different note. Octave errors get a colour
-of their own because they are the mistake a pitch tracker makes most, and a staff is where they
-are obvious at a glance. The notation decisions live in `viewer/score.py` and the page only
-draws them, so they are testable without a browser — `tests/test_viewer_melody.py` is all
-invented notes. The viewer's note agreement is an at-a-glance score, not the metric:
-`eval/melody.py` is what measures a backend.
+is the written note, that note an octave out, or a different note. A written note the backend
+found nothing for is drawn as an outline where it belongs. Octave errors get a colour of their
+own because they are the mistake a pitch tracker makes most, and a staff is where they show.
+The notation decisions live in `viewer/score.py` and the page only draws them, so they are
+testable without a browser — `tests/test_viewer_melody.py` is all invented notes. The viewer's
+note agreement is a quick read, not the metric: `eval/melody.py` is what measures a backend.
 
 Like `placement_score`, it is **not** wired into `songscribe-eval`: no corpus here has melody
 annotations. It needs a time-aligned written melody for one recording, which means a manifest

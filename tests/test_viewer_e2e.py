@@ -41,6 +41,8 @@ OCTAVE_BAR, WRONG_BAR = 1, 2
 SAME_LETTER_BAR = OCTAVE_BAR + len(MELODY_PITCHES)
 # An octave is seven staff steps, at four px a step (STAFF.step in app.js).
 OCTAVE_PX = 28
+# The bar the sparse tracker finds nothing in.
+MISSED_BAR = 4
 
 
 def grid_payload() -> dict:
@@ -89,6 +91,11 @@ def fake_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
     return notes
 
 
+def sparse_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+    """The written line with one bar never found at all."""
+    return [n for n in written_melody() if int(n.start / BAR_SECONDS) != MISSED_BAR]
+
+
 @pytest.fixture(scope="module")
 def browser():
     with sync_api.sync_playwright() as playwright:
@@ -131,8 +138,9 @@ def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]:
         monkeypatch.setitem(chords.BACKENDS, name, backend)
         monkeypatch.setitem(chords.BACKEND_SAMPLE_RATES, name, 8_000)
-    monkeypatch.setitem(melody_stage.BACKENDS, "fakeline", fake_line)
-    monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "fakeline", 8_000)
+    for name, backend in [("fakeline", fake_line), ("sparseline", sparse_line)]:
+        monkeypatch.setitem(melody_stage.BACKENDS, name, backend)
+        monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, name, 8_000)
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
 
     viewer = Viewer(("127.0.0.1", 0), examples.discover([root]), tmp_path / "cache")
@@ -366,3 +374,19 @@ def test_the_playhead_readout_names_the_sounding_note(page) -> None:
     # At time 0 the first written note is sounding, and the model agrees.
     assert chords_shown[names.index("Melody (written)")] == "C5"
     assert chords_shown[names.index("fakeline")] == "C5"
+
+
+def test_a_note_the_model_missed_is_outlined_where_it_belongs(page) -> None:
+    page.check(".backend[data-backend='sparseline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.missing').length > 0")
+
+    missing = page.locator("#svg g.note.missing")
+    assert missing.count() == 1
+    # Drawn on the model's staff, not the written one, so it is clear whose gap
+    # it is; and hollow, since nothing was heard there.
+    assert page.locator("#svg g.staff:last-of-type g.note.missing").count() == 1
+    assert page.eval_on_selector(
+        "#svg g.note.missing ellipse.head", "el => getComputedStyle(el).fill"
+    ) == "none"
+    heads = page.locator("#svg g.staff:last-of-type g.note").count()
+    assert heads == int(TRACK_SECONDS / BAR_SECONDS), "the found notes plus the missed one"

@@ -20,7 +20,7 @@ from songscribe import chords, lab
 from songscribe import melody as melody_stage
 from songscribe.types import BeatEvent, ChordEvent, NoteEvent
 from songscribe.viewer import agreement, examples
-from songscribe.viewer.server import Viewer
+from songscribe.viewer.server import Viewer, truth_reply
 
 SAMPLE_RATE = 8_000
 
@@ -482,7 +482,7 @@ def test_a_beats_sidecar_supplies_the_bar_grid_and_the_beat(tmp_path: Path) -> N
 
     (grid,) = examples.discover(audio=[tmp_path / "lantern-reel.wav"]).values()
     truth = examples.ground_truth(grid)
-    assert truth["bars"] == [0.0, 2.0]
+    assert truth["bars"] == [0.0, 2.0, 4.0]
     assert truth["beat_seconds"] == pytest.approx(0.5)
     assert truth["events"] == []
     assert truth["has_chords"] is False
@@ -511,3 +511,44 @@ def test_a_grid_is_discovered_by_its_audio_alone(root: Path, tmp_path: Path) -> 
     assert "0/lantern-reel/7" in grids
     assert grids["0/lantern-reel/7"].song == "lantern-reel"
     assert examples.summary(grids["0/lantern-reel/7"])["has_chords"] is False
+
+
+def test_a_note_the_backend_missed_is_engraved_in_its_place(melody_server: str) -> None:
+    def sparse(audio, sample_rate, **kwargs) -> list[NoteEvent]:
+        return [WRITTEN[0], WRITTEN[2]]  # the middle note is never found
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setitem(melody_stage.BACKENDS, "sparse", sparse)
+        patch.setitem(melody_stage.BACKEND_SAMPLE_RATES, "sparse", SAMPLE_RATE)
+        url = f"{melody_server}/api/grids/0/paper-lantern-waltz/2/predict/melody?backend=sparse"
+        reply = post_json(url)[1]
+        deadline = time.monotonic() + 5
+        while reply["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.05)
+            reply = get_json(url)
+
+    assert reply["status"] == "done"
+    assert [n["level"] for n in reply["agreement"]["written"]] == ["exact", "missing", "exact"]
+    (missed,) = reply["missed"]["notes"]
+    assert (missed["name"], missed["level"], missed["step"]) == ("D5", "missing", 6)
+
+
+def test_a_flat_chart_spells_the_staff_with_flats(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The chord lane respells to the chart, so the staff must not print A#."""
+    song = root / "paper-lantern-waltz"
+    flat = {
+        "song": "Harbour Lights Waltz",
+        "events": [{"start": 0.0, "end": 2.0, "chord": "Bb:maj"}],
+        "annotation": {"bars": 1, "bar_seconds": 2.0, "start_seconds": 0.0, "bpm_nominal": 120.0},
+    }
+    write_grid(song, 9, flat)
+    # A# and Bb are one pitch; the chart in Bb decides which is printed.
+    lab.write_notes(song / "grid9_melody.notes", [NoteEvent(0.0, 1.0, 70)])
+
+    grids = examples.discover([root])
+    truth = truth_reply(grids["0/paper-lantern-waltz/9"])
+    assert truth["sharps"] is False
+    (note,) = truth["melody_score"]["notes"]
+    assert (note["name"], note["accidental"]) == ("Bb4", "b")

@@ -13,8 +13,8 @@ const H = { ruler: 30, truth: 38, alt: 28, pred: 34, strip: 8, gap: 6 };
 // measures a note's position in, so one multiplication places a note head.
 const STAFF = { step: 4, pad: 8, headRx: 5, headRy: 3.6, stem: 26, flagGap: 5 };
 const STAFF_TOP_LINE = 8;
-// Clear space above and below the five lines, for notes on ledger lines: eight
-// steps is an octave either way, which is as far as an octave error goes.
+// Clear space above and below the five lines, for notes on ledger lines. An
+// octave is seven steps, so eight leaves a little past an octave error.
 const STAFF_HEIGHT = (2 * STAFF.pad + STAFF_TOP_LINE) * STAFF.step;
 // Below this many px per bar, bar numbers would collide; show every Nth.
 const MIN_BAR_LABEL_PX = 22;
@@ -281,7 +281,8 @@ function duration() {
 function staffData(lane) {
   if (lane.source === "written") return { score: state.truth.melody_score };
   const reply = state.predictions.melody[lane.backend];
-  return reply?.status === "done" ? { score: reply.score, agreement: reply.agreement } : null;
+  if (reply?.status !== "done") return null;
+  return { score: reply.score, agreement: reply.agreement, missed: reply.missed };
 }
 
 function lanes() {
@@ -362,7 +363,7 @@ function render() {
     } else if (lane.kind === "staff") {
       const data = staffData(lane);
       if (data?.score) {
-        drawStaff(data.score, y, px, width);
+        drawStaff(data, y, px, width);
         div.append(staffNote(data));
       }
     }
@@ -510,13 +511,15 @@ function stepY(step) {
   return (STAFF.pad + STAFF_TOP_LINE - step) * STAFF.step;
 }
 
-function drawStaff(score, laneY, px, width) {
+function drawStaff(data, laneY, px, width) {
   const staff = el("g", { class: "staff" });
   for (let step = 0; step <= STAFF_TOP_LINE; step += 2) {
     const y = laneY + stepY(step);
     el("line", { class: "staffline", x1: 0, x2: width, y1: y, y2: y }, staff);
   }
-  for (const note of score.notes) drawNote(note, laneY, px, staff);
+  for (const note of data.score.notes) drawNote(note, laneY, px, staff);
+  // Written notes this backend found nothing for, drawn where they belong.
+  for (const note of data.missed?.notes ?? []) drawNote(note, laneY, px, staff);
 }
 
 function drawNote(note, laneY, px, parent) {

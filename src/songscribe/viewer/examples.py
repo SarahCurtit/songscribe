@@ -1,11 +1,8 @@
 """Find recordings to view and load whatever is annotated about them.
 
-A grid is a recording plus any annotation sitting beside it. Audio is the only
-required part, so a recording with a melody and no chart is viewable, and so is
-one with nothing annotated at all -- which is the case a model is run on.
-
-An example directory holds one folder per song and one file per grid per kind
-of data, sharing a ``gridN_`` prefix::
+A grid is a recording plus any annotation sitting beside it; audio is the only
+required part. An example directory holds one folder per song and one file per
+grid per kind of data, sharing a ``gridN_`` prefix::
 
     <root>/<song>/gridN_audio.wav        the recording            (required)
     <root>/<song>/gridN_chords.json      the chart it was read from
@@ -13,14 +10,13 @@ of data, sharing a ``gridN_`` prefix::
     <root>/<song>/gridN_beats.beats      the bar grid
     <root>/<song>/gridN_screenshot.png   a picture of the chart
 
-The chart is timed Harte events in seconds from the start of the WAV. An
-optional ``annotation`` object carries bar-indexed metadata -- sections, and
-the alternate chords a chart prints above a bar -- plus the bar grid
-(``start_seconds``, ``bar_seconds``) needed to put those on the same clock.
+The chart is timed Harte events in seconds from the start of the WAV. Its
+optional ``annotation`` object carries bar-indexed sections and the alternate
+chords a chart prints above a bar, plus the bar grid (``start_seconds``,
+``bar_seconds``) that puts them on the same clock.
 
-A single audio file passed with ``--audio`` is a grid too, and picks up the
-project's own sidecar formats by stem: ``song.lab``, ``song.notes`` and
-``song.beats``, which is exactly what ``songscribe-demo --melody`` writes.
+A single file passed with ``--audio`` is a grid too, picking up ``song.lab``,
+``song.notes`` and ``song.beats`` by stem.
 """
 
 from __future__ import annotations
@@ -172,7 +168,7 @@ def ground_truth(grid: Grid) -> dict[str, Any]:
     bars, sections, alternates = _bar_grid(annotation, events)
     beats = _beats(grid)
     if not bars and beats:
-        bars = [b.time for b in beats if b.position == 1]
+        bars = _bars_from_beats(beats)
     melody = [_note(n) for n in (lab.read_notes(grid.notes) if grid.notes else [])]
     ends = [e["end"] for e in events] + [n["end"] for n in melody]
 
@@ -221,6 +217,19 @@ def _annotation(grid: Grid) -> dict[str, Any]:
 
 def _beats(grid: Grid) -> list[Any]:
     return lab.read_beats(grid.beats) if grid.beats else []
+
+
+def _bars_from_beats(beats: list[Any]) -> list[float]:
+    """Downbeats, plus the boundary that closes the last bar.
+
+    One more boundary than there are bars, as a chart's annotation gives: the
+    page reads the last entry as a closing line rather than a bar of its own,
+    so without it the final bar goes unnumbered.
+    """
+    downbeats = [b.time for b in beats if b.position == 1]
+    if len(downbeats) > 1:
+        downbeats.append(2 * downbeats[-1] - downbeats[-2])
+    return downbeats
 
 
 def _bar_grid(
