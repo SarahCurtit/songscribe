@@ -203,8 +203,15 @@ annotated still plays, and a model still runs on it.
 
 The staff is **proportional** rather than engraved into bars of equal width — a note's x is its
 onset — so it stays lined up with the audio, the chord lanes and the playhead. Note values come
-from the beat, taken from a stated tempo, a `.beats` file or the bar length; when nothing
-measures the beat the lane says *rhythm unknown* instead of printing a rhythm nothing supports.
+from the beat, taken from a stated tempo, a `.beats` file, the bar length, or a beat tracker;
+with none of those the lane says *rhythm unknown* instead of printing a rhythm nothing supports.
+
+**Bars from** picks a beat tracker for a recording that has no bar grid of its own. It runs the
+beat stage, counts the beats out under the ruler, draws its bar lines, and gives every staff the
+beat its note values are measured against — so an unannotated recording goes from stemless heads
+to a written rhythm. The lane reports the tempo and metre it found, and how many bars came out
+of step with the rest. A chart or a `.beats` file still wins: those are references, and a model
+does not overrule one.
 Where a melody is written too, each head is coloured by whether it is the written note, that
 note an octave out, or a different note.
 

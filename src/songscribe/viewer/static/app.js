@@ -8,7 +8,7 @@ const POLL_MS = 1000;
 const STAGES = ["chords", "melody"];
 // Lane heights in px. The HTML label column is built from the same list, so
 // the labels always line up with the SVG lanes.
-const H = { ruler: 30, truth: 38, alt: 28, pred: 34, strip: 8, gap: 6 };
+const H = { ruler: 30, truth: 38, alt: 28, pred: 34, strip: 8, gap: 6, beats: 30 };
 // Staff geometry. `step` is half a staff space, which is what the server
 // measures a note's position in, so one multiplication places a note head.
 const STAFF = { step: 4, pad: 8, headRx: 5, headRy: 3.6, stem: 26, flagGap: 5 };
@@ -16,6 +16,10 @@ const STAFF_TOP_LINE = 8;
 const BOTTOM_LINE_STEP = 0;
 // Below this many px per bar, bar numbers would collide; show every Nth.
 const MIN_BAR_LABEL_PX = 22;
+// Beats drawn closer together than this are a smear, so they are left out.
+const MIN_BEAT_LINE_PX = 7;
+// And they are only counted out when the numbers have room to be read.
+const MIN_BEAT_LABEL_PX = 16;
 // Follow mode keeps the playhead between these fractions of the visible width.
 const FOLLOW_LEFT = 0.15;
 const FOLLOW_RIGHT = 0.85;
@@ -94,7 +98,9 @@ const state = {
   truth: null,
   // Per stage: the backends whose lane is shown, and their latest replies.
   selected: { chords: new Set(), melody: new Set() },
-  predictions: { chords: {}, melody: {} },
+  predictions: { chords: {}, melody: {}, beats: {} },
+  // A recording has one bar grid, so the beat tracker is picked, not ticked.
+  beatSource: "",
   pxPerSec: Number($("zoom").value),
   playhead: null,
   clefs: [], // pinned to the left edge, so they survive scrolling
@@ -124,6 +130,7 @@ function readHash() {
     chords: (params.get("models") || "").split(",").filter(Boolean),
     melody: (params.get("melody") || "").split(",").filter(Boolean),
     melodyOnly: params.get("melodyonly") === "1",
+    beatSource: params.get("beats") || "",
   };
 }
 
@@ -133,6 +140,7 @@ function writeHash() {
   if (state.selected.chords.size) params.set("models", [...state.selected.chords].join(","));
   if (state.selected.melody.size) params.set("melody", [...state.selected.melody].join(","));
   if ($("melody-only").checked) params.set("melodyonly", "1");
+  if (state.beatSource) params.set("beats", state.beatSource);
   history.replaceState(null, "", "#" + params.toString());
 }
 
@@ -153,6 +161,7 @@ async function init() {
   }
 
   $("melody-only").checked = wanted.melodyOnly;
+  buildBeatSource(wanted.beatSource);
 
   const select = $("grid-select");
   for (const grid of state.grids) {
@@ -177,7 +186,7 @@ async function loadGrid(id) {
   const token = ++state.loadToken;
   state.gridId = id;
   state.truth = null;
-  state.predictions = { chords: {}, melody: {} };
+  state.predictions = { chords: {}, melody: {}, beats: {} };
   writeHash();
   hideError();
 
@@ -188,16 +197,67 @@ async function loadGrid(id) {
   if (grid.has_screenshot) $("screenshot").src = `/media/${path}/screenshot`;
 
   try {
-    const truth = await api(`/api/grids/${path}`);
+    const truth = await api(`/api/grids/${path}${beatsQuery("?")}`);
     if (token !== state.loadToken) return;
     state.truth = truth;
   } catch (error) {
     return showError(`Could not load the ground truth: ${error.message}`);
   }
   render();
+  if (state.beatSource) requestPrediction("beats", state.beatSource, false);
   for (const stage of STAGES) {
     for (const backend of state.selected[stage]) requestPrediction(stage, backend, false);
   }
+}
+
+// The chosen tracker travels with every request that depends on a bar grid:
+// the ground truth, for its bar lines, and a melody, for its note values.
+function beatsQuery(lead) {
+  return state.beatSource ? `${lead}beats=${encodeURIComponent(state.beatSource)}` : "";
+}
+
+// Re-read the ground truth, which the tracker's grid may now fill in.
+async function reloadTruth() {
+  if (!state.gridId) return;
+  const token = state.loadToken;
+  try {
+    const truth = await api(`/api/grids/${gridPath(state.gridId)}${beatsQuery("?")}`);
+    if (token === state.loadToken) state.truth = truth;
+  } catch (error) {
+    showError(`Could not load the ground truth: ${error.message}`);
+  }
+}
+
+function buildBeatSource(wanted) {
+  const select = $("beat-source");
+  for (const [value, text] of [["", "nothing"], ...state.backends.beats.map((b) => [b, b])]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    select.append(option);
+  }
+  state.beatSource = state.backends.beats.includes(wanted) ? wanted : "";
+  select.value = state.beatSource;
+  select.addEventListener("change", () => chooseBeatSource(select.value));
+}
+
+async function chooseBeatSource(name) {
+  state.beatSource = name;
+  writeHash();
+  render();
+  // The tracker has to have run before its bars mean anything, and the note
+  // values on every staff are measured against the beat it finds.
+  if (name) await requestPrediction("beats", name);
+  await reloadTruth();
+  for (const backend of state.selected.melody) {
+    await requestPrediction("melody", backend, false);
+  }
+  render();
+}
+
+// Whether a run is still worth polling: the bar source is picked, not ticked.
+function stillWanted(stage, backend) {
+  return stage === "beats" ? state.beatSource === backend : state.selected[stage].has(backend);
 }
 
 // Fetch a backend's prediction; with `run`, start it if nothing is cached.
@@ -205,12 +265,12 @@ async function requestPrediction(stage, backend, run = true) {
   const token = state.loadToken;
   const url =
     `/api/grids/${gridPath(state.gridId)}/predict/${stage}` +
-    `?backend=${encodeURIComponent(backend)}`;
+    `?backend=${encodeURIComponent(backend)}${beatsQuery("&")}`;
   try {
     let reply = await api(url, run ? { method: "POST" } : undefined);
     if (!run && reply.status === "absent") reply = await api(url, { method: "POST" });
     while (reply.status === "running") {
-      if (token !== state.loadToken || !state.selected[stage].has(backend)) return;
+      if (token !== state.loadToken || !stillWanted(stage, backend)) return;
       state.predictions[stage][backend] = reply;
       updateBackendStatus();
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -328,6 +388,11 @@ function duration() {
   return (t && (t.audio_seconds || t.annotated_end)) || 0;
 }
 
+// The chosen tracker's latest reply, if one has been asked for.
+function beatReply() {
+  return state.beatSource ? state.predictions.beats[state.beatSource] : null;
+}
+
 // The reply for a staff lane, and the engraved score it should draw.
 function staffData(lane) {
   if (lane.source === "written") return { score: state.truth.melody_score };
@@ -342,6 +407,9 @@ function lanes() {
   // way, so what is left reads as a score.
   const staffOnly = $("melody-only").checked;
   const list = [{ kind: "ruler", height: H.ruler, label: "" }];
+  if (beatReply()?.status === "done") {
+    list.push({ kind: "beats", height: H.beats, label: state.beatSource });
+  }
   if (!staffOnly && t?.events.length) {
     list.push({ kind: "truth", height: H.truth, label: "Ground truth" });
   }
@@ -418,6 +486,9 @@ function render() {
         drawAgreement(reply.agreement.segments, y + H.pred, px);
         div.append(chordScore(reply.agreement.totals));
       }
+    } else if (lane.kind === "beats") {
+      drawBeats(t, y, px);
+      div.append(beatNote(beatReply().grid));
     } else if (lane.kind === "staff") {
       const data = staffData(lane);
       if (data?.score) {
@@ -478,6 +549,14 @@ function staffNote(data) {
 }
 
 function drawGrid(t, px, height) {
+  // Beats behind the bar lines: the pulse the note values are measured
+  // against, drawn faintly so the bars still read as the stronger grid.
+  if (beatSpacing(t) * px >= MIN_BEAT_LINE_PX) {
+    for (const beat of t.beats) {
+      const x = beat.time * px;
+      el("line", { class: "beatline", x1: x, x2: x, y1: H.ruler, y2: height });
+    }
+  }
   const sectionStarts = new Set(t.sections.map((s) => s.start));
   const barWidth = t.bars.length > 1 ? (t.bars[1] - t.bars[0]) * px : Infinity;
   const every = Math.max(1, Math.ceil(MIN_BAR_LABEL_PX / barWidth));
@@ -507,6 +586,50 @@ function drawGrid(t, px, height) {
       el("line", { class: "barline", x1: s * px, x2: s * px, y1: H.ruler - 8, y2: H.ruler });
     }
   }
+}
+
+// How far apart the beats fall, in seconds, as the median of the first few.
+function beatSpacing(t) {
+  if (t.beats.length < 2) return Infinity;
+  const gaps = t.beats.slice(1, 9).map((beat, index) => beat.time - t.beats[index].time);
+  return gaps.sort((a, b) => a - b)[gaps.length >> 1];
+}
+
+// One tick a beat, numbered within the bar: the rhythm the bars are counted in.
+function drawBeats(t, laneY, px) {
+  const room = beatSpacing(t) * px;
+  for (const beat of t.beats) {
+    const x = beat.time * px;
+    const downbeat = beat.position === 1;
+    el("line", {
+      class: downbeat ? "beat-tick downbeat" : "beat-tick",
+      x1: x,
+      x2: x,
+      y1: laneY + (downbeat ? 2 : 7),
+      y2: laneY + H.beats - 4,
+    });
+    if (room >= MIN_BEAT_LABEL_PX) {
+      const count = el("text", { class: "beat-count", x: x + 3, y: laneY + H.beats - 6 });
+      count.textContent = beat.position;
+    }
+  }
+}
+
+// What the tracker made of the recording: its tempo, its metre, and any bar
+// it measured as out of step with the rest.
+function beatNote(grid) {
+  const note = document.createElement("span");
+  note.className = "score";
+  const parts = [];
+  if (grid.tempo) parts.push(`${Math.round(grid.tempo)} bpm`);
+  parts.push(`${grid.beats_per_bar}/4`);
+  if (!grid.plausible) parts.push("implausible");
+  if (grid.unreliable.length) parts.push(`${grid.unreliable.length} off`);
+  note.textContent = parts.join(" · ");
+  note.title =
+    "The tracked tempo and metre, and the bars whose length is out of step" +
+    " with the rest — where the tracker lost the beat, or the band moved";
+  return note;
 }
 
 function drawBlocks(events, y, height, px, labelOf, variant = "") {

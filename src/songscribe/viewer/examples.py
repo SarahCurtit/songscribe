@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -154,19 +155,22 @@ def summary(grid: Grid) -> dict[str, Any]:
     }
 
 
-def ground_truth(grid: Grid) -> dict[str, Any]:
+def ground_truth(grid: Grid, tracked: Sequence[Any] = ()) -> dict[str, Any]:
     """Everything annotated about a grid, on the recording's own clock.
 
     Each chord event keeps its Harte ``label`` and gains a ``short`` one in the
     shorthand chord backends emit, so the two timelines can be compared label
     for label. ``melody`` is the written line, and ``beat_seconds`` the beat a
-    note value is measured against -- from the stated tempo, the tracked beats
-    or the bar length, in that order, and ``None`` when nothing says.
+    note value is measured against.
+
+    ``tracked`` is a beat tracker's own timeline, used only where nothing is
+    annotated: a chart and a ``.beats`` file are both references, and a model
+    does not get to overrule one.
     """
     events = _chord_events(grid)
     annotation = _annotation(grid)
     bars, sections, alternates = _bar_grid(annotation, events)
-    beats = _beats(grid)
+    beats = _beats(grid) or list(tracked)
     if not bars and beats:
         bars = _bars_from_beats(beats)
     melody = [_note(n) for n in (lab.read_notes(grid.notes) if grid.notes else [])]
@@ -179,6 +183,8 @@ def ground_truth(grid: Grid) -> dict[str, Any]:
         "sections": sections,
         "alternates": alternates,
         "melody": melody,
+        "beats": [{"time": b.time, "position": b.position} for b in beats],
+        "beats_per_bar": max((b.position for b in beats), default=0),
         "beat_seconds": _beat_seconds(annotation, bars, beats),
         "annotated_end": max(ends, default=0.0),
         "audio_seconds": annotation.get("audio_seconds"),

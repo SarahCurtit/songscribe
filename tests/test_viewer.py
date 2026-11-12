@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from songscribe import beats as beats_stage
 from songscribe import chords, lab
 from songscribe import melody as melody_stage
 from songscribe.types import BeatEvent, ChordEvent, NoteEvent
@@ -625,3 +626,112 @@ def test_a_missed_note_is_engraved_where_it_sounds(melody_server: str) -> None:
     assert missed["octaves"] == []
     assert all(n["octave"] == 0 for n in missed["notes"])
     assert [n["name"] for n in missed["notes"]] == ["C5", "D5", "E5"]
+
+
+# --------------------------------------------------------------------------- #
+# Beats, and the bars they give a recording
+# --------------------------------------------------------------------------- #
+
+
+def fake_beats(audio, sample_rate, **kwargs) -> list[BeatEvent]:
+    """Two bars of 4/4 at 120 bpm, from the top of the recording."""
+    return [BeatEvent(time=index * 0.5, position=index % 4 + 1) for index in range(8)]
+
+
+@pytest.fixture
+def beat_server(root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
+    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", SAMPLE_RATE)
+    monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
+    yield from _serve(examples.discover([root]), tmp_path / "cache")
+
+
+def run_beats(base: str, grid_id: str, backend: str = "fakebeat") -> dict:
+    url = f"{base}/api/grids/{grid_id}/predict/beats?backend={backend}"
+    reply = post_json(url)[1]
+    deadline = time.monotonic() + 5
+    while reply["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        reply = get_json(url)
+    return reply
+
+
+def test_beat_backends_are_listed_under_their_own_stage(beat_server: str) -> None:
+    backends = get_json(f"{beat_server}/api/backends")
+    assert "fakebeat" in backends["beats"]
+    assert "fakebeat" not in backends["melody"]
+
+
+def test_a_tracked_grid_reports_its_tempo_and_metre(beat_server: str) -> None:
+    reply = run_beats(beat_server, "0/quiet-harbour/1")
+    assert reply["status"] == "done"
+
+    grid = reply["grid"]
+    assert grid["beats_per_bar"] == 4
+    assert grid["bar_length"] == pytest.approx(2.0)
+    assert grid["tempo"] == pytest.approx(120.0)
+    # Two downbeats delimit one bar; the second opens a bar never closed.
+    assert grid["bars"] == 1
+    assert grid["downbeats"] == pytest.approx([0.0, 2.0])
+    assert grid["plausible"] is True
+    assert grid["unreliable"] == []
+
+
+def test_a_tracked_grid_gives_an_unannotated_recording_its_bars(beat_server: str) -> None:
+    plain = get_json(f"{beat_server}/api/grids/0/quiet-harbour/1")
+    assert plain["bars"] == []
+    assert plain["beat_seconds"] is None
+
+    run_beats(beat_server, "0/quiet-harbour/1")
+    tracked = get_json(f"{beat_server}/api/grids/0/quiet-harbour/1?beats=fakebeat")
+    assert tracked["beat_seconds"] == pytest.approx(0.5)
+    assert tracked["beats_per_bar"] == 4
+    assert [b["position"] for b in tracked["beats"][:4]] == [1, 2, 3, 4]
+    # The downbeats, plus the line that closes the last bar.
+    assert tracked["bars"] == pytest.approx([0.0, 2.0, 4.0])
+
+
+def test_a_chart_outranks_a_tracker(beat_server: str) -> None:
+    """An annotation is a reference, and a model does not overrule one."""
+    run_beats(beat_server, "0/paper-lantern-waltz/2")
+    truth = get_json(f"{beat_server}/api/grids/0/paper-lantern-waltz/2?beats=fakebeat")
+    # 240 bpm from the chart, not the 120 the tracker found.
+    assert truth["beat_seconds"] == pytest.approx(0.25)
+    assert truth["bars"] == [0.5, 1.5, 2.5, 3.5]
+
+
+def test_a_tracker_that_has_not_run_yet_changes_nothing(beat_server: str) -> None:
+    """The reply says what is known now rather than waiting on the tracker."""
+    truth = get_json(f"{beat_server}/api/grids/0/quiet-harbour/1?beats=fakebeat")
+    assert truth["bars"] == []
+    assert truth["beats"] == []
+    assert truth["beat_seconds"] is None
+
+
+def test_an_unknown_bar_source_is_ignored(beat_server: str) -> None:
+    truth = get_json(f"{beat_server}/api/grids/0/quiet-harbour/1?beats=nope")
+    assert truth["bars"] == []
+
+
+def test_a_tracked_grid_gives_the_melody_its_note_values(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a beat there is no rhythm to write; with one there is."""
+    # Quarter, eighth, eighth at 120 bpm.
+    written = [NoteEvent(0.0, 0.5, 72), NoteEvent(0.5, 0.75, 74), NoteEvent(0.75, 1.0, 76)]
+    lab.write_notes(root / "quiet-harbour" / "grid1_melody.notes", written)
+
+    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
+    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", SAMPLE_RATE)
+    monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
+
+    for base in _serve(examples.discover([root]), tmp_path / "cache"):
+        without = get_json(f"{base}/api/grids/0/quiet-harbour/1")
+        assert [n["value"] for n in without["melody_score"]["notes"]] == [None, None, None]
+
+        run_beats(base, "0/quiet-harbour/1")
+        with_bars = get_json(f"{base}/api/grids/0/quiet-harbour/1?beats=fakebeat")
+        engraved = with_bars["melody_score"]["notes"]
+        assert [n["value"] for n in engraved] == ["quarter", "eighth", "eighth"]
+        assert all(n["stem"] for n in engraved)
+        break

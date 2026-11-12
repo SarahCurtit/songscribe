@@ -15,9 +15,10 @@ from pathlib import Path
 
 import pytest
 
+from songscribe import beats as beats_stage
 from songscribe import chords, lab
 from songscribe import melody as melody_stage
-from songscribe.types import ChordEvent, NoteEvent
+from songscribe.types import BeatEvent, ChordEvent, NoteEvent
 from songscribe.viewer import examples
 from songscribe.viewer.server import Viewer
 from tests.test_viewer import write_grid
@@ -47,6 +48,9 @@ MISSED_BAR = 4
 # voice looks: long enough to be a passage rather than a stray note.
 DROPPED_BARS = range(8, 13)
 DROPPED_BY = 24
+# Four beats to each two-second bar, which is the chart's own 120 bpm.
+BEATS_PER_BAR = 4
+BEAT_SECONDS = BAR_SECONDS / BEATS_PER_BAR
 
 
 def grid_payload() -> dict:
@@ -98,6 +102,15 @@ def fake_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
 def sparse_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
     """The written line with one bar never found at all."""
     return [n for n in written_melody() if int(n.start / BAR_SECONDS) != MISSED_BAR]
+
+
+def fake_beats(audio, sample_rate, **kwargs) -> list[BeatEvent]:
+    """A steady 4/4 across the whole track, as the chart is written."""
+    count = int(TRACK_SECONDS / BEAT_SECONDS)
+    return [
+        BeatEvent(time=index * BEAT_SECONDS, position=index % BEATS_PER_BAR + 1)
+        for index in range(count)
+    ]
 
 
 def dropped_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
@@ -161,6 +174,8 @@ def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]:
         monkeypatch.setitem(melody_stage.BACKENDS, name, backend)
         monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, name, 8_000)
+    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
+    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", 8_000)
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
 
     viewer = Viewer(("127.0.0.1", 0), examples.discover([root]), tmp_path / "cache")
@@ -515,3 +530,55 @@ def test_a_dropped_passage_is_written_in_under_a_bracket(page) -> None:
     )
     # Four staff steps is a space and a half: nothing has run away downwards.
     assert spread["lowest"] - spread["bottom"] < 6 * 4, spread
+
+
+# --------------------------------------------------------------------------- #
+# Bars and the beats under them
+# --------------------------------------------------------------------------- #
+
+
+def pick_bars(page, source: str = "fakebeat") -> None:
+    page.select_option("#beat-source", source)
+    page.wait_for_function("document.querySelectorAll('#svg line.beat-tick').length > 0")
+
+
+def test_no_bar_source_leaves_the_beats_alone(page) -> None:
+    assert page.locator("#beat-source").input_value() == ""
+    assert page.locator("#svg line.beat-tick").count() == 0
+    assert page.locator("#svg line.beatline").count() == 0
+
+
+def test_picking_a_bar_source_counts_the_beats_out(page) -> None:
+    pick_bars(page)
+    beats = int(TRACK_SECONDS / BEAT_SECONDS)
+
+    assert page.locator("#svg line.beat-tick").count() == beats
+    # One in four is a downbeat, and it is drawn taller.
+    assert page.locator("#svg line.beat-tick.downbeat").count() == beats // BEATS_PER_BAR
+    assert "beats=fakebeat" in page.evaluate("location.hash")
+
+
+def test_the_beats_are_drawn_behind_the_lanes(page) -> None:
+    zoom(page, 100)
+    pick_bars(page)
+    assert page.locator("#svg line.beatline").count() > 0
+
+    # Too close together to read, so they are left out rather than smeared.
+    zoom(page, 10)
+    assert page.locator("#svg line.beatline").count() == 0
+
+
+def test_the_lane_reports_the_tracked_tempo_and_metre(page) -> None:
+    pick_bars(page)
+    labels = page.locator("#lane-labels div").all_text_contents()
+    tracked = [text for text in labels if text.startswith("fakebeat")]
+    assert tracked, f"no beat lane in {labels}"
+    assert "120 bpm" in tracked[0]
+    assert "4/4" in tracked[0]
+
+
+def test_the_bar_source_survives_a_reload(page, base_url: str) -> None:
+    pick_bars(page)
+    page.goto(f"{base_url}{page.evaluate('location.hash')}")
+    page.wait_for_function("document.querySelectorAll('#svg line.beat-tick').length > 0")
+    assert page.locator("#beat-source").input_value() == "fakebeat"
