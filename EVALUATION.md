@@ -220,8 +220,8 @@ The manifest holds paths that follow your library, so it lives with the corpus r
 this repo, which commits none. This project's own are in the private data_extraction repo's
 `eval/`: one references-only per corpus, as downloaded, and an `-audio` pairing beside it that
 adds the audio path of each track a recording was found for. Every corpus there has one except
-Zweieck, whose record nobody has. A references-only manifest (no `audio` paths) works for
-`survey` and `score --estimates`; `score -c` needs the pairing.
+Zweieck, whose recordings are not on that machine yet. A references-only manifest (no `audio`
+paths) works for `survey` and `score --estimates`; `score -c` needs the pairing.
 
 One archive holds several artists, and `--include` takes one of them as its own corpus. That
 is how the per-artist manifests were built, and how to rebuild one:

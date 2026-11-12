@@ -175,7 +175,7 @@ paths out with `-c template --limit 5` first. See `EVALUATION.md`.
 corpus: on this machine they are all in the private data_extraction repo's `eval/` —
 `isophonics-beatles`, `-zweieck`, `-carole-king`, `jaah` and `backing-track`, references-only
 as downloaded, and all but `-zweieck` have an `-audio` pairing beside them that adds the audio
-path of every track a recording was found for. `score -c` runs straight off those pairings; the
+path of every track a recording was found for; Zweieck's recordings aren't there yet. `score -c` runs straight off those pairings; the
 references-only ones serve `survey` and `score --estimates`, and `score -c` on them scores
 nothing. Isophonics
 is one manifest per artist, built with `manifest --include "chordlab/<artist>"`, because it
