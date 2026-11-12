@@ -39,13 +39,14 @@ out/
 *.cho
 *.chopro
 
-# Evaluation: reference annotations and model estimates. The annotations are
-# other people's work under their own licences, and the estimates are derived
-# from audio -- neither belongs in the repo. Only references-only manifests
-# (relative paths, no content) are meant to be committed, so eval/*.json is not
-# ignored wholesale. eval/isophonics.json, the documented `--audio` build target,
-# carries paths into the user's own library, so it is ignored.
-eval/isophonics.json
+# Evaluation: manifests, reference annotations and model estimates. The
+# annotations are other people's work under their own licences, and the
+# estimates are derived from audio -- neither belongs in the repo. Manifests are
+# no longer committed here either: they name a corpus's own files, so they live
+# with the corpus (for this project, the private data_extraction repo's eval/),
+# and EVALUATION.md says how to build one. eval/ is where `manifest --output`
+# writes by habit, so it is ignored wholesale rather than by name.
+eval/
 *.lab
 annotations/
 estimates/

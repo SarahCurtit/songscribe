@@ -131,6 +131,10 @@ songscribe-eval score eval/isophonics.json -a ~/music --annotations data/isophon
     -c madmom --cache .eval-cache --per-track
 ```
 
+No manifest is committed in this repo: it names a corpus's own files, so it belongs with the
+corpus rather than with the code that reads it. `eval/` is gitignored and is the habitual place
+to write one; EVALUATION.md has the whole route.
+
 The manifest's paths are relative, so `score` needs the same two roots back. To stop
 repeating them, export the roots once from the repo root, as in EVALUATION.md step 3:
 `SONGSCRIBE_EVAL_ROOT=~/music` and `SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"`.

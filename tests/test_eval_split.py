@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from songscribe.eval import split
 
-EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
+#: No manifest is committed here: each lives with the corpus it names, which for this project
+#: is the private data_extraction repo's eval/. Point SONGSCRIBE_EVAL_MANIFESTS at them and the
+#: checks over the committed splits run; without it they skip, and the rest of the file — the
+#: split code itself, on invented ids — still runs, which is what CI needs.
+EVAL_DIR = Path(
+    os.environ.get("SONGSCRIBE_EVAL_MANIFESTS") or Path(__file__).resolve().parent.parent / "eval"
+)
+committed_only = pytest.mark.skipif(
+    not sorted(EVAL_DIR.glob("*.json")) if EVAL_DIR.is_dir() else True,
+    reason=f"no manifests at {EVAL_DIR} — set SONGSCRIBE_EVAL_MANIFESTS to where they live",
+)
 CORPORA = ("jaah", "isophonics-beatles", "backing-track", "isophonics-zweieck")
 #: The corpora whose committed split is the hash split. backing-track is split by band instead.
 HASH_SPLIT = ("jaah", "isophonics-beatles", "isophonics-zweieck")
@@ -95,6 +106,7 @@ class TestSplitManifest:
             split.split_manifest(manifest("labs/a"), fraction)
 
 
+@committed_only
 @pytest.mark.parametrize("name", CORPORA)
 class TestCommittedSplits:
     def test_train_and_test_partition_the_manifest(self, name):
@@ -112,12 +124,14 @@ class TestCommittedSplits:
         assert not in_train & in_test
 
 
+@committed_only
 @pytest.mark.parametrize("name", HASH_SPLIT)
 def test_hash_split_files_match_what_the_code_produces(name):
     train, test = split.split_manifest(load(name))
     assert (train, test) == (load(f"{name}-train"), load(f"{name}-test"))
 
 
+@committed_only
 class TestBackingTrackIsSplitByBand:
     """The backing tracks are split so that no trio plays on both sides.
 
@@ -151,6 +165,7 @@ class TestBackingTrackIsSplitByBand:
         assert sorted(p.name for p in tmp_path.iterdir()) == ["corpus.json"]
 
 
+@committed_only
 class TestCaroleKingIsHeldOutWhole:
     """Carole King is scored, never tuned on, so it has a test set and no train one.
 

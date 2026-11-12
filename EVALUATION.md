@@ -213,12 +213,15 @@ root or in a folder named for the artist or album. Tracks that cannot be paired 
 reported, not guessed: no file with that title, a title whose folders name neither artist nor
 album, or a title found under several albums. `--list-unpaired` lists every one.
 
-The manifest holds paths that follow your library, so keep it uncommitted. The committed
-`eval/isophonics-beatles.json` is references-only (no `audio` paths); it works for `survey` and
-`score --estimates`.
+The manifest holds paths that follow your library, so it belongs with the corpus rather than in
+this repo, which commits none; `eval/` is gitignored for exactly that. This project's own
+manifests live in the private data_extraction repo's `eval/`: one references-only per corpus,
+as downloaded, and an `-audio` pairing beside it that adds the audio path of every track a
+recording was found for. A references-only manifest (no `audio` paths) works for `survey` and
+`score --estimates`; `score -c` needs the pairing.
 
 One archive holds several artists, and `--include` takes one of them as its own corpus. That
-is how the committed per-artist manifests were built, and how to rebuild one:
+is how the per-artist manifests were built, and how to rebuild one:
 
 ```bash
 songscribe-eval manifest data/isophonics --include chordlab/Zweieck \
@@ -237,23 +240,24 @@ no chords at all, so it never reaches a manifest.
 
 | Manifest | Tracks | Annotated | Confidence upstream |
 |---|---|---|---|
-| `eval/isophonics-beatles.json` | 180 | 8.15 h | use with confidence |
-| `eval/isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence |
-| `eval/isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked |
+| `isophonics-beatles.json` | 180 | 8.15 h | use with confidence |
+| `isophonics-zweieck.json` | 18 | 0.98 h | moderate confidence |
+| `isophonics-carole-king.json` | 7 | 0.44 h | not carefully checked |
 
 Carole King is Tapestry's first seven tracks (01–07).
 
-`eval/backing-track.json` lists every song of a jazz backing-track collection, one track per
-song, with tempo and key variants as separate tracks. No chord references exist for them yet,
-so each `reference` is a placeholder: the path, `labs/<id>.lab`, where that song's annotation
-will go. Write a `.lab` at that path and the track counts, with no change to the manifest.
-The loader accepts a missing reference and `survey` lists it as unreadable; until the first
-`.lab` is written, `survey` has nothing to read and stops with "no readable annotations".
+`backing-track.json` lists every song of a jazz backing-track collection, one track per song,
+with tempo and key variants as separate tracks. Each `reference` is `labs/<id>.lab` under the
+data repo's `references/`, written there from the app's own chord sheets. A song whose sheet
+has not been converted yet has no file at that path: the loader accepts a missing reference and
+`survey` lists it as unreadable, so writing the `.lab` makes the track count with no change to
+the manifest. `backing-track-audio{,-train,-test}.json` beside it is one track per recorded
+*grid* — one chorus of the chart — paired with the audio of that chorus.
 
 **5. Survey.** Needs no audio or model:
 
 ```bash
-songscribe-eval survey eval/isophonics-beatles.json
+songscribe-eval survey isophonics-beatles.json
 ```
 
 It reports annotated time, distinct labels, whether every label parses, and for each
@@ -306,11 +310,11 @@ repository's JSON identifies by MusicBrainz id and `duration`. A different relea
 can start at another offset or run at another speed; see
 [Checking the alignment](#checking-the-alignment).
 
-**3. Survey.** The committed `eval/jaah.json` is references-only:
+**3. Survey.** `jaah.json` is references-only:
 
 ```bash
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/jaah"   # the directory containing labs/
-songscribe-eval survey eval/jaah.json
+songscribe-eval survey jaah.json
 ```
 
 It reports that 93.5% of the annotated time is expressible in `majmin` and 93.3% in `sevenths`;
@@ -360,30 +364,30 @@ few seconds per hundred tracks; `--no-alignment-check` skips it.
 
 ## Train and test sets
 
-`eval/jaah.json`, `eval/isophonics-beatles.json`, `eval/isophonics-zweieck.json` and
-`eval/backing-track.json` each have a train and a test manifest next to them, about 20% of the
+`jaah.json`, `isophonics-beatles.json`, `isophonics-zweieck.json` and
+`backing-track.json` each have a train and a test manifest next to them, about 20% of the
 songs held out. Train includes validation: tune on it, and score on test once you are done
 tuning. The first three are hash splits (below); the backing tracks are
 [split by band](#backing-tracks-are-split-by-band).
 
 ```bash
-songscribe-eval split eval/jaah.json     # writes eval/jaah-train.json and eval/jaah-test.json
+songscribe-eval split jaah.json          # writes jaah-train.json and jaah-test.json
 ```
 
 Recordings of one song always go to the same set. A trailing parenthesis is ignored, so
 `autumn_leaves(e_concert)` and `autumn_leaves(g_concert)` stay together, and a leading track
 number is ignored in either spelling Isophonics ships (`05_-_Dig_It`, `05 Beautiful`), so a
 song is not tied to its position on the album. The set comes from a hash of the song name, so
-a manifest built locally splits like the committed one. If file names hide that two recordings
+a manifest built locally splits like the one beside the corpus. If file names hide that two recordings
 are one song, add them to `SAME_SONG` in `src/songscribe/eval/split.py` and run `split` again,
 before tuning.
 
-**Carole King is held out whole**, as `eval/isophonics-carole-king-test.json` with no train
+**Carole King is held out whole**, as `isophonics-carole-king-test.json` with no train
 manifest: score it, never tune on it. Seven songs cannot carry a hash split — the lowest of
 them hashes at 0.39, so no sensible fraction holds one out. That it is also the set Isophonics
 has not checked carefully is a second reason to keep it off the tuning side rather than
 average it in. That test manifest is **maintained by hand**: it is every track of the corpus,
-and `split` does not produce it, so edit it alongside `eval/isophonics-carole-king.json` when
+and `split` does not produce it, so edit it alongside `isophonics-carole-king.json` when
 the corpus changes.
 
 A hash split is approximate by design, and on a small corpus it can land every song on one
@@ -405,7 +409,7 @@ the number it gives, which is the thing a held-out set exists to prevent.
 Every backing track is played by one trio (piano, bass, drums), and the same few trios play
 many songs. A hash split by song puts the same trio on both sides, so a model tuned on train has
 already heard the test set's players, and a test score overstates how it does on a new band.
-`eval/backing-track-train.json` and `eval/backing-track-test.json` are split by band instead:
+`backing-track-train.json` and `backing-track-test.json` are split by band instead:
 
 - **no trio plays on both sides**, and every version of a song stays on one side (`song_key`);
 - **some musicians play only in test**: 13 of 33, against 14 only in train; the 6 on both
@@ -416,8 +420,8 @@ already heard the test set's players, and a test score overstates how it does on
 - test holds 40 of the 169 tracks (24%), 8 of the 21 bands.
 
 The line-ups are not public, so the split is made in the private data_extraction repository
-(`labels/band_split.py`, which tries every grouping of bands and keeps the best) and only its
-result, track ids, is committed here. The manifests carry `"split": "by band: …"`, and
+(`labels/band_split.py`, which tries every grouping of bands and keeps the best), and its
+result, track ids, is committed there beside the other manifests. They carry `"split": "by band: …"`, and
 `songscribe-eval split` refuses a manifest that declares its split rather than replacing it with a
 hash split. When the collection changes, re-run `band_split.py` there, not `split` here.
 
