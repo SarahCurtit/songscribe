@@ -158,21 +158,21 @@ def summary(grid: Grid) -> dict[str, Any]:
 def ground_truth(grid: Grid, tracked: Sequence[Any] = ()) -> dict[str, Any]:
     """Everything annotated about a grid, on the recording's own clock.
 
-    Each chord event keeps its Harte ``label`` and gains a ``short`` one in the
-    shorthand chord backends emit, so the two timelines can be compared label
-    for label. ``melody`` is the written line, and ``beat_seconds`` the beat a
-    note value is measured against.
-
-    ``tracked`` is a beat tracker's own timeline, used only where nothing is
-    annotated: a chart and a ``.beats`` file are both references, and a model
-    does not get to overrule one.
+    Each chord event keeps its Harte ``label`` and gains a ``short`` one, so the
+    two timelines compare label for label. ``beat_seconds`` is the beat a note
+    value is measured against. ``tracked`` is a beat tracker's own timeline,
+    used only where nothing is annotated.
     """
     events = _chord_events(grid)
     annotation = _annotation(grid)
-    bars, sections, alternates = _bar_grid(annotation, events)
-    beats = _beats(grid) or list(tracked)
+    charted, sections, alternates = _bar_grid(annotation, events)
+    sidecar = _beats(grid)
+    beats = sidecar or list(tracked)
+    bars = charted
     if not bars and beats:
         bars = _bars_from_beats(beats)
+    # The chart's own bar length is passed separately, so a tracker cannot
+    # supply a beat the bars drawn from a chart would contradict.
     melody = [_note(n) for n in (lab.read_notes(grid.notes) if grid.notes else [])]
     ends = [e["end"] for e in events] + [n["end"] for n in melody]
 
@@ -185,7 +185,7 @@ def ground_truth(grid: Grid, tracked: Sequence[Any] = ()) -> dict[str, Any]:
         "melody": melody,
         "beats": [{"time": b.time, "position": b.position} for b in beats],
         "beats_per_bar": max((b.position for b in beats), default=0),
-        "beat_seconds": _beat_seconds(annotation, bars, beats),
+        "beat_seconds": _beat_seconds(annotation, charted, sidecar, list(tracked)),
         "annotated_end": max(ends, default=0.0),
         "audio_seconds": annotation.get("audio_seconds"),
     }
@@ -269,19 +269,27 @@ def _bar_grid(
     return bars, sections, alternates
 
 
-def _beat_seconds(annotation: dict[str, Any], bars: list[float], beats: list[Any]) -> float | None:
+def _beat_seconds(
+    annotation: dict[str, Any],
+    charted: list[float],
+    sidecar: list[Any],
+    tracked: list[Any],
+) -> float | None:
     """How long one beat is, for turning a note's duration into a note value.
 
-    A stated tempo is the most trustworthy; tracked beats measure it from the
-    recording; a bar length only gives it away if the metre is the default.
+    In order of what it is worth: a stated tempo, a ``.beats`` file, the
+    chart's own bar length -- which only gives it away in the default metre --
+    and a beat tracker last, since a model does not outrank a reference.
     """
     bpm = annotation.get("bpm_measured") or annotation.get("bpm_nominal")
     if bpm:
         return 60.0 / float(bpm)
-    if len(beats) > 1:
-        return median(b.time - a.time for a, b in pairwise(beats))
-    if len(bars) > 1:
-        return (bars[1] - bars[0]) / DEFAULT_METRE
+    if len(sidecar) > 1:
+        return median(b.time - a.time for a, b in pairwise(sidecar))
+    if len(charted) > 1:
+        return (charted[1] - charted[0]) / DEFAULT_METRE
+    if len(tracked) > 1:
+        return median(b.time - a.time for a, b in pairwise(tracked))
     return None
 
 

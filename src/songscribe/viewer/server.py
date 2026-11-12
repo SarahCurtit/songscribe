@@ -2,9 +2,9 @@
 
 Standard library only, so the viewer adds no dependencies. Backends run in a
 background thread and their output is cached on disk, keyed by the audio file's
-size and mtime, so a re-recorded grid is recomputed. Chords and melody each sit
-behind a :class:`Stage` descriptor holding their registry, so this file names no
-backend. Binds to localhost by default: it serves whatever audio it is pointed
+size and mtime, so a re-recorded grid is recomputed. Chords, melody and beats
+each sit behind a :class:`Stage` descriptor holding their registry, so this file
+names no backend. Binds to localhost by default: it serves whatever audio it is pointed
 at, which is rarely audio that may be shared.
 """
 
@@ -505,14 +505,14 @@ class Handler(BaseHTTPRequestHandler):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="songscribe-viewer",
-        description="Listen to recordings and compare chord and melody backends against them.",
+        description="Listen to recordings and compare chord, melody and beat backends.",
     )
     parser.add_argument(
         "-e",
         "--examples",
         type=Path,
         action="append",
-        help="directory of <song>/gridN_{audio.wav,chords.json,melody.notes} (repeatable)",
+        help="directory of <song>/gridN_{audio.wav,chords.json,melody.notes,beats.beats}",
     )
     parser.add_argument(
         "-a",

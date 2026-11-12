@@ -204,7 +204,14 @@ async function loadGrid(id) {
     return showError(`Could not load the ground truth: ${error.message}`);
   }
   render();
-  if (state.beatSource) requestPrediction("beats", state.beatSource, false);
+  // The tracker has to have run before the ground truth can carry its bars,
+  // so it goes first and the truth is read again once it is in.
+  if (state.beatSource) {
+    await requestPrediction("beats", state.beatSource, false);
+    if (token !== state.loadToken) return;
+    await reloadTruth();
+    render();
+  }
   for (const stage of STAGES) {
     for (const backend of state.selected[stage]) requestPrediction(stage, backend, false);
   }
@@ -323,16 +330,22 @@ function buildBackendControls(stage, containerId) {
 function updateBackendStatus() {
   for (const label of document.querySelectorAll(".backend")) {
     const { backend, stage } = label.dataset;
-    const status = label.querySelector(".status");
-    const reply = state.predictions[stage][backend];
-    status.classList.toggle("error", reply?.status === "error");
-    status.title = reply?.error || "";
-    if (!state.selected[stage].has(backend) || !reply) status.textContent = "";
-    else if (reply.status === "running") status.textContent = `running ${reply.elapsed ?? 0}s…`;
-    else if (reply.status === "error") status.textContent = failureReason(reply.error);
-    else if (reply.status === "done") status.textContent = `${reply.seconds}s`;
-    else status.textContent = "";
+    const reply = state.selected[stage].has(backend) ? state.predictions[stage][backend] : null;
+    showStatus(label.querySelector(".status"), reply);
   }
+  // The bar source is a picker rather than a checkbox, so its run reports
+  // beside it; without this a tracker that cannot load says nothing at all.
+  showStatus($("beat-status"), beatReply());
+}
+
+function showStatus(status, reply) {
+  status.classList.toggle("error", reply?.status === "error");
+  status.title = reply?.error || "";
+  if (!reply) status.textContent = "";
+  else if (reply.status === "running") status.textContent = `running ${reply.elapsed ?? 0}s…`;
+  else if (reply.status === "error") status.textContent = failureReason(reply.error);
+  else if (reply.status === "done") status.textContent = `${reply.seconds}s`;
+  else status.textContent = "";
 }
 
 // The short form shown beside the checkbox; the full message stays in the title.
@@ -487,8 +500,11 @@ function render() {
         div.append(chordScore(reply.agreement.totals));
       }
     } else if (lane.kind === "beats") {
-      drawBeats(t, y, px);
-      div.append(beatNote(beatReply().grid));
+      // The lane is the tracker's own, so it draws what the tracker found;
+      // the lines behind the lanes follow whichever grid is in use.
+      const reply = beatReply();
+      drawBeats(reply.events, y, px);
+      div.append(beatNote(reply.grid));
     } else if (lane.kind === "staff") {
       const data = staffData(lane);
       if (data?.score) {
@@ -551,7 +567,7 @@ function staffNote(data) {
 function drawGrid(t, px, height) {
   // Beats behind the bar lines: the pulse the note values are measured
   // against, drawn faintly so the bars still read as the stronger grid.
-  if (beatSpacing(t) * px >= MIN_BEAT_LINE_PX) {
+  if (beatSpacing(t.beats) * px >= MIN_BEAT_LINE_PX) {
     for (const beat of t.beats) {
       const x = beat.time * px;
       el("line", { class: "beatline", x1: x, x2: x, y1: H.ruler, y2: height });
@@ -589,16 +605,19 @@ function drawGrid(t, px, height) {
 }
 
 // How far apart the beats fall, in seconds, as the median of the first few.
-function beatSpacing(t) {
-  if (t.beats.length < 2) return Infinity;
-  const gaps = t.beats.slice(1, 9).map((beat, index) => beat.time - t.beats[index].time);
+function beatSpacing(beats) {
+  if (beats.length < 2) return Infinity;
+  const gaps = beats.slice(1, 9).map((beat, index) => beat.time - beats[index].time);
   return gaps.sort((a, b) => a - b)[gaps.length >> 1];
 }
 
 // One tick a beat, numbered within the bar: the rhythm the bars are counted in.
-function drawBeats(t, laneY, px) {
-  const room = beatSpacing(t) * px;
-  for (const beat of t.beats) {
+// Zoomed out far enough that the beats would smear, only the downbeats are
+// drawn, which is still the bar grid.
+function drawBeats(beats, laneY, px) {
+  const room = beatSpacing(beats) * px;
+  for (const beat of beats) {
+    if (room < MIN_BEAT_LINE_PX && beat.position !== 1) continue;
     const x = beat.time * px;
     const downbeat = beat.position === 1;
     el("line", {

@@ -113,6 +113,10 @@ def fake_beats(audio, sample_rate, **kwargs) -> list[BeatEvent]:
     ]
 
 
+def crashing_beats(audio, sample_rate, **kwargs) -> list[BeatEvent]:
+    raise RuntimeError("no beat weights here")
+
+
 def dropped_line(audio, sample_rate, **kwargs) -> list[NoteEvent]:
     """The written line with one passage dropped onto a lower voice."""
     return [
@@ -174,8 +178,9 @@ def base_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     ]:
         monkeypatch.setitem(melody_stage.BACKENDS, name, backend)
         monkeypatch.setitem(melody_stage.BACKEND_SAMPLE_RATES, name, 8_000)
-    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
-    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", 8_000)
+    for name, backend in [("fakebeat", fake_beats), ("crashbeat", crashing_beats)]:
+        monkeypatch.setitem(beats_stage.BACKENDS, name, backend)
+        monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, name, 8_000)
     monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
 
     viewer = Viewer(("127.0.0.1", 0), examples.discover([root]), tmp_path / "cache")
@@ -540,6 +545,10 @@ def test_a_dropped_passage_is_written_in_under_a_bracket(page) -> None:
 def pick_bars(page, source: str = "fakebeat") -> None:
     page.select_option("#beat-source", source)
     page.wait_for_function("document.querySelectorAll('#svg line.beat-tick').length > 0")
+    # The lane is drawn from the tracker's own reply, which lands first; the
+    # lines behind the lanes wait for the ground truth to be read again with
+    # that grid in it, a render later.
+    page.wait_for_function("state.truth && state.truth.beats.length > 0")
 
 
 def test_no_bar_source_leaves_the_beats_alone(page) -> None:
@@ -580,5 +589,35 @@ def test_the_lane_reports_the_tracked_tempo_and_metre(page) -> None:
 def test_the_bar_source_survives_a_reload(page, base_url: str) -> None:
     pick_bars(page)
     page.goto(f"{base_url}{page.evaluate('location.hash')}")
+    page.reload()
     page.wait_for_function("document.querySelectorAll('#svg line.beat-tick').length > 0")
     assert page.locator("#beat-source").input_value() == "fakebeat"
+
+
+def test_a_bar_source_in_the_link_fills_in_on_a_cold_load(page, base_url: str) -> None:
+    """The tracker has to run before the ground truth can carry its bars."""
+    page.goto(f"{base_url}#grid={GRID_ID.replace('/', '%2F')}&beats=fakebeat")
+    page.reload()  # a goto that only changes the fragment does not re-run it
+
+    # The ticks arrive with the tracker's own reply either way. What needs the
+    # ground truth to be read again is its grid, which is what gives an
+    # unannotated recording its bar lines and every staff its note values.
+    page.wait_for_function("state.truth && state.truth.beats.length > 0")
+    assert page.locator("#beat-source").input_value() == "fakebeat"
+    assert page.locator("#svg line.beat-tick").count() == int(TRACK_SECONDS / BEAT_SECONDS)
+    assert page.locator("#svg line.beatline").count() > 0
+
+
+def test_a_tracker_that_cannot_run_says_so_beside_the_picker(page) -> None:
+    page.select_option("#beat-source", "crashbeat")
+    sync_api.expect(page.locator("#beat-status")).to_have_text("failed: no beat weights here")
+    assert page.locator("#svg line.beat-tick").count() == 0
+
+
+def test_only_the_downbeats_survive_a_distant_zoom(page) -> None:
+    """Zoomed out, every beat would be one smear, so the bar grid is left."""
+    pick_bars(page)
+    zoom(page, 10)
+    ticks = page.locator("#svg line.beat-tick").count()
+    assert ticks == int(TRACK_SECONDS / BAR_SECONDS)
+    assert page.locator("#svg line.beat-tick.downbeat").count() == ticks

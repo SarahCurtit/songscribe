@@ -735,3 +735,53 @@ def test_a_tracked_grid_gives_the_melody_its_note_values(
         assert [n["value"] for n in engraved] == ["quarter", "eighth", "eighth"]
         assert all(n["stem"] for n in engraved)
         break
+
+
+def test_a_chart_without_a_tempo_still_outranks_a_tracker(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bars a chart draws and the beat it is read in have to agree.
+
+    A chart that states bars but no tempo still fixes the beat, or the note
+    values would be written against a beat its own bar lines contradict.
+    """
+    write_grid(
+        root / "paper-lantern-waltz",
+        7,
+        {
+            "song": "Harbour Lights Waltz",
+            "events": [{"start": 0.0, "end": 4.0, "chord": "C:maj"}],
+            "annotation": {"bars": 4, "bar_seconds": 1.0, "start_seconds": 0.0},
+        },
+    )
+    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
+    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", SAMPLE_RATE)
+    monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
+
+    for base in _serve(examples.discover([root]), tmp_path / "cache"):
+        run_beats(base, "0/paper-lantern-waltz/7")
+        truth = get_json(f"{base}/api/grids/0/paper-lantern-waltz/7?beats=fakebeat")
+        # One-second bars in the default metre is a quarter-second beat, not
+        # the half-second the tracker found.
+        assert truth["beat_seconds"] == pytest.approx(0.25)
+        assert truth["bars"] == [0.0, 1.0, 2.0, 3.0, 4.0]
+        break
+
+
+def test_a_beats_sidecar_outranks_a_tracker_too(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Three beats to the bar, against the tracker's four.
+    waltz = [BeatEvent(time=index * 1.0, position=index % 3 + 1) for index in range(6)]
+    lab.write_beats(root / "quiet-harbour" / "grid1_beats.beats", waltz)
+
+    monkeypatch.setitem(beats_stage.BACKENDS, "fakebeat", fake_beats)
+    monkeypatch.setitem(beats_stage.BACKEND_SAMPLE_RATES, "fakebeat", SAMPLE_RATE)
+    monkeypatch.setattr("songscribe.audio.load", lambda path, rate: (None, rate))
+
+    for base in _serve(examples.discover([root]), tmp_path / "cache"):
+        run_beats(base, "0/quiet-harbour/1")
+        truth = get_json(f"{base}/api/grids/0/quiet-harbour/1?beats=fakebeat")
+        assert truth["beat_seconds"] == pytest.approx(1.0)
+        assert truth["beats_per_bar"] == 3
+        break

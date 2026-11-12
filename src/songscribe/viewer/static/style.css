@@ -135,13 +135,13 @@ select {
   font-size: 14px;
 }
 
-.backend .status {
+.status {
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-.backend .status.error { color: var(--miss); }
+.status.error { color: var(--miss); }
 
 .transport,
 .timeline-panel,
