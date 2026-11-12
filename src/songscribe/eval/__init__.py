@@ -10,6 +10,18 @@ from __future__ import annotations
 
 from .dataset import ANNOTATION_ROOT_ENV, AUDIO_ROOT_ENV, Dataset, Track, load_manifest
 from .harte import Chord, parse
+from .melody import (
+    ChorusMelody,
+    MelodyScore,
+    best_transposition,
+    head_score,
+    matching_transposition,
+    melody_score,
+    melody_sequence,
+    novelty,
+    raw_pitch_accuracy,
+    score_choruses,
+)
 from .metrics import (
     DEFAULT_VOCABULARIES,
     PAIRWISE_VOCABULARIES,
@@ -30,18 +42,28 @@ __all__ = [
     "RELATIONS",
     "VOCABULARIES",
     "Chord",
+    "ChorusMelody",
     "Dataset",
     "Grade",
     "GradedScore",
+    "MelodyScore",
     "Relation",
     "Score",
     "Segmentation",
     "Track",
+    "best_transposition",
     "grade",
     "graded_score",
+    "head_score",
     "load_manifest",
+    "matching_transposition",
+    "melody_score",
+    "melody_sequence",
+    "novelty",
     "parse",
+    "raw_pitch_accuracy",
     "score",
     "score_all",
+    "score_choruses",
     "segmentation",
 ]

@@ -31,15 +31,16 @@ src/songscribe/
   separate.py   demucs wrapper (subprocess), optional
   chords.py     pluggable chord backends behind recognise()
   beats.py      pluggable beat/downbeat backends behind track(); BeatGrid
+  melody.py     pluggable melody backends behind transcribe(); frames -> notes
   tempo.py      BeatGrid vs a known tempo: octave-error check          (pure Python)
-  registry.py   name/setting checks shared by chords and beats       (pure Python)
+  registry.py   name/setting checks shared by the three stages      (pure Python)
   lyrics.py     faster-whisper wrapper, word-level timestamps
   align.py      chord timeline + word timeline -> printable sections   (pure Python)
   render.py     Song -> text or ChordPro                               (pure Python)
   pipeline.py   orchestration of the above
   cli.py        argparse entry point
   demo.py       synthesises a demo track + .lab ground truth  (pure Python)
-  lab.py        .lab chord annotation read/write               (pure Python)
+  lab.py        .lab chords, .beats grids, .notes melodies     (pure Python)
   eval/         chord accuracy measurement
     harte.py      chord labels -> pitch content                (pure Python)
     timeline.py   fill gaps, merge two chord timelines         (pure Python)
@@ -50,6 +51,7 @@ src/songscribe/
     recurrence.py the stretch of an estimate that repeats one form later: head, intro, pickup (numpy)
     form_start.py recurrence first, chart as check and fallback -> the form's start (numpy)
     form.py       splits a recording into choruses, on the chart's timeline (pure Python)
+    melody.py     a played lead line against the written one, in bars and beats (numpy)
     README.md     how labels, recurrence, chart_fit, form_start and form fit together
     dataset.py    manifests and path resolution                (pure Python)
     split.py      train/test manifests, versions of a song kept together (pure Python)
@@ -70,8 +72,11 @@ EVALUATION.md   how to measure a backend
 
 There is no audio in this repo and there must never be. `songscribe-demo` (`demo.py`)
 generates a synthetic track with known chords plus a `.lab` annotation, which is how the
-chord branch gets measured without shipping a recording. It is **instrumental on purpose** —
-don't try to make it sing; that is what a real recording is for.
+chord branch gets measured without shipping a recording. `--melody` plays a lead line over
+the choruses and writes its `.notes` ground truth, which does the same for the melody
+branch. It is **instrumental on purpose** — don't try to make it sing; that is what a real
+recording is for. The lead is mixed well above the accompaniment, because a monophonic
+tracker given an even mix follows the bass and the demo would be measuring that.
 
 For a real accuracy number, `songscribe-eval` scores a backend against reference
 annotations; `EVALUATION.md` explains how. The rule the harness is built around: manifests
@@ -100,12 +105,19 @@ Corpus decisions (settled; don't re-open them):
 - **Everything is a timeline in seconds from start.** Every stage consumes and produces
   timed events on that one clock. This is what keeps models swappable — don't introduce
   frame indices or sample offsets into cross-stage interfaces.
-- **The two branches stay independent.** Chord recognition and lyric transcription must not
-  know about each other; they meet only in `align.align()`. Resist "the chord model could
-  use the vocal onsets" shortcuts — they couple the branches and break testability.
+- **The branches stay independent.** Chord recognition, lyric transcription and melody
+  transcription must not know about each other; the first two meet only in `align.align()`,
+  and the melody branch meets the chord branch nowhere at all — it is scored against a
+  chart but never informed by one. Resist "the chord model could use the vocal onsets"
+  shortcuts — they couple the branches and break testability.
+- **Melody is a stage, not yet a pipeline stage.** `melody.py` has the usual registry and
+  `eval/melody.py` scores it, but `pipeline.py` does not call it and `render.py` cannot
+  print a note: there is no melody on a lead sheet this produces yet. Don't wire it in
+  without deciding what the output should look like.
 - **Models go behind a registry.** A chord backend is one function returning
   `list[ChordEvent]`, registered in `chords.BACKENDS` with its sample rate in
-  `BACKEND_SAMPLE_RATES`. Nothing else in the pipeline learns its name. Every
+  `BACKEND_SAMPLE_RATES`; the beat and melody stages keep their own pair of dicts the same
+  way. Nothing else in the pipeline learns its name. Every
   setting it accepts is a named parameter *with a default*, after the audio and
   its rate — `recognise()` and `track()` reject a setting the chosen backend
   doesn't declare. A `**kwargs` on a backend would turn that check off, so a
@@ -122,7 +134,10 @@ Corpus decisions (settled; don't re-open them):
   a config shouldn't quietly degrade output. The one sanctioned fallback is separation,
   which warns and continues on the full mix.
 - The `template` chord backend is **not** deep learning. It exists as the baseline models
-  must beat and so CI can run with no weights on disk. Never make it the default.
+  must beat and so CI can run with no weights on disk. Never make it the default. The
+  `librosa` beat backend and the `pyin` melody backend are the same kind of thing;
+  `pyin` *is* its stage's default only because it is the only one there, which is a gap to
+  close rather than a precedent to copy.
 
 ## Commands
 
@@ -132,6 +147,7 @@ pytest                     # fast, no weights, no audio
 pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
+songscribe-demo --melody -o /tmp/demo/demo.wav  # audio + .lab + .beats + .notes
 
 # run from the repo root; $PWD makes the path absolute, so it works from any directory
 export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
@@ -275,6 +291,42 @@ Jamendo Lyrics with chords annotated by hand.
 line's start, and `place_in_line`'s "keep the first change on a syllable" rule then discards
 the chord that belongs there. 0.2s of drift triggers it. Pinned by a test in
 `tests/test_eval_placement.py`; the fix is an `align-render` call, not an evaluation one.
+
+## Melody
+
+`eval/melody.py` scores a played lead line against the lead sheet's. Four decisions in it are
+load-bearing, and all four are there so the number measures the player and the tracker rather
+than the circumstances:
+
+- **Bars and beats, never seconds.** Onsets are placed on Stage 1's downbeats and the
+  tolerance is in beats (`MELODY_ONSET_TOLERANCE_BEATS = 0.25`, a sixteenth — tighter fails a
+  swung eighth, looser matches the next beat). Offset and tempo therefore cost nothing, as
+  with `chart` and `grid`.
+- **Octave-blind by default.** The instrument may sit an octave from the written range, and
+  an octave flip is a pitch tracker's commonest error — measured here: with pYIN's ceiling at
+  C6, 10 of the demo's 32 notes come back an octave down; with it at C7 none do, which is why
+  `LEAD_FMAX_HZ` is a full octave above a sung lead. The strict score is reported beside the
+  blind one rather than folded into a penalty. A strict gap is not always the tracker: the
+  demo voices each bar's figure from a fixed octave, so a transposed take whose root wraps
+  past B plays it an octave down, exactly as a re-voicing band would.
+- **Transposition from pitch content, not from the score.** `best_transposition` correlates
+  duration-weighted pitch-class profiles. `matching_transposition` — the shift that matches
+  the most notes — is a diagnostic to print beside it, never the one scored with; a key chosen
+  to maximise a score makes the score partly a measure of itself. Cross-check it against the
+  chord branch's shift and report a disagreement rather than averaging.
+- **Heads only.** Melody is scored on `kind == "head"` blocks. On a solo the same comparison
+  is reported as `novelty` (`1 - recall`), which is **descriptive**: a soloist who matched the
+  written melody would be the anomaly, so a high novelty is the expected reading. Never
+  average novelty with a head's score.
+
+`raw_pitch_accuracy` is the frame-level number (MIREX raw pitch, or raw chroma with
+`octave_blind`), and exists so a wandering tracker and a chopping segmenter are two numbers
+rather than one. `melody.notes_from_f0` is the segmenter, kept out of the backend so it can be
+tested on invented contours — which is most of `tests/test_melody.py`.
+
+Like `placement_score`, it is **not** wired into `songscribe-eval`: no corpus here has melody
+annotations. It needs a time-aligned written melody for one recording, which means a manifest
+field pointing at a `.notes` file and a lead sheet to build one from.
 
 ## Sub-agents
 

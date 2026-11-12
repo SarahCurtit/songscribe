@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from songscribe import beats, chords
-from songscribe.registry import Registry, setting_rules, whole_number
+from songscribe import beats, chords, melody
+from songscribe.registry import Registry, positive_number, setting_rules, whole_number
 
 
 def _stage() -> Registry:
@@ -68,9 +68,44 @@ class TestDeclaredRules:
                 return []
 
 
+class TestPositiveNumber:
+    @staticmethod
+    def _ruled() -> Registry:
+        @setting_rules(cutoff=positive_number("hertz"))
+        def ruled(audio, sample_rate, cutoff=100.0):
+            return []
+
+        return Registry("toy", {"ruled": ruled}, {"ruled": 8_000})
+
+    @pytest.mark.parametrize("value", [1, 0.5, 20_000.0])
+    def test_accepts_a_positive_measure(self, value):
+        self._ruled().check_options("ruled", {"cutoff": value})
+
+    @pytest.mark.parametrize("value", [0, -1.0, float("nan"), float("inf")])
+    def test_refuses_what_is_not_a_measure(self, value):
+        with pytest.raises(ValueError, match="setting 'cutoff'"):
+            self._ruled().check_options("ruled", {"cutoff": value})
+
+    def test_refuses_a_boolean(self):
+        # True is an int in Python, and 1 Hz is not what the caller meant.
+        with pytest.raises(ValueError, match="must be a number of hertz"):
+            self._ruled().check_options("ruled", {"cutoff": True})
+
+    def test_refuses_text(self):
+        with pytest.raises(ValueError, match="must be a number of hertz"):
+            self._ruled().check_options("ruled", {"cutoff": "440"})
+
+    def test_a_fraction_is_fine_where_a_count_would_not_be(self):
+        # The difference from whole_number: a frequency is a quantity.
+        assert whole_number("samples")(0.5) is not None
+        assert positive_number("hertz")(0.5) is None
+
+
 def test_each_stage_wraps_its_own_registry():
     # Same code, different dicts and a different word in the error.
     with pytest.raises(ValueError, match="unknown chord backend"):
         chords.sample_rate_for("nope")
     with pytest.raises(ValueError, match="unknown beat backend"):
         beats.sample_rate_for("nope")
+    with pytest.raises(ValueError, match="unknown melody backend"):
+        melody.sample_rate_for("nope")

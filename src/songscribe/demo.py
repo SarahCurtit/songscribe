@@ -4,7 +4,9 @@ No audio ships with songscribe -- recordings are copyrighted and would bloat
 the repo -- so there is nothing to run the pipeline against out of the box.
 This generates something instead: additive-synthesis triads over a chord
 progression you choose, plus the ground-truth annotation, so the chord branch
-always has a target to be measured against.
+always has a target to be measured against. With ``--melody`` it also plays a
+lead line over them and writes the notes it played, which does the same job
+for the melody branch.
 
 What it cannot do is test the lyric branch. Synthesising singing is out of
 scope, so the output is instrumental: Whisper will correctly find no words in
@@ -16,7 +18,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 
@@ -24,7 +26,7 @@ import numpy as np
 
 from . import lab
 from .chords import PITCH_CLASSES
-from .types import BeatEvent, ChordEvent
+from .types import BeatEvent, ChordEvent, NoteEvent
 
 # Written with sharps, like PITCH_CLASSES; flats are accepted and mapped in.
 FLAT_TO_SHARP = {"Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#"}
@@ -54,6 +56,21 @@ ROOT_OCTAVE = 3
 # Harmonic amplitudes. A handful of partials keeps the chroma from looking
 # like a pure tone, which is unrealistically easy for a chord model.
 HARMONICS = (1.0, 0.5, 0.33, 0.25)
+
+# The lead line's figure, as indices into the bar's own chord: root, third,
+# fifth, third. Drawn from the chord so the melody and the harmony cannot
+# disagree, and with no pitch repeated across a bar line in the default
+# progression, so the segmenter is never handed two notes it cannot separate.
+MELODY_FIGURE = (0, 1, 2, 1)
+
+# Two octaves above the accompaniment's root: clear of the triads' own
+# fundamentals, and inside the range a lead instrument actually plays.
+MELODY_OCTAVE = 5
+
+# How far above the accompaniment the lead is mixed. A monophonic tracker
+# follows whatever is loudest and periodic, so at equal gain pYIN returns the
+# bass line instead of the lead.
+MELODY_GAIN = 3.0
 
 
 def parse_chord(label: str) -> tuple[int, tuple[int, ...]]:
@@ -116,6 +133,40 @@ def _envelope(length: int, sample_rate: int) -> np.ndarray:
             np.linspace(np.exp(-2.0), 0.0, release),
         ]
     )[:length]
+
+
+def melody_pitches(label: str, beats_per_bar: int, octave: int = MELODY_OCTAVE) -> list[int]:
+    """MIDI pitches of one bar's lead figure over ``label``: chord tones, one per beat.
+
+    Voiced from ``octave`` whatever the root, so a transposed take whose root wraps past B
+    plays the figure an octave down -- as a band re-voicing would. A strict-octave
+    comparison against the chart has to allow for that; an octave-blind one does not.
+    """
+    pitch_class, intervals = parse_chord(label)
+    root = 12 * (octave + 1) + pitch_class
+    return [
+        root + intervals[MELODY_FIGURE[beat % len(MELODY_FIGURE)] % len(intervals)]
+        for beat in range(beats_per_bar)
+    ]
+
+
+def _lead(pitches: Sequence[int], length: int, sample_rate: int) -> tuple[np.ndarray, list[int]]:
+    """One bar of lead line, and the sample offset each note starts at.
+
+    The notes divide the bar equally, so a bar stretched by tempo drift carries
+    the same figure a little slower -- which is what a band does.
+    """
+    edges = [round(beat * length / len(pitches)) for beat in range(len(pitches) + 1)]
+    pieces = []
+    for note, (low, high) in enumerate(pairwise(edges)):
+        t = np.arange(high - low) / sample_rate
+        frequency = 440.0 * 2 ** ((pitches[note] - 69) / 12)
+        tone = sum(
+            amplitude * np.sin(2 * np.pi * frequency * harmonic * t)
+            for harmonic, amplitude in enumerate(HARMONICS, start=1)
+        )
+        pieces.append(tone / np.max(np.abs(tone)) * _envelope(high - low, sample_rate))
+    return np.concatenate(pieces), edges[:-1]
 
 
 def _voices(label: str, t: np.ndarray, extra: Sequence[int] = ()) -> np.ndarray:
@@ -185,6 +236,7 @@ class Performance:
     ``reference`` is one chorus of the chart from 0 at the requested tempo, like a lead sheet.
     ``downbeats`` are the starts of all bars, the first being bar 0, plus the end of the last.
     A pickup is in ``events`` and ``beat_events()``, not ``reference``; ``intro_bars`` come first.
+    ``notes`` and ``reference_notes`` are the lead line the same way round, empty without one.
     """
 
     audio: np.ndarray
@@ -196,6 +248,8 @@ class Performance:
     bars_per_chorus: int
     pickup_beats: int = 0
     intro_bars: int = 0
+    notes: list[NoteEvent] = field(default_factory=list)
+    reference_notes: list[NoteEvent] = field(default_factory=list)
 
     @property
     def head_start(self) -> float:
@@ -242,6 +296,8 @@ def synthesise_performance(
     transpose: int = 0,
     intro: Sequence[str] = (),
     colour: Mapping[int, Sequence[int]] | None = None,
+    melody: bool = False,
+    melody_gain: float = MELODY_GAIN,
 ) -> Performance:
     """Synthesise ``repeats`` choruses of ``progression``, one chord per bar.
 
@@ -259,6 +315,8 @@ def synthesise_performance(
         raise ValueError(f"pickup_beats must be 0..{beats_per_bar - 1}, got {pickup_beats}")
     if tempo_drift <= -1:
         raise ValueError(f"tempo_drift must exceed -1, got {tempo_drift}")
+    if melody and melody_gain <= 0:
+        raise ValueError(f"melody_gain must be positive, got {melody_gain}")
 
     substitutions = substitutions or {}
     for repeat, changes in substitutions.items():
@@ -270,15 +328,30 @@ def synthesise_performance(
     total = len(progression) * repeats
     pieces: list[np.ndarray] = []
     events: list[ChordEvent] = []
+    notes: list[NoteEvent] = []
     beat_samples = 60.0 / bpm * sample_rate
     stub = round(pickup_beats * beat_samples) if not intro else 0
     cursor = 0
     last = transpose_chord(progression[-1], transpose)
 
-    def play(label: str, length: int, extra: Sequence[int] = ()) -> None:
+    def play(label: str, length: int, extra: Sequence[int] = (), lead: bool = False) -> None:
         nonlocal cursor
         t = np.arange(length) / sample_rate
-        pieces.append(_voices(label, t, extra) * _envelope(length, sample_rate))
+        bar = _voices(label, t, extra) * _envelope(length, sample_rate)
+        if lead:
+            pitches = melody_pitches(label, beats_per_bar)
+            line, offsets = _lead(pitches, length, sample_rate)
+            bar = bar + melody_gain * line
+            for note, offset in enumerate(offsets):
+                end = offsets[note + 1] if note + 1 < len(offsets) else length
+                notes.append(
+                    NoteEvent(
+                        (cursor + offset) / sample_rate,
+                        (cursor + end) / sample_rate,
+                        pitches[note],
+                    )
+                )
+        pieces.append(bar)
         events.append(ChordEvent(cursor / sample_rate, (cursor + length) / sample_rate, label))
         cursor += length
 
@@ -303,7 +376,7 @@ def synthesise_performance(
         label = transpose_chord(label, transpose)
         ramp = tempo_drift * index / (total - 1) if total > 1 else 0.0
         length = round(beats_per_bar * 60.0 / (bpm * (1 + ramp)) * sample_rate)
-        play(label, length, colour.get(repeat, ()))
+        play(label, length, colour.get(repeat, ()), lead=melody)
         downbeats.append(cursor / sample_rate)
 
     audio = np.concatenate(pieces)
@@ -316,6 +389,16 @@ def synthesise_performance(
         ChordEvent(i * bar_seconds, (i + 1) * bar_seconds, label)
         for i, label in enumerate(progression)
     ]
+    beat_seconds = bar_seconds / beats_per_bar
+    reference_notes = [
+        NoteEvent(
+            i * bar_seconds + beat * beat_seconds,
+            i * bar_seconds + (beat + 1) * beat_seconds,
+            pitch,
+        )
+        for i, label in enumerate(progression)
+        for beat, pitch in enumerate(melody_pitches(label, beats_per_bar))
+    ]
     return Performance(
         audio=audio.astype(np.float32),
         sample_rate=sample_rate,
@@ -326,6 +409,8 @@ def synthesise_performance(
         bars_per_chorus=len(progression),
         pickup_beats=pickup_beats,
         intro_bars=len(intro),
+        notes=notes,
+        reference_notes=reference_notes if melody else [],
     )
 
 
@@ -346,7 +431,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="songscribe-demo",
         description="Generate a synthetic demo track with known chords.",
-        epilog="Instrumental by design: it exercises the chord branch, not the lyric branch.",
+        epilog="Instrumental by design: it exercises the chord and melody branches, "
+        "not the lyric branch.",
     )
     parser.add_argument(
         "-o",
@@ -426,6 +512,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="add notes, e.g. 1=10,14 (semitones above each root), to one whole chorus; repeatable",
     )
     parser.add_argument(
+        "--melody",
+        action="store_true",
+        help="play a lead line over the choruses and write its .notes ground truth",
+    )
+    parser.add_argument(
+        "--melody-gain",
+        type=float,
+        default=MELODY_GAIN,
+        help="how far the lead sits above the accompaniment (default: %(default)s)",
+    )
+    parser.add_argument(
         "--tracker-phase",
         type=int,
         default=0,
@@ -478,6 +575,8 @@ def _write_performance(args: argparse.Namespace) -> int:
         intro=args.intro,
         colour=_parse_colour(args.colour),
         transpose=args.transpose_take,
+        melody=args.melody,
+        melody_gain=args.melody_gain,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     sf.write(args.output, performance.audio, args.sample_rate)
@@ -485,11 +584,17 @@ def _write_performance(args: argparse.Namespace) -> int:
     if args.no_annotation:
         return 0
     stem = args.output.with_suffix("")
-    for suffix, write, content in (
+    written: list[tuple[str, object, object]] = [
         (".lab", write_annotation, performance.events),
         (".reference.lab", write_annotation, performance.reference),
         (".beats", lab.write_beats, performance.beat_events(args.tracker_phase)),
-    ):
+    ]
+    if args.melody:
+        written += [
+            (".notes", lab.write_notes, performance.notes),
+            (".reference.notes", lab.write_notes, performance.reference_notes),
+        ]
+    for suffix, write, content in written:
         path = stem.with_name(stem.name + suffix)
         write(path, content)
         print(f"wrote {path}")
@@ -508,6 +613,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.intro
             or args.colour
             or args.tracker_phase
+            or args.melody
         ):
             return _write_performance(args)
         audio, events = synthesise(
