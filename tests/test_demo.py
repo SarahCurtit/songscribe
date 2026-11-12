@@ -5,6 +5,7 @@ from itertools import pairwise
 import numpy as np
 import pytest
 
+from songscribe import lab
 from songscribe.demo import (
     DEFAULT_PROGRESSION,
     chord_frequencies,
@@ -284,3 +285,76 @@ class TestWriteAnnotation:
         text = path.read_text(encoding="utf-8")
         assert text.endswith("\n")
         assert not text.endswith("\n\n")
+
+
+class TestMelody:
+    def take(self, **kwargs):
+        defaults = {"progression": PROGRESSION, "bpm": 120.0, "repeats": 3, "sample_rate": SR}
+        return synthesise_performance(**{**defaults, **kwargs})
+
+    def test_there_is_no_melody_unless_asked_for(self):
+        plain = self.take()
+        assert plain.notes == []
+        assert plain.reference_notes == []
+
+    def test_asking_for_one_leaves_the_chords_alone(self):
+        assert self.take(melody=True).events == self.take().events
+
+    def test_one_note_per_beat_over_every_chorus_bar(self):
+        take = self.take(melody=True)
+        assert len(take.notes) == 3 * len(PROGRESSION) * 4
+        assert len(take.reference_notes) == len(PROGRESSION) * 4
+
+    def test_the_notes_are_contiguous_and_cover_the_choruses(self):
+        take = self.take(melody=True)
+        assert take.notes[0].start == pytest.approx(take.downbeats[0])
+        assert take.notes[-1].end == pytest.approx(take.downbeats[-1])
+        for before, after in pairwise(take.notes):
+            assert before.end == pytest.approx(after.start)
+
+    def test_the_figure_is_chord_tones_of_its_own_bar(self):
+        take = self.take(progression=("C",), repeats=1, melody=True)
+        # C in octave 5: root, third, fifth, third.
+        assert [n.pitch for n in take.notes] == [72, 76, 79, 76]
+
+    def test_the_lead_follows_a_substitution(self):
+        take = self.take(melody=True, substitutions={1: {0: "Em"}})
+        bar = len(PROGRESSION) * 4
+        assert [n.pitch for n in take.notes[bar : bar + 4]] == [76, 79, 83, 79]
+
+    def test_the_lead_follows_a_transposed_take_and_the_chart_does_not(self):
+        take = self.take(melody=True, transpose=2)
+        plain = self.take(melody=True)
+        assert [n.pitch for n in take.notes] == [n.pitch + 2 for n in plain.notes]
+        assert take.reference_notes == plain.reference_notes
+
+    def test_nothing_is_played_over_the_intro_or_the_pickup(self):
+        take = self.take(melody=True, intro=("C", "G"), pickup_beats=2)
+        assert take.notes[0].start == pytest.approx(take.head_start)
+
+    def test_the_lead_is_audible_over_the_accompaniment(self):
+        # Not a tracking test -- that is tests/test_melody.py -- just that the
+        # lead is actually mixed in, and louder when the gain says so.
+        quiet = self.take(melody=True, melody_gain=0.1)
+        loud = self.take(melody=True, melody_gain=5.0)
+        assert not np.allclose(quiet.audio, loud.audio)
+        assert not np.allclose(self.take().audio, quiet.audio)
+
+    def test_the_output_still_has_headroom(self):
+        assert np.max(np.abs(self.take(melody=True).audio)) < 1.0
+
+    def test_a_gain_of_zero_is_refused(self):
+        with pytest.raises(ValueError, match="melody_gain"):
+            self.take(melody=True, melody_gain=0.0)
+
+    def test_the_command_line_writes_the_notes(self, tmp_path):
+        out = tmp_path / "demo.wav"
+        assert main(["-o", str(out), "--sample-rate", str(SR), "-r", "1", "--melody"]) == 0
+        played = lab.read_notes(tmp_path / "demo.notes")
+        written = lab.read_notes(tmp_path / "demo.reference.notes")
+        assert [n.pitch for n in played] == [n.pitch for n in written]
+
+    def test_the_notes_are_not_written_unless_asked_for(self, tmp_path):
+        out = tmp_path / "demo.wav"
+        assert main(["-o", str(out), "--sample-rate", str(SR), "--pickup-beats", "1"]) == 0
+        assert not (tmp_path / "demo.notes").exists()
