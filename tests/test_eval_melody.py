@@ -338,6 +338,36 @@ class TestScoreChoruses:
         results = score_choruses(CHART, played, blocks, CHART_BARS, METRE, transposition=0)
         assert [r.score.recall for r in results] == [1.0, 1.0]
 
+    def test_one_key_is_chosen_for_the_whole_take(self):
+        # A key fitted per block would give these two heads different shifts, and
+        # head_score would then refuse to add them.
+        _, blocks = _performance(2)
+        played = [*CHART, *[NoteEvent(n.start + 8.0, n.end + 8.0, n.pitch + 3) for n in CHART]]
+        results = score_choruses(CHART, played, blocks, CHART_BARS, METRE)
+        assert len({r.score.transposition for r in results}) == 1
+        assert head_score(results) is not None
+
+    def test_a_partial_block_is_scored_against_the_bars_it_reached(self):
+        # Four bars of an eight-bar chart, played as written: novelty 0, not 0.5.
+        eight = line(range(60, 68))
+        eight_bars = tuple(bar * BAR for bar in range(9))
+        grid = BeatGrid(tuple(bar * BAR for bar in range(8 + 4 + 1)), METRE)
+        blocks = form.choruses(grid, 8, 0, 8 * BAR)
+        assert [(b.kind, b.bars) for b in blocks] == [("head", 8), ("partial", 4)]
+        played = [*eight, *[NoteEvent(n.start + 16.0, n.end + 16.0, n.pitch) for n in eight[:4]]]
+        results = score_choruses(eight, played, blocks, eight_bars, METRE, transposition=0)
+        assert results[1].chorus.kind == "partial"
+        assert results[1].novelty == 0.0
+
+    def test_a_partial_block_that_played_nothing_written_is_all_novelty(self):
+        eight = line(range(60, 68))
+        eight_bars = tuple(bar * BAR for bar in range(9))
+        grid = BeatGrid(tuple(bar * BAR for bar in range(8 + 4 + 1)), METRE)
+        blocks = form.choruses(grid, 8, 0, 8 * BAR)
+        played = [NoteEvent(16.0 + i * BAR, 16.5 + i * BAR, 71) for i in range(4)]
+        results = score_choruses(eight, played, blocks, eight_bars, METRE, transposition=0)
+        assert results[-1].novelty == 1.0
+
     def test_nothing_scored_gives_nothing_back(self):
         grid = BeatGrid((0.0, BAR), METRE)
         blocks = form.choruses(grid, 4, 0, 4 * BAR)

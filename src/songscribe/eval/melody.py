@@ -1,24 +1,16 @@
 """Melody scoring: the lead line as played against the lead sheet's.
 
-The comparison is in **bars and beats**, never seconds: every onset is placed on the bar
-grid Stage 1 already produces, so the score survives a different tempo, a rubato head and
-any time offset -- the same reasons the chord branch's ``chart`` and ``grid`` metrics work
-in bars. The tolerance is therefore in beats too.
+Four rules, with the reasoning in ``EVALUATION.md``'s *Melody* section:
 
-It is **octave-blind by default**: the recording's instrument may sit an octave from the
-written range, and a pitch tracker's own commonest error is the octave. The strict number
-is reported beside it rather than folded into a penalty, so the two causes stay separable.
-
-Transposition comes from *pitch content* -- which twelve-tone rotation of the written line
-the played one looks like -- and never from whichever shift happens to score best. The
-match-best shift is available as a diagnostic (:func:`matching_transposition`) and is worth
-printing next to the chosen one, but fitting the key to the score is how a metric starts
-measuring itself.
-
-Only the **head** choruses are scored (``form.HEAD_CHORUSES``). On a solo chorus the same
-comparison is reported as :func:`novelty`, a deliberately *descriptive* number: a soloist
-who matched the written melody would be the anomaly, so a high novelty is the expected
-reading and a low one is the thing worth looking at.
+- Onsets are placed on the bar grid and the tolerance is in beats, so a different tempo
+  and any time offset cost nothing, as with the ``chart`` and ``grid`` chord metrics.
+- Pitches compare by pitch class by default; the strict score is reported beside that one
+  rather than folded into a penalty.
+- The transposition comes from pitch content (:func:`best_transposition`). The shift that
+  matches the most notes is a diagnostic (:func:`matching_transposition`), never the one
+  scored with.
+- Only ``head`` blocks are scored. Any other scored block is reported as
+  :func:`novelty`, which is descriptive rather than an accuracy.
 """
 
 from __future__ import annotations
@@ -95,11 +87,9 @@ def melody_sequence(
 
     A bar is ``beats_per_bar`` beats however long it lasted, so a chorus played faster
     than the chart lands on the same beats. Notes starting outside the grid are dropped:
-    whatever sounds before bar 1 or after the last bar line is not in the form.
-
-    Only the onset is placed. A note's length says little about whether it is the written
-    note -- a player holds or clips at will -- while its start is what the ear hears as
-    the melody's rhythm.
+    what sounds before bar 1 or after the last bar line is not in the form. Only the
+    onset is placed -- a player holds or clips a note at will, so its length says little
+    about whether it is the written one.
     """
     if beats_per_bar < 1:
         raise ValueError(f"beats_per_bar must be at least 1, got {beats_per_bar}")
@@ -128,12 +118,10 @@ def best_transposition(
     """Semitones the played line sounds above the written one, from pitch content alone.
 
     The duration-weighted pitch-class profile of each side, correlated at each candidate
-    shift: it asks which key the playing is *in*, not which shift scores best, so the
-    number stays independent of the thing it is used to measure. Ties go to the smallest
-    move, and to 0 above all -- a tie means the content does not distinguish the keys, and
-    inventing a modulation out of that would be worse than reporting none.
-
-    Returns 0 when either side is empty.
+    shift: which key the playing is *in*, not which shift scores best, so the number
+    stays independent of what it is used to measure. A tie goes to the smallest move and
+    to 0 above all, since a tie means the content does not distinguish the keys. Returns
+    0 when either side is empty.
     """
     if not shifts:
         raise ValueError("shifts is empty: there is no transposition to choose")
@@ -159,10 +147,10 @@ def matching_transposition(
 ) -> int:
     """The shift that matches the most notes: a **diagnostic**, never the scored one.
 
-    Report it beside :func:`best_transposition` and look into a disagreement -- it usually
-    means the lead was mistracked, or that this is not the tune the chart says it is. Do
-    not average the two, and do not score with this one: a key chosen to maximise the score
-    makes the score partly a measure of itself.
+    Report it beside :func:`best_transposition`; a disagreement usually means the lead was
+    mistracked, or that this is not the tune the chart says it is. Do not average the two,
+    and do not score with this one -- a key chosen to maximise a score makes the score
+    partly a measure of itself.
     """
     if not shifts:
         raise ValueError("shifts is empty: there is no transposition to choose")
@@ -193,18 +181,11 @@ def melody_score(
 ) -> MelodyScore:
     """Match the played line against the written one on one bar grid.
 
-    Both sides are placed on ``downbeats`` by :func:`melody_sequence`, so they must already
-    be on the same timeline -- ``form.project_estimate`` is what puts a chorus of a
-    recording there. The written line is moved up by ``transposition`` semitones, taken
-    from :func:`best_transposition` when not given.
-
-    A written note matches a played one when their pitches agree -- by pitch class if
-    ``octave_blind``, exactly otherwise -- and their onsets are within ``tolerance_beats``.
-    Taken in written order, each written note claims the nearest unclaimed played note, so
-    one played note can answer only one written note: without that, a tremolo on the tonic
-    would match the whole chart and score 1.0. A greedy pass rather than an optimal
-    assignment, because an optimal matching pairs notes a listener would never hear as the
-    same one.
+    Both sides are placed on ``downbeats`` and must already share a timeline;
+    ``form.project_estimate`` puts a chorus of a recording there. The written line moves up
+    by ``transposition``, from :func:`best_transposition` when not given. Notes match on
+    pitch -- by pitch class if ``octave_blind`` -- within ``tolerance_beats``; each written
+    note claims the nearest unclaimed played one, so a tremolo cannot match a whole chart.
     """
     if tolerance_beats < 0:
         raise ValueError(f"tolerance_beats must not be negative, got {tolerance_beats}")
@@ -259,11 +240,10 @@ def raw_pitch_accuracy(
     """Fraction of voiced reference frames whose pitch the estimate got right.
 
     MIREX's raw pitch accuracy, and with ``octave_blind`` its raw chroma accuracy. Both
-    sides are frequencies in hertz, one per frame, on the **same hop** and the same length;
-    a frame with no pitch is ``nan`` or zero.
-
-    This measures the tracker alone, before any note segmentation. Without it a tracker
-    that wanders and a segmenter that chops are one number, and neither can be fixed first.
+    sides are frequencies in hertz, one per frame, on the same hop and the same length; a
+    frame with no pitch is ``nan`` or zero. It measures the tracker alone, before any note
+    segmentation -- without it a tracker that wanders and a segmenter that chops are one
+    number.
     """
     if tolerance_cents <= 0:
         raise ValueError(f"tolerance_cents must be positive, got {tolerance_cents}")
@@ -310,15 +290,20 @@ def novelty(
     block was mislabelled a solo. Never average it with a head's score, and never report it
     without the word "novelty" attached: 0.18 recall on a solo is not 18% accuracy.
     """
-    scored = melody_score(
-        reference,
-        estimate,
-        downbeats,
-        beats_per_bar,
-        transposition=transposition,
-        octave_blind=octave_blind,
-        tolerance_beats=tolerance_beats,
+    return _novelty_of(
+        melody_score(
+            reference,
+            estimate,
+            downbeats,
+            beats_per_bar,
+            transposition=transposition,
+            octave_blind=octave_blind,
+            tolerance_beats=tolerance_beats,
+        )
     )
+
+
+def _novelty_of(scored: MelodyScore) -> float:
     return nan if isnan(scored.recall) else 1.0 - scored.recall
 
 
@@ -352,53 +337,51 @@ def score_choruses(
 ) -> tuple[ChorusMelody, ...]:
     """Score each block of a recording against the chart's melody.
 
-    ``reference`` is one chorus of the written line on the chart's own timeline, whose bar
-    lines are ``downbeats``; ``estimate`` is the whole recording's notes. Each scored block
-    is mapped onto the chart by ``form.project_estimate``. Heads get a
+    ``reference`` is one chorus of the written line on the chart's timeline, whose bar lines
+    are ``downbeats``; ``estimate`` is the whole recording's notes. Heads get a
     :class:`MelodyScore`, every other scored block a :func:`novelty`; intros, tails and
-    unaligned blocks are left out, as they are for chords.
-
-    A note is kept for the block its **onset** falls in, before projection: a note spilling
-    over a chorus line would otherwise be cut and re-onset at the block's start, which is
-    an onset nobody played.
+    unaligned blocks are left out, as they are for chords. A short block is scored against
+    the bars it reached. One key for the whole take, as on the chord side.
     """
     origin = downbeats[0] if len(downbeats) else 0.0
+    bars_per_chorus = max(len(downbeats) - 1, 1)
+    # Resolved once over the whole take, not per block: a key fitted to each block would
+    # give two heads two different keys, which is not a thing a band does, and would read
+    # a solo in a key of its own.
+    shift = best_transposition(reference, estimate) if transposition is None else transposition
     results: list[ChorusMelody] = []
     for block in blocks:
         if not block.is_scored:
             continue
+        # By onset, before projection: a note spilling over a chorus line would otherwise
+        # be cut and re-onset at the block's start, an onset nobody played.
         inside = [n for n in estimate if block.start <= n.start < block.end]
         played = form.project_estimate(inside, block, origin)
-        if block.kind == "head":
-            results.append(
-                ChorusMelody(
-                    chorus=block,
-                    score=melody_score(
-                        reference,
-                        played,
-                        downbeats,
-                        beats_per_bar,
-                        transposition=transposition,
-                        octave_blind=octave_blind,
-                        tolerance_beats=tolerance_beats,
-                    ),
-                )
+        # A partial block only reached part of the chart, so only that part is its
+        # reference. The chart's own bar lines are to hand here, so the cut is a bar line
+        # rather than form.truncate_reference's fraction of the extent.
+        written = (
+            reference
+            if block.bars >= bars_per_chorus
+            else [n for n in reference if n.start < downbeats[block.bars]]
+        )
+        scored = melody_score(
+            written,
+            played,
+            downbeats,
+            beats_per_bar,
+            transposition=shift,
+            octave_blind=octave_blind,
+            tolerance_beats=tolerance_beats,
+        )
+        head = block.kind == "head"
+        results.append(
+            ChorusMelody(
+                chorus=block,
+                score=scored if head else None,
+                novelty=nan if head else _novelty_of(scored),
             )
-        else:
-            results.append(
-                ChorusMelody(
-                    chorus=block,
-                    novelty=novelty(
-                        reference,
-                        played,
-                        downbeats,
-                        beats_per_bar,
-                        transposition=transposition,
-                        octave_blind=octave_blind,
-                        tolerance_beats=tolerance_beats,
-                    ),
-                )
-            )
+        )
     return tuple(results)
 
 
