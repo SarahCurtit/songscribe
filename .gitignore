@@ -42,8 +42,8 @@ out/
 # Evaluation: manifests, reference annotations and model estimates, none of
 # which belong in the repo -- a manifest lives with its corpus, the annotations
 # are other people's work, the estimates come from audio. The whole directory
-# goes, since `manifest --output` writes here. The leading slash matters: plain
-# `eval/` would also ignore src/songscribe/eval/.
+# goes: it is the habitual `manifest --output` target. The leading slash
+# matters: plain `eval/` would also ignore src/songscribe/eval/.
 /eval/
 *.lab
 annotations/

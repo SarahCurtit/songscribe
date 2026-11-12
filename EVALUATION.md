@@ -252,7 +252,7 @@ Carole King is Tapestry's first seven tracks (01–07).
 `backing-track.json` lists every song of a jazz backing-track collection, one track per song,
 with tempo and key variants as separate tracks. `backing-track-audio{,-train,-test}.json`
 beside it is one track per recorded *grid* — one chorus of the chart — paired with that
-chorus's audio. Both are in the private data repo, beside the references they name.
+chorus's audio. Both are in the data_extraction repo's `eval/`.
 
 **5. Survey.** Needs no audio or model:
 
