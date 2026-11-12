@@ -145,21 +145,25 @@ class Predictor:
         cached = self._cached(grid, stage, backend)
         if cached is not None:
             return {"status": "done", **cached}
-        job = self._jobs.get((grid.id, stage.name, backend))
-        if job is None:
+        # One read of the job, under the lock: a run can finish between any two
+        # of them, and a status of "done" paired with a later field read is how
+        # a reply ends up saying done with no events for the page to draw.
+        with self._lock:
+            job = self._jobs.get((grid.id, stage.name, backend))
+            seen = None if job is None else (job.status, job.error, job.started)
+        if seen is None:
             return {"status": "absent"}
-        if job.status == "done":
-            # The run writes its cache before marking the job done, so a poll
-            # can read the cache a moment too early and the job a moment too
-            # late. Look once more rather than answer "done" with no events,
-            # which is a reply the page cannot draw; if it is still not there
-            # the result is gone and the run is offered again.
+        status, error, started = seen
+        if status == "done":
+            # The run writes its cache before marking the job done, so the
+            # cache read above can be a moment too early. Look once more; if it
+            # is still not there the result is gone and the run is offered again.
             again = self._cached(grid, stage, backend)
             return {"status": "done", **again} if again else {"status": "absent"}
         return {
-            "status": job.status,
-            "error": job.error,
-            "elapsed": round(time.monotonic() - job.started, 1),
+            "status": status,
+            "error": error,
+            "elapsed": round(time.monotonic() - started, 1),
         }
 
     def _run(self, grid: examples.Grid, stage: Stage, backend: str) -> None:

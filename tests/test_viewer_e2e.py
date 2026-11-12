@@ -298,12 +298,14 @@ def note_classes(page) -> list[str]:
 
 
 def test_the_written_melody_is_drawn_before_any_model_runs(page) -> None:
-    # The label carries the clef beside its name, so match the start of it.
+    # The figures are appended after the label, so match its start.
     labels = page.locator("#lane-labels div").all_text_contents()
     assert any(text.startswith("Melody (written)") for text in labels)
-    # One staff, five lines, and one head per written note.
+    # One staff, five lines across it, and one head per written note. The clef
+    # lays down five of its own over its pad, so count only the staff's.
     assert page.locator("#svg g.staff").count() == 1
-    assert page.locator("#svg g.staff line.staffline").count() == 5
+    assert page.locator("#svg g.staff > line.staffline").count() == 5
+    assert page.locator("#svg g.clef line.staffline").count() == 5
     assert page.locator("#svg g.note").count() == len(written_melody())
     # 120 bpm, so a 2s bar is four beats and each note is a whole note: hollow,
     # and with no flag.
@@ -356,12 +358,13 @@ def test_the_melody_score_is_reported_beside_the_lane(page) -> None:
     page.check(".backend[data-backend='fakeline'] input")
     page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
     staff = page.locator("#lane-labels .score.staff").all_inner_texts()
-    assert len(staff) == 2, f"written and transcribed staves, got {staff}"
+    # Only the transcribed staff has figures; the written one has none to give.
+    assert len(staff) == 1, f"expected just the model's figures, got {staff}"
     # 16 bars, one an octave out and one plain wrong: 14/16 exact, 15/16 by
     # pitch class, and one transcribed note per written one.
-    assert "88%" in staff[-1]
-    assert "94%" in staff[-1]
-    assert "16/16 notes" in staff[-1]
+    assert "88%" in staff[0]
+    assert "94%" in staff[0]
+    assert "16/16 notes" in staff[0]
 
 
 def test_the_playhead_readout_names_the_sounding_note(page) -> None:
@@ -441,3 +444,27 @@ def test_melody_only_leaves_just_the_staves(page) -> None:
     page.uncheck("#melody-only")
     assert page.locator("#svg rect.block").count() > 0
     assert "melodyonly" not in page.evaluate("location.hash")
+
+
+def test_the_clef_sits_on_the_staff_rather_than_in_a_gap(page) -> None:
+    """The pad hides the notes behind a clef, so it must put the lines back."""
+    boxes = page.evaluate(
+        """() => {
+            const clef = document.querySelector('#svg g.clef');
+            const rect = (el) => {
+                const b = el.getBoundingClientRect();
+                return { top: b.top, bottom: b.bottom, left: b.left, right: b.right };
+            };
+            return {
+                pad: rect(clef.querySelector('rect.clef-pad')),
+                art: rect(clef.querySelector('g')),
+                lines: clef.querySelectorAll('line.staffline').length,
+            };
+        }"""
+    )
+    # The five lines are drawn again over the pad, and travel with it.
+    assert boxes["lines"] == 5
+    # And the pad covers the whole clef, so no part of it lands on a note.
+    pad, art = boxes["pad"], boxes["art"]
+    assert pad["top"] <= art["top"] and pad["bottom"] >= art["bottom"], (pad, art)
+    assert pad["left"] <= art["left"] and pad["right"] >= art["right"], (pad, art)

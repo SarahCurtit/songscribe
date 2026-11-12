@@ -566,3 +566,34 @@ def test_a_done_job_without_its_result_is_not_reported_as_done(root: Path, tmp_p
 
     reply = predictor.status(grid, STAGES["chords"], "fake")
     assert reply == {"status": "absent"}
+
+
+def test_a_run_finishing_mid_poll_is_not_reported_as_done(root: Path, tmp_path: Path) -> None:
+    """The job must be read once: it can finish between any two reads.
+
+    A status of "done" taken from one read and paired with fields from a later
+    one is how a reply ends up saying done with no events in it.
+    """
+
+    class FlippingJob:
+        """Running the first time it is asked, done every time after."""
+
+        def __init__(self) -> None:
+            self.reads = 0
+            self.error = None
+            self.started = time.monotonic()
+
+        @property
+        def status(self) -> str:
+            self.reads += 1
+            return "running" if self.reads == 1 else "done"
+
+    predictor = Predictor(tmp_path / "cache")
+    grid = examples.discover([root])["0/paper-lantern-waltz/2"]
+    job = FlippingJob()
+    predictor._jobs[(grid.id, "chords", "fake")] = job
+
+    reply = predictor.status(grid, STAGES["chords"], "fake")
+    assert job.reads == 1, "the job was read more than once"
+    assert reply["status"] == "running"
+    assert "events" not in reply

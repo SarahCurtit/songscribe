@@ -39,6 +39,11 @@ const NOTE_LEVEL_NAMES = {
 const ACCIDENTALS = { "#": "♯", b: "♭" };
 // One staff space, in px.
 const SPACE_PX = 2 * STAFF.step;
+// How far into the staff a clef starts, the clear space its pad keeps around
+// it, and the radius of the bass clef's two dots -- all in px.
+const CLEF_INSET_PX = 2;
+const CLEF_PAD_MARGIN_PX = 1;
+const CLEF_DOT_R_PX = 1.5;
 // Clefs are drawn, not typed: no font here carries U+1D11E, so a glyph would
 // come out as a box. Paths are in staff spaces, with (0,0) on the line the
 // clef names -- the G line for the treble, the F line for the bass -- and
@@ -46,8 +51,8 @@ const SPACE_PX = 2 * STAFF.step;
 const CLEF = {
   treble: {
     step: 2,
-    top: -3.3,
-    bottom: 2.9,
+    top: -3.4,
+    bottom: 3.35,
     width: 2.1,
     stroke: 1.8,
     paths: [
@@ -367,13 +372,13 @@ function fmt(seconds) {
 function render() {
   const t = state.truth;
   svg.replaceChildren();
+  state.clefs = [];
   const labels = $("lane-labels");
   labels.replaceChildren();
   if (!t) return;
 
   const px = state.pxPerSec;
   const width = Math.max(Math.ceil(duration() * px), scroller.clientWidth);
-  state.clefs = [];
   const layout = lanes();
   const height = layout.reduce((sum, lane) => sum + lane.height, 0);
   svg.setAttribute("width", width);
@@ -416,7 +421,8 @@ function render() {
       const data = staffData(lane);
       if (data?.score) {
         drawStaff(data, y, px, width);
-        div.append(staffNote(data));
+        const figures = staffNote(data);
+        if (figures) div.append(figures);
       }
     }
     y += lane.height;
@@ -438,9 +444,9 @@ function chordScore(totals) {
   return score;
 }
 
-// A staff lane's second line: the clef it is written in, and the melody score.
-// Marked `staff` as well as `score` so a lane's figures can be told from a
-// chord lane's, which are percentages of time rather than of notes.
+// A staff lane's second line: the melody score. Marked `staff` as well as
+// `score` so a lane's figures can be told from a chord lane's, which are
+// percentages of time rather than of notes.
 function staffNote(data) {
   const note = document.createElement("span");
   note.className = "score staff";
@@ -464,6 +470,8 @@ function staffNote(data) {
   } else if (!data.score.beat_seconds) {
     note.title = "No tempo, bar grid or .beats file, so note values are not written";
   }
+  // The written staff has no figures, so it gets no second line at all.
+  if (!parts.length) return null;
   note.textContent = parts.join(" · ");
   return note;
 }
@@ -584,23 +592,34 @@ function drawClef(name, laneY, parent) {
   if (!clef) return;
   const group = el("g", { class: "clef" }, parent);
   const reference = laneY + stepY(clef.step);
+  const pad = CLEF_INSET_PX + clef.width * SPACE_PX + CLEF_PAD_MARGIN_PX;
   el(
     "rect",
     {
       class: "clef-pad",
       x: 0,
-      y: reference + clef.top * SPACE_PX - 1,
-      width: (clef.width + 0.5) * SPACE_PX,
-      height: (clef.bottom - clef.top) * SPACE_PX + 2,
+      y: reference + clef.top * SPACE_PX - CLEF_PAD_MARGIN_PX,
+      width: pad,
+      height: (clef.bottom - clef.top) * SPACE_PX + 2 * CLEF_PAD_MARGIN_PX,
     },
     group,
   );
-  const art = el("g", { transform: `translate(2 ${reference}) scale(${SPACE_PX})` }, group);
+  // The staff runs behind a clef, so the pad lays its own stretch of the five
+  // lines back down and they travel with it.
+  for (let step = 0; step <= STAFF_TOP_LINE; step += 2) {
+    const y = laneY + stepY(step);
+    el("line", { class: "staffline", x1: 0, x2: pad, y1: y, y2: y }, group);
+  }
+  const art = el(
+    "g",
+    { transform: `translate(${CLEF_INSET_PX} ${reference}) scale(${SPACE_PX})` },
+    group,
+  );
   for (const d of clef.paths) {
     el("path", { class: "clef-stroke", d, "stroke-width": clef.stroke / SPACE_PX }, art);
   }
   for (const [cx, cy] of clef.dots) {
-    el("circle", { class: "clef-dot", cx, cy, r: 1.5 / SPACE_PX }, art);
+    el("circle", { class: "clef-dot", cx, cy, r: CLEF_DOT_R_PX / SPACE_PX }, art);
   }
   state.clefs.push(group);
 }
