@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from songscribe.eval import dataset, harte
 
-MANIFEST = Path(__file__).resolve().parent.parent / "eval" / "jaah.json"
+#: Not committed here — see tests/test_eval_split.py. SONGSCRIBE_EVAL_MANIFESTS says where the
+#: manifests live; without it this corpus's checks skip and the label tests below still run.
+MANIFEST = (
+    Path(
+        os.environ.get("SONGSCRIBE_EVAL_MANIFESTS")
+        or Path(__file__).resolve().parent.parent / "eval"
+    )
+    / "jaah.json"
+)
 
 
+@pytest.mark.skipif(
+    not MANIFEST.is_file(), reason=f"no manifest at {MANIFEST} — set SONGSCRIBE_EVAL_MANIFESTS"
+)
 class TestCommittedManifest:
     @pytest.fixture
     def loaded(self):

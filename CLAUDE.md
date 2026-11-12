@@ -59,7 +59,6 @@ src/songscribe/
     viz.py        shaping for plots — no plotting dependency      (pure Python)
     runner.py     runs a backend, caches estimates, aggregates
     cli.py        songscribe-eval entry point
-eval/           committed manifests: track ids + relative paths, no content
 notebooks/      annotations.ipynb — look at annotations and estimates
 tests/          unit tests for the pure-Python stages
 MODELS.md       model inventory, licences, and the bar for adding one
@@ -133,12 +132,12 @@ pytest -k align            # one stage
 ruff check . && ruff format --check .
 songscribe song.mp3 -c template --no-separate   # quickest end-to-end smoke test
 
-# run from the repo root; $PWD makes the path absolute, so it works from any directory
-export SONGSCRIBE_EVAL_ANNOTATIONS="$PWD/data/isophonics"    # the directory holding chordlab/
-export SONGSCRIBE_EVAL_ROOT=~/music                          # your recordings
-songscribe-eval survey eval/isophonics-beatles.json          # no audio, no model
-songscribe-eval manifest data/isophonics -a ~/music -o eval/isophonics.json
-songscribe-eval score eval/isophonics.json -c madmom --cache .eval-cache --per-track
+# the manifests and the corpora they name both live in the private data repo
+export DATA=~/perso/songscribe-data-extraction
+export SONGSCRIBE_EVAL_ANNOTATIONS="$DATA/data/isophonics"   # the directory holding chordlab/
+export SONGSCRIBE_EVAL_ROOT="$DATA/data"                     # one root, every corpus
+songscribe-eval survey "$DATA"/eval/isophonics-beatles.json  # no audio, no model
+songscribe-eval score "$DATA"/eval/isophonics-beatles-audio-test.json -c madmom --per-track
 ```
 
 A recording of the chart played several times (a manifest track with `"bars"`) is scored per
@@ -172,26 +171,28 @@ instant and a long run is resumable — which matters because `madmom` runs at ~
 making the 8-hour Beatles set ~4 hours (`template` is ~180x, so ~3 minutes). Shake the
 paths out with `-c template --limit 5` first. See `EVALUATION.md`.
 
-The Isophonics annotations live in the gitignored `data/isophonics/` (extract the archive
-there, so `chordlab/` sits directly under it); `eval/isophonics-beatles.json` is the committed
-manifest over the Beatles. The archive holds more than one artist, and each is a committed
-manifest of its own — `-zweieck` (18 tracks) and `-carole-king` (7) — built with `manifest
---include "chordlab/<artist>"`, because Isophonics rates its annotations per artist and one
-average would hide that. Carole King is held out whole (`-test`, no `-train`, written by hand):
-7 songs cannot carry a hash split, and `split` refuses rather than writing an empty side.
-The backing tracks are **split by band**, not by hash — no trio on both sides, some musicians
-test-only, styles balanced — by the private data_extraction repo from line-ups that are not
-public; the manifests say `"split"`, and `split` refuses them (`EVALUATION.md`).
-Michael Jackson's set has no chords at all, only segments, so it never reaches a manifest.
-Their `reference` paths start at `chordlab/`, so the annotation
-root — `SONGSCRIBE_EVAL_ANNOTATIONS`, as above, or `--annotations` — must be the directory
-*containing* `chordlab/`; unset, it falls back to `eval/` and finds nothing. They are all
-**references-only** — no `audio` paths —
-so they serve `survey` and `score --estimates` (both need that root), and `score -c` on them
-scores nothing. A `-c` run needs a manifest built locally with `manifest -a`, as above; its
-audio paths follow your own library's filenames, so it stays uncommitted. Its paths are
-relative to the two directories it was built from, so `score` needs both roots pointing
-back at them — the two exports above, or `-a` and `--annotations` — or it finds nothing.
+**No manifest is committed here.** A manifest names a corpus's own files, so it lives with the
+corpus: on this machine they are all in the private data_extraction repo's `eval/` —
+`isophonics-beatles`, `-zweieck`, `-carole-king`, `jaah` and `backing-track`, references-only
+as downloaded, and all but `-zweieck` have an `-audio` pairing beside them that adds the audio
+path of every track a recording was found for; Zweieck's recordings aren't there yet. `score -c` runs straight off those pairings; the
+references-only ones serve `survey` and `score --estimates`, and `score -c` on them scores
+nothing. Isophonics
+is one manifest per artist, built with `manifest --include "chordlab/<artist>"`, because it
+rates its annotations per artist and one average would hide that. Carole King is held out
+whole (`-test`, no `-train`): 7 songs cannot carry a hash split, and `split` refuses rather
+than writing an empty side. The backing tracks are **split by band**, not by hash — no trio on
+both sides, some musicians test-only, styles balanced — from line-ups that are not public;
+those manifests say `"split"`, and `split` refuses them (`EVALUATION.md`). Michael Jackson's
+set has no chords at all, only segments, so it never reaches a manifest.
+
+The Isophonics annotations live in that repo's `data/isophonics/` (extract the archive there,
+so `chordlab/` sits directly under it), and their `reference` paths start at `chordlab/`, so
+`SONGSCRIBE_EVAL_ANNOTATIONS` — or `--annotations` — must be the directory *containing*
+`chordlab/`; unset, it falls back to the manifest's own directory and finds nothing.
+`SONGSCRIBE_EVAL_ROOT` is that repo's `data/` for every corpus, each audio path starting with
+its corpus directory. Both roots have to point back at the trees a manifest was built from, or
+`score` finds nothing.
 
 `[chords]` pulls madmom from a **pinned git commit**, not PyPI — the 2018 release can't
 import on Python 3.10+. Don't "simplify" it back to `madmom>=0.16`; that breaks the default

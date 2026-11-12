@@ -1,16 +1,30 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from songscribe.eval import split
 
-EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
 CORPORA = ("jaah", "isophonics-beatles", "backing-track", "isophonics-zweieck")
 #: The corpora whose committed split is the hash split. backing-track is split by band instead.
 HASH_SPLIT = ("jaah", "isophonics-beatles", "isophonics-zweieck")
+#: Held out whole, so it has a test manifest and no train one.
+WHOLE = "isophonics-carole-king"
+#: A manifest names a corpus's own files, so it lives with the corpus rather than here, and
+#: SONGSCRIBE_EVAL_MANIFESTS says where. The checks over them need every one, so a directory
+#: holding a manifest someone built locally does not start them against a missing file.
+EVAL_DIR = Path(
+    os.environ.get("SONGSCRIBE_EVAL_MANIFESTS") or Path(__file__).resolve().parent.parent / "eval"
+)
+NEEDED = [f"{name}{side}" for name in CORPORA for side in ("", "-train", "-test")]
+NEEDED += [WHOLE, f"{WHOLE}-test"]
+committed_only = pytest.mark.skipif(
+    not all((EVAL_DIR / f"{name}.json").is_file() for name in NEEDED),
+    reason=f"manifests missing from {EVAL_DIR} — set SONGSCRIBE_EVAL_MANIFESTS",
+)
 IDS = [f"labs/song_{n}" for n in range(200)]
 
 
@@ -95,6 +109,7 @@ class TestSplitManifest:
             split.split_manifest(manifest("labs/a"), fraction)
 
 
+@committed_only
 @pytest.mark.parametrize("name", CORPORA)
 class TestCommittedSplits:
     def test_train_and_test_partition_the_manifest(self, name):
@@ -112,12 +127,14 @@ class TestCommittedSplits:
         assert not in_train & in_test
 
 
+@committed_only
 @pytest.mark.parametrize("name", HASH_SPLIT)
 def test_hash_split_files_match_what_the_code_produces(name):
     train, test = split.split_manifest(load(name))
     assert (train, test) == (load(f"{name}-train"), load(f"{name}-test"))
 
 
+@committed_only
 class TestBackingTrackIsSplitByBand:
     """The backing tracks are split so that no trio plays on both sides.
 
@@ -151,6 +168,7 @@ class TestBackingTrackIsSplitByBand:
         assert sorted(p.name for p in tmp_path.iterdir()) == ["corpus.json"]
 
 
+@committed_only
 class TestCaroleKingIsHeldOutWhole:
     """Carole King is scored, never tuned on, so it has a test set and no train one.
 
@@ -160,7 +178,7 @@ class TestCaroleKingIsHeldOutWhole:
     is a reason to keep them off the tuning side rather than to average them in.
     """
 
-    CORPUS = "isophonics-carole-king"
+    CORPUS = WHOLE
 
     def test_the_test_manifest_holds_every_track_in_order(self):
         full, test = load(self.CORPUS), load(f"{self.CORPUS}-test")
