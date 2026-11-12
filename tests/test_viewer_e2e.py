@@ -385,8 +385,59 @@ def test_a_note_the_model_missed_is_outlined_where_it_belongs(page) -> None:
     # Drawn on the model's staff, not the written one, so it is clear whose gap
     # it is; and hollow, since nothing was heard there.
     assert page.locator("#svg g.staff:last-of-type g.note.missing").count() == 1
-    assert page.eval_on_selector(
-        "#svg g.note.missing ellipse.head", "el => getComputedStyle(el).fill"
-    ) == "none"
+    assert (
+        page.eval_on_selector("#svg g.note.missing ellipse.head", "el => getComputedStyle(el).fill")
+        == "none"
+    )
     heads = page.locator("#svg g.staff:last-of-type g.note").count()
     assert heads == int(TRACK_SECONDS / BAR_SECONDS), "the found notes plus the missed one"
+
+
+def test_each_staff_is_drawn_with_a_clef(page) -> None:
+    """No font here carries a clef glyph, so it is drawn; the lane does not name it."""
+    assert page.locator("#svg g.clef").count() == 1, "the written staff, before any model"
+    # The treble clef is two strokes, the spiral and the spine, and has no dots.
+    assert page.locator("#svg g.clef path.clef-stroke").count() == 2
+    assert page.locator("#svg g.clef circle.clef-dot").count() == 0
+
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.staff').length >= 2")
+    assert page.locator("#svg g.clef").count() == 2
+
+
+def test_the_clef_stays_put_when_the_staff_scrolls(page) -> None:
+    """A proportional staff scrolls the opening bar away within seconds."""
+    zoom(page, 100)
+    page.evaluate("scroller.scrollLeft = 450")
+    page.wait_for_function(
+        "document.querySelector('#svg g.clef').getAttribute('transform') === 'translate(450 0)'"
+    )
+    # And it comes back to the edge when the staff is scrolled home.
+    page.evaluate("scroller.scrollLeft = 0")
+    page.wait_for_function(
+        "document.querySelector('#svg g.clef').getAttribute('transform') === 'translate(0 0)'"
+    )
+
+
+def test_melody_only_leaves_just_the_staves(page) -> None:
+    page.check(".backend[data-backend='fake'] input")
+    page.wait_for_function("document.querySelectorAll('#svg rect.agree').length > 0")
+    assert page.locator("#chord-legend").is_visible()
+
+    page.check("#melody-only")
+    assert page.locator("#svg rect.block").count() == 0, "chord blocks are gone"
+    assert page.locator("#svg rect.agree").count() == 0, "so is the agreement strip"
+    assert page.locator("#svg g.staff").count() == 1, "the written staff stays"
+    assert page.locator("#svg line.barline").count() > 0, "and so does the bar grid"
+    assert not page.locator("#chord-legend").is_visible()
+    # Nothing is graded until a melody model runs, so its legend waits too.
+    assert not page.locator("#melody-legend").is_visible()
+    assert "melodyonly=1" in page.evaluate("location.hash")
+
+    page.check(".backend[data-backend='fakeline'] input")
+    page.wait_for_function("document.querySelectorAll('#svg g.note.exact').length > 0")
+    assert page.locator("#melody-legend").is_visible()
+
+    page.uncheck("#melody-only")
+    assert page.locator("#svg rect.block").count() > 0
+    assert "melodyonly" not in page.evaluate("location.hash")

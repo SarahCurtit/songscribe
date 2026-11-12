@@ -7,6 +7,8 @@
   --muted: #898781;
   --grid: #e1e0d9;
   --axis: #c3c2b7;
+  /* Staff lines and clefs read as print, not as chrome. */
+  --staff-ink: #16160f;
   --border: rgba(11, 11, 11, 0.10);
   --block: #eeede8;
   --block-alt: #f5f4f0;
@@ -28,6 +30,7 @@
     --ink-2: #c3c2b7;
     --grid: #2c2c2a;
     --axis: #383835;
+    --staff-ink: #eceade;
     --border: rgba(255, 255, 255, 0.10);
     --block: #2a2a28;
     --block-alt: #222221;
@@ -44,6 +47,7 @@
   --ink-2: #c3c2b7;
   --grid: #2c2c2a;
   --axis: #383835;
+  --staff-ink: #eceade;
   --border: rgba(255, 255, 255, 0.10);
   --block: #2a2a28;
   --block-alt: #222221;
@@ -210,6 +214,9 @@ audio {
   gap: 6px;
 }
 
+/* `display: flex` above beats the browser's own [hidden] rule, so say it here. */
+.legend[hidden] { display: none; }
+
 .swatch {
   display: inline-block;
   width: 14px;
@@ -327,12 +334,22 @@ svg .note.miss { color: var(--miss); }
 svg .note.extra { color: var(--muted); }
 svg .note.missing { color: var(--root); }
 
-svg .staffline { stroke: var(--axis); stroke-width: 1; }
+svg .staffline { stroke: var(--staff-ink); stroke-width: 1.1; }
+svg .clef-pad { fill: var(--surface); }
+svg .clef-stroke {
+  fill: none;
+  stroke: var(--staff-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+svg .clef-dot { fill: var(--staff-ink); }
 svg .note .head { fill: var(--surface); stroke: currentColor; stroke-width: 1.4; }
 svg .note .head.filled { fill: currentColor; }
 svg .note .stem { stroke: currentColor; stroke-width: 1.4; }
 svg .note .flag { stroke: currentColor; stroke-width: 1.4; fill: none; }
-svg .note .ledger { stroke: currentColor; stroke-width: 1; }
+/* Ledger lines belong to the staff, so they stay its colour; the head carries
+   the agreement colour on its own. */
+svg .note .ledger { stroke: var(--staff-ink); stroke-width: 1.1; }
 svg .note .dot { fill: currentColor; }
 svg .note .accidental { fill: currentColor; font-size: 13px; }
 /* The length the note actually sounded: present but quiet, so the heads stay

@@ -208,6 +208,11 @@ measures the beat the lane says *rhythm unknown* instead of printing a rhythm no
 Where a melody is written too, each head is coloured by whether it is the written note, that
 note an octave out, or a different note.
 
+Each staff carries its clef, drawn rather than typed — no font in a plain Linux install has
+the glyph, so one would come out as a box — and pinned to the left edge, since a proportional
+staff scrolls its opening bar away within seconds. **Melody only** puts the chord lanes away
+and leaves the staves and the bar grid, which is the view to read as a score.
+
 Ticking a model runs it on that recording the first time and caches the result in
 `~/.cache/songscribe/viewer/`. It binds to localhost only; on a remote machine, forward the
 port (`ssh -L 8765:localhost:8765 <host>`) and open `http://localhost:8765`.

@@ -37,9 +37,43 @@ const NOTE_LEVEL_NAMES = {
   missing: "not transcribed",
 };
 const ACCIDENTALS = { "#": "♯", b: "♭" };
-// The note each clef's bottom and top line carries, shown beside the lane's
-// name so the staff can be read without relying on a clef glyph's font.
-const CLEF_RANGE = { treble: "E4-F5", bass: "G2-A3" };
+// One staff space, in px.
+const SPACE_PX = 2 * STAFF.step;
+// Clefs are drawn, not typed: no font here carries U+1D11E, so a glyph would
+// come out as a box. Paths are in staff spaces, with (0,0) on the line the
+// clef names -- the G line for the treble, the F line for the bass -- and
+// `top`/`bottom` are how far the drawing reaches either side of it.
+const CLEF = {
+  treble: {
+    step: 2,
+    top: -3.3,
+    bottom: 2.9,
+    width: 2.1,
+    stroke: 1.8,
+    paths: [
+      "M 1.45 -2.05 C 1.35 -1.5 0.25 -1.35 -0.08 -0.45 C -0.14 -0.26 -0.06 -0.1 -0.02 0"
+        + " C 0.02 0.37 0.33 0.66 0.65 0.69 C 0.97 0.72 1.26 0.5 1.34 0.24"
+        + " C 1.41 -0.02 1.27 -0.29 1.08 -0.38 C 0.88 -0.47 0.66 -0.4 0.56 -0.26"
+        + " C 0.47 -0.13 0.51 0.04 0.6 0.12 C 0.68 0.19 0.8 0.17 0.84 0.11",
+      "M 0.86 -3.18 C 1.64 -2.94 1.62 -2.3 1.45 -2.05 C 1.26 -1.05 1.12 0.3 1.08 1.35"
+        + " C 1.05 2.05 1 2.45 0.9 2.7 C 0.7 3.25 0.1 3.3 0.04 2.85"
+        + " C 0.01 2.6 0.26 2.48 0.44 2.6",
+    ],
+    dots: [],
+  },
+  bass: {
+    step: 6,
+    top: -1,
+    bottom: 2.8,
+    width: 2.5,
+    stroke: 2.6,
+    paths: ["M 0.1 -0.52 C 1.05 -0.92 1.8 -0.3 1.72 0.6 C 1.62 1.6 0.85 2.25 0.05 2.62"],
+    dots: [
+      [2.15, -0.5],
+      [2.15, 0.5],
+    ],
+  },
+};
 
 const $ = (id) => document.getElementById(id);
 const audio = $("audio");
@@ -56,6 +90,7 @@ const state = {
   predictions: { chords: {}, melody: {} },
   pxPerSec: Number($("zoom").value),
   playhead: null,
+  clefs: [], // pinned to the left edge, so they survive scrolling
   loadToken: 0, // bumps on grid change, so stale polls are dropped
 };
 
@@ -81,6 +116,7 @@ function readHash() {
     // "models" is the chord stage's key, kept from when it was the only one.
     chords: (params.get("models") || "").split(",").filter(Boolean),
     melody: (params.get("melody") || "").split(",").filter(Boolean),
+    melodyOnly: params.get("melodyonly") === "1",
   };
 }
 
@@ -89,6 +125,7 @@ function writeHash() {
   if (state.gridId) params.set("grid", state.gridId);
   if (state.selected.chords.size) params.set("models", [...state.selected.chords].join(","));
   if (state.selected.melody.size) params.set("melody", [...state.selected.melody].join(","));
+  if ($("melody-only").checked) params.set("melodyonly", "1");
   history.replaceState(null, "", "#" + params.toString());
 }
 
@@ -107,6 +144,8 @@ async function init() {
       .filter((b) => state.backends[stage].includes(b))
       .forEach((b) => state.selected[stage].add(b));
   }
+
+  $("melody-only").checked = wanted.melodyOnly;
 
   const select = $("grid-select");
   for (const grid of state.grids) {
@@ -260,6 +299,11 @@ document.addEventListener("keydown", (event) => {
 
 audio.addEventListener("loadedmetadata", render);
 
+$("melody-only").addEventListener("change", () => {
+  writeHash();
+  render();
+});
+
 // --------------------------------------------------------------------------- //
 // Timeline
 // --------------------------------------------------------------------------- //
@@ -287,10 +331,17 @@ function staffData(lane) {
 
 function lanes() {
   const t = state.truth;
+  // Melody only: the staves and the bar grid, with the chord lanes out of the
+  // way, so what is left reads as a score.
+  const staffOnly = $("melody-only").checked;
   const list = [{ kind: "ruler", height: H.ruler, label: "" }];
-  if (t?.events.length) list.push({ kind: "truth", height: H.truth, label: "Ground truth" });
-  if (t?.alternates.length) list.push({ kind: "alt", height: H.alt, label: "Alternates" });
-  for (const backend of state.backends.chords) {
+  if (!staffOnly && t?.events.length) {
+    list.push({ kind: "truth", height: H.truth, label: "Ground truth" });
+  }
+  if (!staffOnly && t?.alternates.length) {
+    list.push({ kind: "alt", height: H.alt, label: "Alternates" });
+  }
+  for (const backend of staffOnly ? [] : state.backends.chords) {
     if (state.selected.chords.has(backend)) {
       list.push({ kind: "pred", backend, height: H.pred + H.strip + H.gap, label: backend });
     }
@@ -322,6 +373,7 @@ function render() {
 
   const px = state.pxPerSec;
   const width = Math.max(Math.ceil(duration() * px), scroller.clientWidth);
+  state.clefs = [];
   const layout = lanes();
   const height = layout.reduce((sum, lane) => sum + lane.height, 0);
   svg.setAttribute("width", width);
@@ -392,8 +444,8 @@ function chordScore(totals) {
 function staffNote(data) {
   const note = document.createElement("span");
   note.className = "score staff";
-  const clef = data.score.clef;
-  const parts = [`${clef} ${CLEF_RANGE[clef] ?? ""}`.trim()];
+  // The clef is drawn on the staff, so the lane carries only the figures.
+  const parts = [];
   // Nothing measured the beat, so no note value was written.
   if (!data.score.beat_seconds) parts.push("rhythm unknown");
   const totals = data.agreement?.totals;
@@ -520,6 +572,37 @@ function drawStaff(data, laneY, px, width) {
   for (const note of data.score.notes) drawNote(note, laneY, px, staff);
   // Written notes this backend found nothing for, drawn where they belong.
   for (const note of data.missed?.notes ?? []) drawNote(note, laneY, px, staff);
+  drawClef(data.score.clef, laneY, staff);
+}
+
+// The clef, pinned to the left edge rather than left behind at the start of
+// the staff: on a proportional staff the opening bar scrolls away in seconds.
+// It is drawn last and over a pad, since the notes it covers are whichever
+// happen to fall at the left of the view.
+function drawClef(name, laneY, parent) {
+  const clef = CLEF[name];
+  if (!clef) return;
+  const group = el("g", { class: "clef" }, parent);
+  const reference = laneY + stepY(clef.step);
+  el(
+    "rect",
+    {
+      class: "clef-pad",
+      x: 0,
+      y: reference + clef.top * SPACE_PX - 1,
+      width: (clef.width + 0.5) * SPACE_PX,
+      height: (clef.bottom - clef.top) * SPACE_PX + 2,
+    },
+    group,
+  );
+  const art = el("g", { transform: `translate(2 ${reference}) scale(${SPACE_PX})` }, group);
+  for (const d of clef.paths) {
+    el("path", { class: "clef-stroke", d, "stroke-width": clef.stroke / SPACE_PX }, art);
+  }
+  for (const [cx, cy] of clef.dots) {
+    el("circle", { class: "clef-dot", cx, cy, r: 1.5 / SPACE_PX }, art);
+  }
+  state.clefs.push(group);
 }
 
 function drawNote(note, laneY, px, parent) {
@@ -547,7 +630,7 @@ function drawNote(note, laneY, px, parent) {
     const y = laneY + stepY(step);
     el(
       "line",
-      { class: "ledger", x1: cx - STAFF.headRx - 3, x2: cx + STAFF.headRx + 3, y1: y, y2: y },
+      { class: "ledger", x1: cx - STAFF.headRx - 3.5, x2: cx + STAFF.headRx + 3.5, y1: y, y2: y },
       group,
     );
   }
@@ -648,6 +731,9 @@ function updatePlayhead() {
   if (state.playhead) {
     state.playhead.setAttribute("x1", x);
     state.playhead.setAttribute("x2", x);
+  }
+  for (const clef of state.clefs) {
+    clef.setAttribute("transform", `translate(${scroller.scrollLeft} 0)`);
   }
   if ($("follow").checked && !audio.paused) {
     const left = scroller.scrollLeft;
