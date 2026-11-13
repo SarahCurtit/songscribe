@@ -94,8 +94,9 @@ def _btc_device(value: object) -> str | None:
 
 
 def _log_probability_bonus(value: object) -> str | None:
-    # bool is an int, and True would quietly mean a bonus of 1.
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    # bool is an int, and True would quietly mean a bonus of 1. nan and inf pass a `< 0`
+    # test and then make every path score nan, which decodes to one chord for the whole song.
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
         return f"must be a number of log-probability units per frame, got {value!r}"
     if value < 0:
         return f"must be at least 0, got {value!r}"

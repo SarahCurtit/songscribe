@@ -66,6 +66,8 @@ class TestRegistration:
             (True, "must be a number of log-probability units per frame, got True"),
             ("6", "must be a number of log-probability units per frame, got '6'"),
             (None, "must be a number of log-probability units per frame, got None"),
+            (float("nan"), "must be a number of log-probability units per frame, got nan"),
+            (float("inf"), "must be a number of log-probability units per frame, got inf"),
         ],
     )
     def test_a_bad_self_transition_is_refused_before_the_model_loads(self, value, fault):
