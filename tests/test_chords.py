@@ -106,16 +106,14 @@ class TestViterbiPath:
     def test_the_prior_has_to_outweigh_the_evidence_for_the_flicker(self):
         # The flicker frame prefers A minor by log(0.45 / 0.40); leaving and
         # returning costs two self-transitions, so anything below half that gap
-        # leaves the flicker in place. The threshold is what makes this one
-        # parameter a readable dial rather than a magic number.
+        # leaves the flicker in place.
         flicker = self._log(self.FLICKER)
         gap = np.log(0.45 / 0.40)
         assert list(viterbi_path(flicker, gap / 2 - 1e-9)) == [0] * 5 + [1] + [0] * 5
         assert list(viterbi_path(flicker, gap / 2 + 1e-9)) == [0] * 11
 
     def test_zero_bonus_reproduces_the_per_frame_argmax(self):
-        # The recoverable baseline: today's frame-independent decoding, and the
-        # thing a regression in the decoder would show up against first.
+        # The baseline a caller can always get back: frame-independent decoding.
         generator = np.random.default_rng(20_240_617)
         for classes in (2, 7, 170):
             scores = generator.normal(size=(60, classes))
@@ -146,16 +144,23 @@ class TestViterbiPath:
         change = self._log([[0.7, 0.1, 0.2]] * 6 + [[0.1, 0.2, 0.7]] * 6)
         assert len(set(viterbi_path(change, 100.0))) == 1
 
-    def test_length_and_dtype_let_the_path_index_labels(self):
+    def test_the_path_indexes_a_label_list(self):
+        # _runs_to_events indexes a plain list with these, so they have to be
+        # integers, not the floats an argmax on the wrong axis would give.
         path = viterbi_path(self._log([[0.5, 0.5]] * 4), 1.0)
         assert path.shape == (4,)
-        assert ["C", "Am"][path[0]] in {"C", "Am"}
+        assert [["C", "Am"][frame] for frame in path] == ["C"] * 4
 
     def test_a_single_frame_is_its_own_argmax(self):
         np.testing.assert_array_equal(viterbi_path(self._log([[0.1, 0.9]]), 5.0), [1])
 
     def test_no_frames_decodes_to_no_path(self):
         assert len(viterbi_path(np.zeros((0, 170)), 1.0)) == 0
+
+    def test_no_classes_is_refused_rather_than_decoded_to_class_zero(self):
+        # Returning 0 per frame would name a class the caller has no label for.
+        with pytest.raises(ValueError, match=r"\(frames, classes\)"):
+            viterbi_path(np.zeros((5, 0)), 1.0)
 
     def test_a_negative_bonus_is_refused(self):
         # Negative would mean "prefer changing chord", which is the opposite of

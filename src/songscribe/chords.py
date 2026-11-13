@@ -114,9 +114,9 @@ BTC_NO_CHORD, BTC_UNKNOWN = 169, 168
 # chords -- a bar of C broken by two frames of Cmaj7 or Am -- which barely dents WCSR, since
 # every one of those frames carries a defensible label, while printing a chart with several
 # times too many changes. Decoding the frames as a sequence with a bonus for holding the
-# previous chord is what buys the boundaries back. The bonus is in log-probability units per
-# frame (a BTC frame is 92.6 ms), and 0 restores plain per-frame argmax. Swept on the
-# backing-track and Beatles *train* splits, never on a test split.
+# previous chord buys the boundaries back. The bonus is in log-probability units per frame
+# (a BTC frame is 92.6 ms), so it trades that many frames of evidence against one chord
+# change; 0 restores plain per-frame argmax.
 BTC_SELF_TRANSITION = 6.0
 
 
@@ -283,25 +283,20 @@ def chord_templates() -> tuple[np.ndarray, list[str]]:
 def viterbi_path(log_probabilities: np.ndarray, self_transition: float = 0.0) -> np.ndarray:
     """Decode ``(frames, classes)`` log-probabilities into the likeliest label sequence.
 
-    The transition model has a single parameter: staying in a class scores
-    ``self_transition`` more than leaving it, and every switch scores alike, so the prior
-    says only that chords are held, nothing about which chord follows which. That is
-    deliberate -- a key-aware transition matrix would say more, but needs a key estimate
-    this stage does not have, and gets a progression in the wrong key badly wrong.
-
-    Smoothing lives here rather than downstream because this is the stage that knows the
-    frame rate: ``self_transition`` trades frames of evidence against one chord change, and
-    only a caller holding the emissions can make that trade. With ``self_transition=0``
-    every path pays the same transition score, so the result is the per-frame argmax,
-    tie-breaking included.
+    Staying in a class scores ``self_transition`` more than leaving it and every switch
+    scores alike, so the prior says that chords are held and nothing about which chord
+    follows which. At ``0`` every path pays the same transition score and the result is the
+    per-frame argmax, tie-breaking included.
     """
-    if log_probabilities.ndim != 2:
+    # A key-aware transition matrix would say more than "chords are held", but it needs a
+    # key estimate this stage does not have, and reads a progression in the wrong key badly.
+    if log_probabilities.ndim != 2 or log_probabilities.shape[1] == 0:
         raise ValueError(f"expected a (frames, classes) array, got {log_probabilities.shape}")
     if self_transition < 0:
         raise ValueError(f"self_transition must be at least 0, got {self_transition!r}")
     frames, classes = log_probabilities.shape
-    if frames == 0 or classes == 0:
-        return np.zeros(frames, dtype=np.intp)
+    if frames == 0:
+        return np.zeros(0, dtype=np.intp)
 
     transition = np.zeros((classes, classes))
     np.fill_diagonal(transition, float(self_transition))

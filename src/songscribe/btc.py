@@ -270,9 +270,9 @@ def log_probabilities(
 ) -> np.ndarray:
     """Log-softmax of :func:`logits`, ``(frames, 170)``.
 
-    What a sequence decoder needs and the raw logits are not: a row sums to one in
-    probability, so emission scores are comparable from frame to frame. The row's argmax is
-    unchanged, so decoding this without a transition prior returns what :func:`predict` does.
+    A row sums to one in probability, so a sequence decoder can compare emissions from
+    frame to frame; the raw logits cannot be compared that way. The row's argmax is
+    unchanged, so decoding this with no transition prior gives what :func:`predict` does.
     """
     scores = logits(model, mean, std, feature, device)
     shifted = scores - scores.max(axis=1, keepdims=True)
