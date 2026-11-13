@@ -47,8 +47,8 @@ frame's own best class. We feed the same logits to a Viterbi decoder with one pa
 log-probability bonus for a frame keeping the previous frame's chord (`chords.viterbi_path`,
 `chords.BTC_SELF_TRANSITION`) — because frame-independent argmax over 170 classes flickers,
 and a flickering chart is unplayable whatever its WCSR. The weights, the features and the
-per-frame logits are unchanged, and `-c btc` with `self_transition=0` reproduces upstream's
-decoding exactly, which is how the re-implementation stays checkable against it.
+per-frame logits are unchanged, and the backend called with `self_transition=0` reproduces
+upstream's decoding, which is how the re-implementation stays checkable against it.
 
 Two dependencies need a word of explanation against the PyTorch policy:
 
