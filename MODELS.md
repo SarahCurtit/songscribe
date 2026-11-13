@@ -38,9 +38,17 @@ training framework with it.
 |---|---|---|---|---|---|---|
 | Separation | [Demucs v4](https://github.com/adefossez/demucs) (`htdemucs`) | PyTorch | MIT | Auto-downloaded on first use | not yet | Hybrid transformer; `--two-stems=vocals` is all we need |
 | Chords (default) | [madmom](https://github.com/CPJKU/madmom) CNN + CRF | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0, Py3.11 | Korzeniowski & Widmer; major/minor vocabulary |
-| Chords (`btc`) | [BTC](https://github.com/jayg996/BTC-ISMIR19) large vocabulary | PyTorch | MIT | Public checkpoint in the upstream repo, downloaded from pinned commit `2682317` and checked against a SHA-256 | **yes** — outputs match upstream exactly; accuracy not yet measured | 170 classes: 14 qualities per root (7ths, 6ths, sus, dim, aug) plus N; no inversions. Network re-implemented in `btc.py` so it loads the checkpoint unchanged; needs the `[btc]` extra |
+| Chords (`btc`) | [BTC](https://github.com/jayg996/BTC-ISMIR19) large vocabulary | PyTorch | MIT | Public checkpoint in the upstream repo, downloaded from pinned commit `2682317` and checked against a SHA-256 | **yes** — the network's per-frame outputs match upstream exactly; decoding does not, see the note | 170 classes: 14 qualities per root (7ths, 6ths, sus, dim, aug) plus N; no inversions. Network re-implemented in `btc.py` so it loads the checkpoint unchanged; needs the `[btc]` extra |
 | Downbeats (default) | [madmom](https://github.com/CPJKU/madmom) RNN + DBN | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0 | Böck et al.; same install as the chord model, so no new dependency. Trained mostly on pop/rock — on jazz, check it has not locked onto the backbeat |
 | Lyrics | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (Whisper) | CTranslate2 | MIT (code), MIT (weights) | HuggingFace Hub, auto-downloaded | not yet | Word-level timestamps; see the note below |
+
+**BTC's decoding is ours, its weights are theirs.** Upstream labels each frame by that
+frame's own best class. We feed the same logits to a Viterbi decoder with one parameter — a
+log-probability bonus for a frame keeping the previous frame's chord (`chords.viterbi_path`,
+`chords.BTC_SELF_TRANSITION`) — because frame-independent argmax over 170 classes flickers,
+and a flickering chart is unplayable whatever its WCSR. The weights, the features and the
+per-frame logits are unchanged, and the backend called with `self_transition=0` reproduces
+upstream's decoding, which is how the re-implementation stays checkable against it.
 
 Two dependencies need a word of explanation against the PyTorch policy:
 

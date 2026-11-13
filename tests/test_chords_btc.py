@@ -50,6 +50,32 @@ class TestRegistration:
         with pytest.raises(ValueError, match="device"):
             recognise(np.zeros(22_050, dtype=np.float32), 22_050, backend="btc", device="tpu")
 
+    def test_the_decoder_is_a_declared_setting_not_a_catch_all(self):
+        assert chords.backend_options("btc") == {"checkpoint", "device", "self_transition"}
+        assert not chords.accepts_any_option("btc")
+
+    def test_the_default_decodes_as_a_sequence_rather_than_frame_by_frame(self):
+        # Zero would be upstream's per-frame argmax; shipping it would mean the
+        # setting exists and does nothing by default.
+        assert chords.BTC_SELF_TRANSITION > 0
+
+    @pytest.mark.parametrize(
+        ("value", "fault"),
+        [
+            (-0.5, "must be at least 0, got -0.5"),
+            (True, "must be a number of log-probability units per frame, got True"),
+            ("6", "must be a number of log-probability units per frame, got '6'"),
+            (None, "must be a number of log-probability units per frame, got None"),
+            (float("nan"), "must be a number of log-probability units per frame, got nan"),
+            (float("inf"), "must be a number of log-probability units per frame, got inf"),
+        ],
+    )
+    def test_a_bad_self_transition_is_refused_before_the_model_loads(self, value, fault):
+        audio = np.zeros(22_050, dtype=np.float32)
+        with pytest.raises(ValueError) as excinfo:
+            recognise(audio, 22_050, backend="btc", self_transition=value)
+        assert str(excinfo.value) == f"setting 'self_transition' for chord backend 'btc' {fault}"
+
 
 @pytest.fixture
 def btc():
@@ -88,6 +114,19 @@ class TestNetwork:
         model = btc.BTC().eval()
         classes = btc.predict(model, 0.0, 1.0, np.zeros((150, btc.N_BINS)), "cpu")
         assert classes.shape == (150,)
+
+    def test_log_probabilities_are_normalised_and_agree_with_predict(self, btc):
+        model = btc.BTC().eval()
+        feature = np.zeros((150, btc.N_BINS))
+        scores = btc.log_probabilities(model, 0.0, 1.0, feature, "cpu")
+        assert scores.shape == (150, btc.NUM_CHORDS)
+        np.testing.assert_allclose(np.exp(scores).sum(axis=1), 1.0, rtol=1e-5)
+        # With no prior, the sequence decoder on these emissions has to return
+        # exactly what predict does: the prior is the whole of the difference.
+        np.testing.assert_array_equal(
+            chords.viterbi_path(scores, 0.0),
+            btc.predict(model, 0.0, 1.0, feature, "cpu"),
+        )
 
 
 class TestCheckpointDownload:

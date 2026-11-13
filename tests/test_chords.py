@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -14,6 +16,7 @@ from songscribe.chords import (
     normalise_label,
     recognise,
     sample_rate_for,
+    viterbi_path,
 )
 from songscribe.types import ChordEvent
 
@@ -75,6 +78,99 @@ class TestSmoothLabels:
 
     def test_empty_input(self):
         assert len(_smooth_labels(np.array([], dtype=int), 9)) == 0
+
+
+class TestViterbiPath:
+    @staticmethod
+    def _log(rows):
+        return np.log(np.asarray(rows, dtype=float))
+
+    # Five frames of C, one where A minor edges ahead, five of C again.
+    FLICKER = [[0.7, 0.2, 0.1]] * 5 + [[0.40, 0.45, 0.15]] + [[0.7, 0.2, 0.1]] * 5
+
+    def test_a_held_chord_stays_held(self):
+        held = self._log([[0.8, 0.1, 0.1]] * 8)
+        assert list(viterbi_path(held, 1.0)) == [0] * 8
+
+    def test_a_genuine_change_survives_the_prior(self):
+        # Six frames of evidence either side: the prior is one frame's worth of
+        # log-probability, so it must not be able to buy a whole half of the input.
+        change = self._log([[0.7, 0.1, 0.2]] * 6 + [[0.1, 0.2, 0.7]] * 6)
+        assert list(viterbi_path(change, 1.0)) == [0] * 6 + [2] * 6
+
+    def test_a_one_frame_flicker_is_smoothed_away(self):
+        flicker = self._log(self.FLICKER)
+        assert list(np.argmax(flicker, axis=1)) == [0] * 5 + [1] + [0] * 5
+        assert list(viterbi_path(flicker, 1.0)) == [0] * 11
+
+    def test_the_prior_has_to_outweigh_the_evidence_for_the_flicker(self):
+        # The flicker frame prefers A minor by log(0.45 / 0.40); leaving and
+        # returning costs two self-transitions, so anything below half that gap
+        # leaves the flicker in place.
+        flicker = self._log(self.FLICKER)
+        gap = np.log(0.45 / 0.40)
+        assert list(viterbi_path(flicker, gap / 2 - 1e-9)) == [0] * 5 + [1] + [0] * 5
+        assert list(viterbi_path(flicker, gap / 2 + 1e-9)) == [0] * 11
+
+    def test_zero_bonus_reproduces_the_per_frame_argmax(self):
+        # The baseline a caller can always get back: frame-independent decoding.
+        generator = np.random.default_rng(20_240_617)
+        for classes in (2, 7, 170):
+            scores = generator.normal(size=(60, classes))
+            scores -= np.log(np.exp(scores).sum(axis=1, keepdims=True))
+            np.testing.assert_array_equal(viterbi_path(scores, 0.0), scores.argmax(axis=1))
+
+    def test_zero_bonus_breaks_ties_the_way_argmax_does(self):
+        # Flat rows are the case where "equivalent to argmax" could quietly mean
+        # "a different one of the tied classes".
+        flat = np.zeros((5, 4))
+        np.testing.assert_array_equal(viterbi_path(flat, 0.0), flat.argmax(axis=1))
+
+    def test_finds_the_highest_scoring_path(self):
+        # Checked against every path there is, so the dynamic program is tested
+        # against the thing it claims to compute rather than against itself.
+        generator = np.random.default_rng(7)
+        scores = generator.normal(size=(5, 3))
+        bonus = 0.75
+        best, best_total = None, -np.inf
+        for path in itertools.product(range(3), repeat=5):
+            total = sum(scores[frame, state] for frame, state in enumerate(path))
+            total += bonus * sum(a == b for a, b in itertools.pairwise(path))
+            if total > best_total:
+                best, best_total = path, total
+        np.testing.assert_array_equal(viterbi_path(scores, bonus), best)
+
+    def test_an_overwhelming_prior_holds_one_chord_throughout(self):
+        change = self._log([[0.7, 0.1, 0.2]] * 6 + [[0.1, 0.2, 0.7]] * 6)
+        assert len(set(viterbi_path(change, 100.0))) == 1
+
+    def test_the_path_indexes_a_label_list(self):
+        # _runs_to_events indexes a plain list with these, so they have to be
+        # integers, not the floats an argmax on the wrong axis would give.
+        path = viterbi_path(self._log([[0.5, 0.5]] * 4), 1.0)
+        assert path.shape == (4,)
+        assert [["C", "Am"][frame] for frame in path] == ["C"] * 4
+
+    def test_a_single_frame_is_its_own_argmax(self):
+        np.testing.assert_array_equal(viterbi_path(self._log([[0.1, 0.9]]), 5.0), [1])
+
+    def test_no_frames_decodes_to_no_path(self):
+        assert len(viterbi_path(np.zeros((0, 170)), 1.0)) == 0
+
+    def test_no_classes_is_refused_rather_than_decoded_to_class_zero(self):
+        # Returning 0 per frame would name a class the caller has no label for.
+        with pytest.raises(ValueError, match=r"\(frames, classes\)"):
+            viterbi_path(np.zeros((5, 0)), 1.0)
+
+    def test_a_negative_bonus_is_refused(self):
+        # Negative would mean "prefer changing chord", which is the opposite of
+        # what this decoder is for and would read as a sign slip, not a setting.
+        with pytest.raises(ValueError, match="at least 0"):
+            viterbi_path(np.zeros((4, 3)), -1.0)
+
+    def test_a_non_matrix_is_refused(self):
+        with pytest.raises(ValueError, match=r"\(frames, classes\)"):
+            viterbi_path(np.zeros(4), 1.0)
 
 
 class TestNormaliseLabel:
