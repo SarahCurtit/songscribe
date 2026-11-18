@@ -39,13 +39,12 @@ out/
 *.cho
 *.chopro
 
-# Evaluation: reference annotations and model estimates. The annotations are
-# other people's work under their own licences, and the estimates are derived
-# from audio -- neither belongs in the repo. Only references-only manifests
-# (relative paths, no content) are meant to be committed, so eval/*.json is not
-# ignored wholesale. eval/isophonics.json, the documented `--audio` build target,
-# carries paths into the user's own library, so it is ignored.
-eval/isophonics.json
+# Evaluation: manifests, reference annotations and model estimates, none of
+# which belong in the repo -- a manifest lives with its corpus, the annotations
+# are other people's work, the estimates come from audio. The whole directory
+# goes: it is the habitual `manifest --output` target. The leading slash
+# matters: plain `eval/` would also ignore src/songscribe/eval/.
+/eval/
 *.lab
 annotations/
 estimates/
@@ -55,9 +54,10 @@ estimates/
 # suffix, so this one rule covers them all.
 *.words.json
 # Corpora land here: downloaded annotation archives and their extracted trees.
+# Anchored like /eval/ above, so tests/data/ and src/songscribe/data/ stay addable.
 # Ignored wholesale rather than by extension, because Isophonics also ships
 # .ttl, .svl and .txt alongside the .lab files.
-data/
+/data/
 
 .DS_Store
 .idea/
