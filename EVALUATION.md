@@ -105,6 +105,7 @@ number over the same seconds WCSR uses:
 | `relative` | 0.70 | `C:maj6` / `A:min7` |
 | `sus_for_triad` | 0.70 | `C:sus4` / `C:maj` |
 | `seventh_swap` | 0.60 | `C:maj7` / `C:7` |
+| `dim_near_miss` | 0.60 | `C:dim7` / `C:min6` — a note apart on the same root |
 | `parallel` | 0.40 | `C:maj` / `C:min` |
 | `none` | 0.00 | anything else |
 
@@ -129,10 +130,81 @@ lead sheets of one tune disagree in each of these ways, so a run whose credit le
 `relative` or `ii_V_merge` is evidence those two are too generous rather than evidence the model
 is doing well. Read `theory` as indicative, the way `grid` is.
 
+Coverage of near misses is uneven, and the one gap measured on a real chart is a
+half-diminished chord against the dominant on its own root: `E:hdim7` against `E:7` grades
+`none`, although a lead sheet prints the two over one bar as equally playable. Both the third
+and the fifth change, so it is two notes rather than one, which is why `dim_near_miss` does not
+reach it. Whether it deserves a relation of its own wants more than one tune's charts — see
+`### Consensus` below.
+
 `substitutions` and `mirex` need the reference and the estimate together to decide, so a single
 chord has no label in them (`metrics.project` raises for both).
 `chart`, `grid` and `bar` are built on projected label strings and leave both out; asking for
 `-v substitutions` adds a WCSR column and no bar row.
+
+### Consensus: when a bar has more than one right answer
+
+A tune has no single correct chart. A lead sheet prints a small alternate chord above a bar, and
+two sheets of one tune disagree the same way — where one writes `D:min` another writes `D:7`. A
+model printing the second is not wrong, but strict WCSR counts it as wrong, so part of every
+chord score is really chart choice rather than model error.
+
+A reference can carry the whole set in one label, separated by `|`:
+
+```
+3.319300    4.976300    D:min
+4.976300    6.633400    D:min|D:7
+```
+
+`.lab` and its reader need no change for this: `lab.parse` passes a label through verbatim, and
+`harte.parse` returns the **primary** chord alone, so every metric above keeps reading one chord
+per segment and its numbers do not move. `eval/consensus.py` is the opt-in second reading, and
+`score` prints it as an extra `consensus` column — only when some reference actually carries
+alternatives, so an ordinary corpus's table is unchanged. A segment is correct there when *any*
+source's chord matches, and skipped only when no source can be scored at all.
+
+The consensus column covers the WCSR rows and `theory`. `chart`, `grid`, `bar` and
+`segmentation` are built on projected label strings and read the primary chord, so they still
+count a printed alternative wrong.
+
+**Consensus moves a score in both directions**, which is worth understanding before reading one.
+Measured on the Beautiful Love backing track, whose chart prints an alternate over four of its
+32 bars, with `btc` on the full mix:
+
+| | root | majmin | sevenths | mirex | substitutions | theory |
+|---|---|---|---|---|---|---|
+| strict | 64.88% | 58.91% | 54.01% | 56.97% | 53.99% | 58.11% |
+| consensus | 64.88% | 58.97% | **53.63%** | 60.71% | 57.73% | 61.39% |
+
+`sevenths` *falls*. Two of the four contested bars are a half-diminished chord, which `sevenths`
+cannot express, so strictly they are excluded; their alternative is a dominant, which it can, so
+consensus pulls 3.3 s out of excluded time and into the denominator. The model gets about half
+of that newly scored time right, which is below its average, so the ratio drops while the
+correct seconds rise. `root` and `mirex` exclude nothing here, so for them consensus can only
+go up.
+
+`survey` reports what the sources disagree about, from the annotations alone — no audio, no
+model:
+
+```
+sources disagree over 0.1 min, 12.5% of annotated time:
+
+  pair                              relation           credit     min
+  D:min|D:7                         parallel             0.40     0.1
+  B:hdim7(9)|G:7(#11)               dim_for_dominant     0.80     0.0
+  E:hdim7|E:7                       none                 0.00     0.0
+
+1 of 3 pairs reach no relation at all.
+```
+
+That last line is the point of the whole exercise: a pair no relation explains is either a
+relation `substitution.py` is missing or a chart read wrong on the way in, and telling those
+apart wants a person's eye. This breakdown is also what the relation credits would be fitted
+against. **They are still musical judgement**, and one tune's four bars is not enough to fit
+them — that wants several sheets per tune, which is why the credits have not been touched.
+
+Building a reference that carries alternatives is the annotation side's job and belongs wherever
+the charts live, not here: this repo reads the `|` labels and never writes them.
 
 ### What gets excluded
 
@@ -152,6 +224,10 @@ reference or estimate is missing is skipped and named, not scored as zero.
 labels — and nothing else: every relation is defined on pitch content, so no chord is outside
 their vocabulary. A track whose reference is entirely `X` has no `theory` score and is absent
 from its mean, not counted as zero.
+
+A segment whose label prints several chords is excluded only when *none* of them can be scored,
+so an alternative can pull a segment back into the denominator that the primary chord alone
+would have left out. That is the asymmetry behind the falling `sevenths` column above.
 
 ### Differences from `mir_eval`
 
