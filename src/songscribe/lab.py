@@ -1,10 +1,11 @@
-"""Reading and writing ``.lab`` chord annotation files, and ``.beats`` grids.
+"""Reading and writing ``.lab`` chord annotation files, ``.beats`` grids and ``.notes`` melodies.
 
 The Isophonics/MIREX convention: one chord per line, ``start end label``,
 times in seconds from the start of the recording. It is the lingua franca for
 chord ground truth, so it is both what :mod:`songscribe.demo` emits and what
 :mod:`songscribe.eval` reads. Beat timelines get the same treatment
-(``time position``), since this module already owns "simple timed text file".
+(``time position``), and melodies theirs (``start end pitch``), since this
+module already owns "simple timed text file".
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from collections.abc import Sequence
 from math import isfinite
 from pathlib import Path
 
-from .types import BeatEvent, ChordEvent
+from .types import BeatEvent, ChordEvent, NoteEvent
 
 log = logging.getLogger(__name__)
 
@@ -183,3 +184,107 @@ def write_beats(path: str | Path, beats: Sequence[BeatEvent]) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(format_beats(beats), encoding="utf-8")
+
+
+#: MIDI's own range. A pitch outside it is a conversion gone wrong -- a
+#: frequency written where a note number belongs, most likely -- not a note.
+MIN_PITCH, MAX_PITCH = 0, 127
+
+#: Confidence of a note whose file left the column off.
+DEFAULT_CONFIDENCE = 1.0
+
+
+def parse_notes(text: str, source: str | None = None) -> list[NoteEvent]:
+    """Parse ``start end pitch [confidence]`` lines into note events.
+
+    ``pitch`` is a MIDI note number, as :class:`~songscribe.types.NoteEvent`
+    has it. The confidence column is optional: a tracker with nothing to say
+    about it leaves it off, and the notes read back at
+    :data:`DEFAULT_CONFIDENCE`.
+    """
+    notes: list[NoteEvent] = []
+    where = f"{source}:" if source else "line "
+
+    for number, line in enumerate(text.splitlines(), start=1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        fields = line.split()
+        if not 3 <= len(fields) <= 4:
+            raise LabFormatError(
+                f"{where}{number}: expected 'start end pitch [confidence]', got {line!r}"
+            )
+
+        try:
+            start, end = float(fields[0]), float(fields[1])
+            pitch = float(fields[2])
+            confidence = float(fields[3]) if len(fields) == 4 else DEFAULT_CONFIDENCE
+        except ValueError as error:
+            raise LabFormatError(f"{where}{number}: bad number in {line!r}") from error
+
+        # Before the ordering test, which nan passes: every comparison against
+        # it is False. See parse() -- a nan boundary spreads silently.
+        if not (isfinite(start) and isfinite(end)):
+            raise LabFormatError(f"{where}{number}: non-finite timestamp in {line!r}")
+        if not isfinite(pitch) or pitch != int(pitch):
+            raise LabFormatError(f"{where}{number}: pitch {fields[2]} is not a whole MIDI note")
+        if not MIN_PITCH <= pitch <= MAX_PITCH:
+            raise LabFormatError(
+                f"{where}{number}: pitch {fields[2]} is outside MIDI {MIN_PITCH}-{MAX_PITCH}"
+            )
+        if not isfinite(confidence):
+            raise LabFormatError(f"{where}{number}: non-finite confidence in {line!r}")
+
+        if end < start:
+            # Same rule as the chord reader's, for the same reason: see parse().
+            if round(start - end, TIME_PRECISION) > MAX_REVERSED_SPAN:
+                raise LabFormatError(f"{where}{number}: end {end} precedes start {start}")
+            log.warning(
+                "%s%d: skipping note reversed by %gs (end %s precedes start %s)",
+                where,
+                number,
+                start - end,
+                end,
+                start,
+            )
+            continue
+
+        notes.append(NoteEvent(start=start, end=end, pitch=int(pitch), confidence=confidence))
+
+    return notes
+
+
+def read_notes(path: str | Path) -> list[NoteEvent]:
+    """Read a ``.notes`` file into note events."""
+    path = Path(path)
+    return parse_notes(path.read_text(encoding="utf-8-sig"), source=path.name)
+
+
+def format_notes(notes: Sequence[NoteEvent]) -> str:
+    """Render note events as ``.notes`` text, including the trailing newline.
+
+    One note per line: start, end, MIDI pitch::
+
+        0.000000    0.625000    72
+
+    The confidence column is written only when some note carries one.
+    """
+    graded = any(n.confidence != DEFAULT_CONFIDENCE for n in notes)
+    lines = []
+    for note in notes:
+        line = (
+            f"{note.start:.{TIME_PRECISION}f}{WRITE_SEPARATOR}"
+            f"{note.end:.{TIME_PRECISION}f}{WRITE_SEPARATOR}{note.pitch}"
+        )
+        if graded:
+            line += f"{WRITE_SEPARATOR}{note.confidence:.{TIME_PRECISION}f}"
+        lines.append(line)
+    return "".join(f"{line}\n" for line in lines)
+
+
+def write_notes(path: str | Path, notes: Sequence[NoteEvent]) -> None:
+    """Write note events to ``path`` as a ``.notes`` file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(format_notes(notes), encoding="utf-8")

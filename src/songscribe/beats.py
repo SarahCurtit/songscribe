@@ -353,7 +353,7 @@ BACKEND_SAMPLE_RATES = {
 
 _REGISTRY = Registry("beat", BACKENDS, BACKEND_SAMPLE_RATES)
 
-# The checks live in :mod:`songscribe.registry`, shared with the chord stage; these
+# The checks live in :mod:`songscribe.registry`, shared with the other stages; these
 # are this module's public names for them.
 _check_backend = _REGISTRY.check_backend
 _check_options = _REGISTRY.check_options

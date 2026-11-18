@@ -92,6 +92,17 @@ it finds bar 1. It exists so a grid is available with no weights on disk, and it
 the default, because a bar grid that is a beat or two out of phase still looks like a
 measurement everywhere downstream.
 
+The `pyin` melody backend is the same kind of thing again, and is out of the inventory for
+the same reason: `librosa.pyin` is Mauch & Dixon's probabilistic YIN — difference-function
+candidates with an HMM over them — so there is no model, no weights and nothing to licence.
+It is what makes the melody stage runnable in CI with no weights on disk, and the baseline a
+pitch model has to beat. Unlike the other two it *is* the default, because it is currently
+the only melody backend — `torchcrepe` below is the model meant to take that place, and
+until it does the default of that stage is a baseline, which is worth knowing when reading
+any melody number. Two caveats carry into its docstring: it is monophonic, so on a full mix
+it tracks whatever is loudest rather than the lead, and it gives f0, never notes —
+segmentation is `melody.notes_from_f0`'s either way.
+
 ## Licence note on madmom
 
 madmom is BSD-2-Clause with an added clause asking for citation in academic work. That is
@@ -115,6 +126,16 @@ All PyTorch or framework-free, per the policy above.
   weights. Generic Whisper is the weakest link in the pipeline.
 - **Structure/section detection** — self-similarity on top of an open PyTorch embedding
   model, to label verse/chorus.
+- **Melody f0** — [torchcrepe](https://github.com/maxrmorrison/torchcrepe) (PyTorch, MIT,
+  CREPE's weights bundled in the wheel — `tiny.pth` 1.9 MB, `full.pth` 85 MB), the upgrade
+  from the `pyin` default. Vetted Nov 2026 and it clears the bar as written, so this is a
+  cost decision rather than a licence one: `full` runs at roughly 1.7x real time on CPU
+  (upstream CREPE's own figure, not measured here), `tiny` about ten times faster and
+  measurably less accurate, and it adds `torchaudio` — in upstream maintenance mode since
+  2.9 — and `resampy` to the install. Its output is f0 plus periodicity on a fixed hop,
+  the same shape pYIN gives, so `notes_from_f0` needs no change. Pin
+  `torchcrepe==0.0.24`; upstream has no git tags. Measure `full` on a real four-minute
+  track before choosing the capacity and hop.
 
 ## Rejected
 
@@ -125,7 +146,9 @@ on framework or on packaging, not on quality.
 |---|---|
 | [crema](https://github.com/bmcfee/crema) | **TensorFlow/Keras.** Genuinely tempting otherwise: large-vocabulary chord model (McFee & Bello, ISMIR'17), MIT, pip-installable with bundled weights. Fails the framework policy, and its pre-Keras-3 vintage would likely break on current TF anyway. |
 | [autochord](https://github.com/cjbayron/autochord) | **TensorFlow** (tflite). Also needs the NNLS-Chroma Vamp plugin installed system-wide. |
-| [basic-pitch](https://github.com/spotify/basic-pitch) | **TensorFlow.** Also note transcription, not chords — it would need a chord-labelling layer on top. An ONNX build would clear the framework bar if one is maintained. |
+| [basic-pitch](https://github.com/spotify/basic-pitch) | **TensorFlow.** Apache-2.0 code and weights, actively maintained, and the repo does now ship an ONNX export (`saved_models/icassp_2022/nmp.onnx`, 230 KB) behind an `[onnx]` extra — but the extra only *adds* `onnxruntime`: the core dependencies still force `tensorflow<2.15.1` on Linux/Python≥3.11 and `tflite-runtime` below that, and `basic_pitch/__init__` prefers the TF model whenever TF imports. Neither has a cp312 wheel, so it will not install across the Python matrix CI tests. Re-checked Nov 2026: the ONNX build is real but does not remove the TF dependency, short of a `--no-deps` install we would have to maintain ourselves. Also note transcription, not chords — it would need a chord-labelling layer on top. |
+| [CREPE](https://github.com/marl/crepe) (Kim et al., ICASSP'18) | **TensorFlow/Keras** — the net is built from `tensorflow.keras` and the weights are Keras `.h5`, unloadable without TF; `setup.py` also downloads them at install time, so it needs the network to build. MIT and still patched. The model itself is one we want, which is why [torchcrepe](https://github.com/maxrmorrison/torchcrepe) — the same weights ported to PyTorch — is the melody candidate instead. |
+| [MT3](https://github.com/magenta/mt3) | **JAX/T5X, and TensorFlow as well** (`tensorflow`, `tensorflow-datasets`, with `t5x`, `flax`, `seqio` and `note-seq` pulled from unpinned git `main`, so nothing pins either). Apache-2.0 and the checkpoints are public in `gs://mt3/checkpoints`, but there is no PyPI release, the sanctioned entry point is a Colab notebook, and a T5 encoder-decoder decoding MIDI tokens autoregressively is not a CPU transcriber for a four-minute track. |
 | [omnizart](https://github.com/Music-and-Culture-Technology-Lab/omnizart) | **TensorFlow**, with old pinned deps. |
 | [Chordino](https://github.com/ohollo/chord-extractor) | Not deep learning (NNLS-Chroma, C++ Vamp plugin), and awkward to install. The `template` backend already fills the "simple baseline" slot. |
 | madmom 0.16.1 from PyPI | Cannot import on Python 3.10+. See the install section above — use the git pin. |

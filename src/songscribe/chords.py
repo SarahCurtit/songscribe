@@ -210,7 +210,7 @@ def normalise_label(label: str) -> str:
 
 _REGISTRY = Registry("chord", BACKENDS, BACKEND_SAMPLE_RATES)
 
-# The checks live in :mod:`songscribe.registry`, shared with the beat stage; these
+# The checks live in :mod:`songscribe.registry`, shared with the other stages; these
 # are this module's public names for them.
 _check_backend = _REGISTRY.check_backend
 _check_options = _REGISTRY.check_options

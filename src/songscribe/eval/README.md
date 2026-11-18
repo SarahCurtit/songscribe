@@ -47,6 +47,10 @@ irregular bars are `unaligned`; a short last block is `partial` or `tail`. Score
 rescaled onto the chart's timeline with `project_estimate`, and `in_key` gives them the
 anchor's key; `runner.score_performance` scores each against the chart transposed to it.
 
+`melody.score_choruses` reuses those same blocks for the lead line: `project_estimate` maps
+chords or notes alike, so the melody branch adds no alignment of its own. It scores the
+`head` blocks and reports the rest as novelty — see *Melody* in `EVALUATION.md`.
+
 ## Order and fallback
 
 1. The estimate and the beat grid become one symbol per beat.

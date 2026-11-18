@@ -12,11 +12,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from math import isfinite, nan
 from statistics import median
+from typing import TypeVar
 
 from ..beats import BAR_DRIFT_TOLERANCE, BeatGrid
-from ..types import ChordEvent
+from ..types import ChordEvent, NoteEvent
 from .harte import transpose_label
 from .metrics import MIN_SEGMENT, extent
+
+#: What :func:`project_estimate` maps: a timed event whose other fields it does not
+#: touch. Constrained rather than bounded, so a chorus of chords projects to chords.
+_Event = TypeVar("_Event", ChordEvent, NoteEvent)
 
 #: Which full choruses are the head, by position (negative from the end): the tune is
 #: played first and last, with improvised choruses between.
@@ -152,30 +157,29 @@ def unscored_seconds(found: Sequence[Chorus]) -> float:
     return sum(c.duration for c in found if not c.is_scored)
 
 
-def _clip(events: Sequence[ChordEvent], low: float, high: float) -> list[ChordEvent]:
+def _clip(events: Sequence[_Event], low: float, high: float) -> list[_Event]:
     return [
-        ChordEvent(max(e.start, low), min(e.end, high), e.label)
+        replace(e, start=max(e.start, low), end=min(e.end, high))
         for e in events
         if e.start < high and e.end > low and min(e.end, high) - max(e.start, low) > MIN_SEGMENT
     ]
 
 
-def project_estimate(
-    events: Sequence[ChordEvent], chorus: Chorus, origin: float = 0.0
-) -> list[ChordEvent]:
+def project_estimate(events: Sequence[_Event], chorus: Chorus, origin: float = 0.0) -> list[_Event]:
     """Keep the events inside ``chorus`` and convert their times to the chart's timeline.
 
     Times are shifted to the chorus start and divided by ``chorus.scale``; ``origin`` is
     where the chart starts. Events outside the chorus are dropped and those crossing its
-    edges are cut.
+    edges are cut. Chords or notes alike: everything but the times is carried over. A note
+    cut at the start would be re-onset there, so ``melody.score_choruses`` drops those.
     """
     if not chorus.is_scored:
         raise ValueError(f"a {chorus.kind} block has no mapping onto the chart")
     return [
-        ChordEvent(
-            origin + (e.start - chorus.start) / chorus.scale,
-            origin + (e.end - chorus.start) / chorus.scale,
-            e.label,
+        replace(
+            e,
+            start=origin + (e.start - chorus.start) / chorus.scale,
+            end=origin + (e.end - chorus.start) / chorus.scale,
         )
         for e in _clip(events, chorus.start, chorus.end)
     ]
