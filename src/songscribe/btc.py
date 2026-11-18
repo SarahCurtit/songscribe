@@ -245,12 +245,35 @@ def _cqt(librosa, segment: np.ndarray) -> np.ndarray:
     )
 
 
-def predict(model: BTC, mean: float, std: float, feature: np.ndarray, device) -> np.ndarray:
-    """Chord class index per frame, from ``(frames, 144)`` log-CQT features."""
+def logits(model: BTC, mean: float, std: float, feature: np.ndarray, device) -> np.ndarray:
+    """Raw chord logits per frame, ``(frames, 170)``, from ``(frames, 144)`` log-CQT features.
+
+    The network only ever sees whole 108-frame windows, so the features are padded up to a
+    multiple of one; the padding's rows are dropped again here.
+    """
     normalised = (feature - mean) / std
     pad = (-len(normalised)) % TIMESTEPS
     padded = np.pad(normalised, ((0, pad), (0, 0)))
     windows = torch.tensor(padded, dtype=torch.float32, device=device).view(-1, TIMESTEPS, N_BINS)
     with torch.no_grad():
-        classes = model(windows).argmax(-1).reshape(-1).cpu().numpy()
-    return classes[: len(normalised)]
+        frames = model(windows).reshape(-1, NUM_CHORDS).cpu().numpy()
+    return frames[: len(normalised)]
+
+
+def predict(model: BTC, mean: float, std: float, feature: np.ndarray, device) -> np.ndarray:
+    """Chord class index per frame, from ``(frames, 144)`` log-CQT features."""
+    return logits(model, mean, std, feature, device).argmax(-1)
+
+
+def log_probabilities(
+    model: BTC, mean: float, std: float, feature: np.ndarray, device
+) -> np.ndarray:
+    """Log-softmax of :func:`logits`, ``(frames, 170)``.
+
+    A row sums to one in probability, so a sequence decoder can compare emissions from
+    frame to frame; the raw logits cannot be compared that way. The row's argmax is
+    unchanged, so decoding this with no transition prior gives what :func:`predict` does.
+    """
+    scores = logits(model, mean, std, feature, device)
+    shifted = scores - scores.max(axis=1, keepdims=True)
+    return shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))
