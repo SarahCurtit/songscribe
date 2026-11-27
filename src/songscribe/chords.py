@@ -111,9 +111,9 @@ BTC_QUALITIES = (
 )  # fmt: skip
 BTC_NO_CHORD, BTC_UNKNOWN = 169, 168
 
-# Per-frame log-probability bonus for keeping the previous chord. Labelling frames one at a
-# time flickers between neighbouring chords: WCSR barely moves but the chart prints far too
-# many changes. 0 gives the plain per-frame argmax.
+# Bonus added to a chord's score for staying the same as in the previous frame. Without it,
+# the label flickers between similar chords and the printed chart shows far too many changes.
+# Set to 0 to pick each frame's best chord on its own.
 BTC_SELF_TRANSITION = 6.0
 
 
