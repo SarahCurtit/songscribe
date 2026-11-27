@@ -45,7 +45,8 @@ training framework with it.
 **BTC decoding favours consistent chords.** Instead of taking the best chord in each frame
 separately, a Viterbi pass (`chords.viterbi_path`) adds a bonus for keeping the previous chord
 (`chords.BTC_SELF_TRANSITION`), which stops the chart flickering between neighbours. The
-network is unchanged; `self_transition=0` gives the frame-by-frame output.
+network is unchanged; `self_transition=0` gives the frame-by-frame output. Each chord span
+also starts half a frame later than upstream's, because BTC's changes otherwise land early.
 
 Two dependencies need a word of explanation against the PyTorch policy:
 

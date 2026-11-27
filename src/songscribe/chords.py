@@ -160,16 +160,16 @@ def _recognise_btc(
     return [event for event in events if event.end > event.start]
 
 
-# Where each BTC frame's span starts, in frames after its nominal start. On synthetic tracks
-# with known chord changes, BTC's changes land half a frame early without this shift.
+# How many frames after its nominal start each BTC frame's span begins. Without this
+# shift, BTC's chord changes land about half a frame early.
 BTC_FRAME_LAG = 0.5
 
 
 def btc_frame_times(frame_count: int, frame_seconds: float, duration: float) -> np.ndarray:
     """Span edges for ``frame_count`` BTC frames: ``frame_count + 1`` times in seconds.
 
-    Every edge is shifted ``BTC_FRAME_LAG`` frames later. The first span still starts at
-    0, and no edge passes ``duration``, since nothing sounds after the audio ends.
+    Each edge except the first is ``BTC_FRAME_LAG`` frames after its frame's nominal start.
+    The first is 0, and no edge passes ``duration``, since nothing sounds after the audio ends.
     """
     edges = (np.arange(frame_count + 1) + BTC_FRAME_LAG) * frame_seconds
     edges[0] = 0.0
