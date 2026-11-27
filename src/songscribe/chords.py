@@ -93,6 +93,16 @@ def _btc_device(value: object) -> str | None:
     return None
 
 
+def _log_probability_bonus(value: object) -> str | None:
+    # bool is an int, and True would quietly mean a bonus of 1. nan and inf pass a `< 0`
+    # test and then make every path score nan, which decodes to one chord for the whole song.
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+        return f"must be a number of log-probability units per frame, got {value!r}"
+    if value < 0:
+        return f"must be at least 0, got {value!r}"
+    return None
+
+
 # BTC's 170 classes: 12 roots x 14 qualities (a major triad is the bare root), then N, X.
 BTC_ROOTS = PITCH_CLASSES
 BTC_QUALITIES = (
@@ -100,6 +110,11 @@ BTC_QUALITIES = (
     "minmaj7", "maj7", "7", "dim7", "hdim7", "sus2", "sus4",
 )  # fmt: skip
 BTC_NO_CHORD, BTC_UNKNOWN = 169, 168
+
+# Bonus added to a chord's score for staying the same as in the previous frame. Without it,
+# the label flickers between similar chords and the printed chart shows far too many changes.
+# Set to 0 to pick each frame's best chord on its own.
+BTC_SELF_TRANSITION = 6.0
 
 
 def btc_label(index: int) -> str:
@@ -112,17 +127,20 @@ def btc_label(index: int) -> str:
     return f"{BTC_ROOTS[root]}:{BTC_QUALITIES[quality]}"
 
 
-@setting_rules(device=_btc_device)
+@setting_rules(device=_btc_device, self_transition=_log_probability_bonus)
 def _recognise_btc(
     audio: np.ndarray,
     sample_rate: int,
     checkpoint: str | None = None,
     device: str = "auto",
+    self_transition: float = BTC_SELF_TRANSITION,
 ) -> list[ChordEvent]:
     """Bi-directional Transformer chord recognition (BTC, ISMIR'19), large vocabulary.
 
     Emits sevenths, sixths, sus and diminished chords as well as triads. ``checkpoint``
     is a local file; by default the published one is downloaded and cached on first use.
+    ``self_transition`` is the per-frame bonus for holding the previous chord that
+    :func:`viterbi_path` decodes with; ``0`` labels each frame on its own, as upstream does.
     """
     import torch
 
@@ -134,7 +152,8 @@ def _recognise_btc(
     use_cuda = device == "cuda" or (device == "auto" and torch.cuda.is_available())
     torch_device = torch.device("cuda" if use_cuda else "cpu")
     model, mean, std = btc.load(checkpoint, torch_device)
-    classes = btc.predict(model, mean, std, btc.features(audio), torch_device)
+    frames = btc.log_probabilities(model, mean, std, btc.features(audio), torch_device)
+    classes = viterbi_path(frames, self_transition)
     labels = [normalise_label(btc_label(i)) for i in range(btc.NUM_CHORDS)]
     # The last frame can run past the end of the audio; nothing sounds there.
     times = np.minimum(np.arange(len(classes) + 1) * btc.FRAME_SECONDS, len(audio) / sample_rate)
@@ -256,6 +275,41 @@ def chord_templates() -> tuple[np.ndarray, list[str]]:
             templates.append(template / np.linalg.norm(template))
             labels.append(f"{name}{quality}")
     return np.vstack(templates), labels
+
+
+def viterbi_path(log_probabilities: np.ndarray, self_transition: float = 0.0) -> np.ndarray:
+    """Decode ``(frames, classes)`` log-probabilities into the likeliest label sequence.
+
+    Staying in a class scores ``self_transition`` more than leaving it and every switch
+    scores alike, so the prior says that chords are held and nothing about which chord
+    follows which. At ``0`` every path pays the same transition score and the result is the
+    per-frame argmax, tie-breaking included.
+    """
+    # No key-aware transitions: this stage has no key estimate.
+    if log_probabilities.ndim != 2 or log_probabilities.shape[1] == 0:
+        raise ValueError(f"expected a (frames, classes) array, got {log_probabilities.shape}")
+    if self_transition < 0:
+        raise ValueError(f"self_transition must be at least 0, got {self_transition!r}")
+    frames, classes = log_probabilities.shape
+    if frames == 0:
+        return np.zeros(0, dtype=np.intp)
+
+    transition = np.zeros((classes, classes))
+    np.fill_diagonal(transition, float(self_transition))
+    # Column j of `candidates` holds the score of reaching class j from each class, so its
+    # argmax is the backpointer and its max the running score. Row 0 is never read back.
+    previous = np.zeros((frames, classes), dtype=np.intp)
+    scores = np.asarray(log_probabilities[0], dtype=float)
+    for frame in range(1, frames):
+        candidates = scores[:, None] + transition
+        previous[frame] = candidates.argmax(axis=0)
+        scores = candidates.max(axis=0) + log_probabilities[frame]
+
+    path = np.zeros(frames, dtype=np.intp)
+    path[-1] = scores.argmax()
+    for frame in range(frames - 1, 0, -1):
+        path[frame - 1] = previous[frame, path[frame]]
+    return path
 
 
 def _smooth_labels(indices: np.ndarray, width: int) -> np.ndarray:
