@@ -42,16 +42,10 @@ training framework with it.
 | Downbeats (default) | [madmom](https://github.com/CPJKU/madmom) RNN + DBN | none (numpy) | BSD-2 (+ academic clause) | Bundled with the package | **yes** — 0.17.dev0 | Böck et al.; same install as the chord model, so no new dependency. Trained mostly on pop/rock — on jazz, check it has not locked onto the backbeat |
 | Lyrics | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (Whisper) | CTranslate2 | MIT (code), MIT (weights) | HuggingFace Hub, auto-downloaded | not yet | Word-level timestamps; see the note below |
 
-**BTC's decoding is ours; its weights are theirs.** Upstream labels each frame with its own
-best class. Over 170 classes that flickers, and a flickering chart is unplayable whatever its
-WCSR.
-
-We decode the same logits with a Viterbi pass (`chords.viterbi_path`). Its one parameter,
-`chords.BTC_SELF_TRANSITION`, is a log-probability bonus for keeping the previous frame's
-chord.
-
-Weights, features and logits are unchanged. With `self_transition=0` the backend gives
-upstream's output exactly, so it can still be checked against upstream.
+**BTC decoding favours consistent chords.** Instead of taking the best chord in each frame
+separately, a Viterbi pass (`chords.viterbi_path`) adds a bonus for keeping the previous chord
+(`chords.BTC_SELF_TRANSITION`), which stops the chart flickering between neighbours. The
+network is unchanged; `self_transition=0` gives the frame-by-frame output.
 
 Two dependencies need a word of explanation against the PyTorch policy:
 
