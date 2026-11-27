@@ -155,10 +155,25 @@ def _recognise_btc(
     frames = btc.log_probabilities(model, mean, std, btc.features(audio), torch_device)
     classes = viterbi_path(frames, self_transition)
     labels = [normalise_label(btc_label(i)) for i in range(btc.NUM_CHORDS)]
-    # The last frame can run past the end of the audio; nothing sounds there.
-    times = np.minimum(np.arange(len(classes) + 1) * btc.FRAME_SECONDS, len(audio) / sample_rate)
+    times = btc_frame_times(len(classes), btc.FRAME_SECONDS, len(audio) / sample_rate)
     events = _runs_to_events(classes, times, labels)
     return [event for event in events if event.end > event.start]
+
+
+# How many frames after its nominal start each BTC frame's span begins. Without this
+# shift, BTC's chord changes land about half a frame early.
+BTC_FRAME_LAG = 0.5
+
+
+def btc_frame_times(frame_count: int, frame_seconds: float, duration: float) -> np.ndarray:
+    """Span edges for ``frame_count`` BTC frames: ``frame_count + 1`` times in seconds.
+
+    Each edge except the first is ``BTC_FRAME_LAG`` frames after its frame's nominal start.
+    The first is 0, and no edge passes ``duration``, since nothing sounds after the audio ends.
+    """
+    edges = (np.arange(frame_count + 1) + BTC_FRAME_LAG) * frame_seconds
+    edges[0] = 0.0
+    return np.minimum(edges, duration)
 
 
 # Rules are checked in the registry so a bad value fails before dispatch and before any

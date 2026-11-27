@@ -37,6 +37,19 @@ class TestLabels:
         assert normalise_label(btc_label(0 * 14 + 8)) == "Cmaj7"
 
 
+class TestFrameTimes:
+    def test_spans_start_half_a_frame_late_except_the_first(self):
+        times = chords.btc_frame_times(3, 0.1, 10.0)
+        assert times == pytest.approx([0.0, 0.15, 0.25, 0.35])
+
+    def test_no_edge_passes_the_end_of_the_audio(self):
+        times = chords.btc_frame_times(4, 0.1, 0.3)
+        assert times == pytest.approx([0.0, 0.15, 0.25, 0.3, 0.3])
+
+    def test_one_edge_more_than_frames(self):
+        assert len(chords.btc_frame_times(108, 10 / 108, 60.0)) == 109
+
+
 class TestRegistration:
     def test_runs_at_the_rate_the_checkpoint_was_trained_on(self):
         assert chords.sample_rate_for("btc") == chords.BTC_SAMPLE_RATE
