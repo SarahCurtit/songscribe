@@ -121,8 +121,7 @@ class TestNetwork:
         scores = btc.log_probabilities(model, 0.0, 1.0, feature, "cpu")
         assert scores.shape == (150, btc.NUM_CHORDS)
         np.testing.assert_allclose(np.exp(scores).sum(axis=1), 1.0, rtol=1e-5)
-        # With no prior, the sequence decoder on these emissions has to return
-        # exactly what predict does: the prior is the whole of the difference.
+        # With no bonus, decoding gives exactly what predict does.
         np.testing.assert_array_equal(
             chords.viterbi_path(scores, 0.0),
             btc.predict(model, 0.0, 1.0, feature, "cpu"),

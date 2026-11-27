@@ -111,13 +111,9 @@ BTC_QUALITIES = (
 )  # fmt: skip
 BTC_NO_CHORD, BTC_UNKNOWN = 169, 168
 
-# Labelling each frame by its own best class makes the model flicker between neighbouring
-# chords -- a bar of C broken by two frames of Cmaj7 or Am -- which barely dents WCSR, since
-# every one of those frames carries a defensible label, while printing a chart with several
-# times too many changes. Decoding the frames as a sequence with a bonus for holding the
-# previous chord buys the boundaries back. The bonus is in log-probability units per frame
-# (a BTC frame is 92.6 ms), so it trades that many frames of evidence against one chord
-# change; 0 restores plain per-frame argmax.
+# Per-frame log-probability bonus for keeping the previous chord. Labelling frames one at a
+# time flickers between neighbouring chords: WCSR barely moves but the chart prints far too
+# many changes. 0 gives the plain per-frame argmax.
 BTC_SELF_TRANSITION = 6.0
 
 
@@ -289,8 +285,7 @@ def viterbi_path(log_probabilities: np.ndarray, self_transition: float = 0.0) ->
     follows which. At ``0`` every path pays the same transition score and the result is the
     per-frame argmax, tie-breaking included.
     """
-    # A key-aware transition matrix would say more than "chords are held", but it needs a
-    # key estimate this stage does not have, and reads a progression in the wrong key badly.
+    # No key-aware transitions: this stage has no key estimate.
     if log_probabilities.ndim != 2 or log_probabilities.shape[1] == 0:
         raise ValueError(f"expected a (frames, classes) array, got {log_probabilities.shape}")
     if self_transition < 0:

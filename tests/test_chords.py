@@ -93,8 +93,7 @@ class TestViterbiPath:
         assert list(viterbi_path(held, 1.0)) == [0] * 8
 
     def test_a_genuine_change_survives_the_prior(self):
-        # Six frames of evidence either side: the prior is one frame's worth of
-        # log-probability, so it must not be able to buy a whole half of the input.
+        # Six frames of evidence either side outweigh a bonus of 1.
         change = self._log([[0.7, 0.1, 0.2]] * 6 + [[0.1, 0.2, 0.7]] * 6)
         assert list(viterbi_path(change, 1.0)) == [0] * 6 + [2] * 6
 
@@ -121,14 +120,12 @@ class TestViterbiPath:
             np.testing.assert_array_equal(viterbi_path(scores, 0.0), scores.argmax(axis=1))
 
     def test_zero_bonus_breaks_ties_the_way_argmax_does(self):
-        # Flat rows are the case where "equivalent to argmax" could quietly mean
-        # "a different one of the tied classes".
+        # Flat rows: every class ties.
         flat = np.zeros((5, 4))
         np.testing.assert_array_equal(viterbi_path(flat, 0.0), flat.argmax(axis=1))
 
     def test_finds_the_highest_scoring_path(self):
-        # Checked against every path there is, so the dynamic program is tested
-        # against the thing it claims to compute rather than against itself.
+        # Brute force over all 3^5 paths.
         generator = np.random.default_rng(7)
         scores = generator.normal(size=(5, 3))
         bonus = 0.75
@@ -163,8 +160,7 @@ class TestViterbiPath:
             viterbi_path(np.zeros((5, 0)), 1.0)
 
     def test_a_negative_bonus_is_refused(self):
-        # Negative would mean "prefer changing chord", which is the opposite of
-        # what this decoder is for and would read as a sign slip, not a setting.
+        # A negative bonus would favour changing chord.
         with pytest.raises(ValueError, match="at least 0"):
             viterbi_path(np.zeros((4, 3)), -1.0)
 
